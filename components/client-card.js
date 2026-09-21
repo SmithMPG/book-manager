@@ -1,9 +1,10 @@
-// Client card: one consistent card, used in every tab (Prospects, Action
-// Required, Clients, Not Moved Forward). Collapsed row is just name +
-// clickable email/WhatsApp with copy buttons — no status text, no action
-// button, no chevron. Clicking the row uncollapses it into the same
-// Metrics / Details / [Case ...] sub-tabs everywhere; a Case tab only
-// appears for cards that actually have one.
+// Client card: one consistent card, used in every tab (Prospects,
+// Business, Clients, Not Moved Forward). Collapsed row is the client's name,
+// the client's latest status, then read-only counts (Referrals, a divider,
+// then the funnel: Meetings, FNAs, Quotes, Cases) — no contact details,
+// action button or chevron. Clicking the row uncollapses it into the
+// client's full status history (one dated entry per daily checkout, newest
+// first); clicking a funnel count shows that metric's dated list instead.
 
 function _injectClientCardCSS() {
   if (document.getElementById('client-card-styles')) return;
@@ -57,173 +58,280 @@ function _injectClientCardCSS() {
     }
     .row-detail.open { display: block; }
 
-    .contact-group {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      min-width: 230px;
-    }
-    .contact-text { font-size: 14px; }
-
-    .contact-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      color: inherit;
-      opacity: 0.8;
-      flex-shrink: 0;
-    }
-    .contact-icon:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
-    .list-row.active .contact-icon:hover { background: rgba(255, 255, 255, 0.1); }
-    .contact-icon-whatsapp { color: #25d366; }
-
-    .copy-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: none;
-      background: transparent;
-      color: inherit;
-      opacity: 0.5;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .copy-btn:hover { opacity: 0.9; background: rgba(0, 0, 0, 0.06); }
-    .list-row.active .copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
-    .copy-btn.copied { color: var(--green); opacity: 1; }
-
-    /* Nested tab bar inside an expanded card — same pill-on-grey look as the
-       page's main tab bar (components/toolbar.css), kept as its own class
-       rather than reusing .tab-bar/.tab so the two don't collide: the main
-       tab switcher's click handler is delegated off the .tab-bar/.tab
-       selectors globally, and this needs its own independent behavior. */
-    .client-tab-bar {
-      display: flex;
-      background: #e2e3e2;
-      padding: 5px 6px;
-      border-radius: 8px;
-      gap: 2px;
-      margin-bottom: 14px;
-    }
-    .client-tab {
+    .card-last-status {
       flex: 1;
-      background: transparent;
-      border: none;
-      padding: 8px 14px;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 500;
-      color: #555c6a;
-      cursor: pointer;
+      min-width: 0;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
-      border-radius: 6px;
-      transition: color 0.15s ease;
-    }
-    .client-tab:hover:not(.active) { color: #2a3040; }
-    .client-tab.active {
-      background: #ffffff;
-      color: var(--navy);
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
     }
 
-    .client-tab-panel {
-      display: none;
+    .card-metrics {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .card-metric {
+      display: flex;
       flex-direction: column;
-      gap: 8px;
-      font-size: 13px;
+      align-items: center;
+      min-width: 62px;
+      line-height: 1.2;
+    }
+    .card-metric-value {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .card-metric-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       color: var(--ink-dim);
     }
-    .client-tab-panel.active { display: flex; }
+    /* Separates Referrals from the sales funnel (Meetings > FNAs > Quotes > Cases). */
+    .card-metrics-divider {
+      width: 1px;
+      height: 30px;
+      background: rgba(0, 0, 0, 0.18);
+    }
+    .list-row.active .card-metrics-divider { background: rgba(255, 255, 255, 0.25); }
+    .card-metric[data-view] {
+      cursor: pointer;
+      padding: 4px 6px;
+      margin: -4px -6px;
+      border-radius: 6px;
+      transition: background 0.12s ease;
+    }
+    .card-metric[data-view]:hover { background: rgba(0, 0, 0, 0.06); }
+    .list-row.active .card-metric[data-view]:hover { background: rgba(255, 255, 255, 0.1); }
+    .list-row.active .card-metric.selected { background: rgba(255, 255, 255, 0.14); }
+    .list-row.active .card-metric.selected .card-metric-label { color: var(--gold-soft); }
+    .list-row.active .card-metric-value { color: var(--gold-soft); }
+    .list-row.active .card-metric-label { color: var(--text-dim); }
+
+    .detail-view { display: none; }
+    .detail-view.active { display: block; }
+
+    .detail-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    .detail-item {
+      display: flex;
+      gap: 20px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .detail-item:first-child { padding-top: 0; }
+    .detail-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .detail-date {
+      width: 96px;
+      flex-shrink: 0;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .detail-text { color: var(--ink-dim); line-height: 1.45; }
+    .detail-empty { color: var(--ink-dim); }
   `;
   document.head.appendChild(s);
 }
 _injectClientCardCSS();
 
-const CARD_ICON_MAIL = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>';
-const CARD_ICON_COPY = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-const CARD_ICON_WHATSAPP = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A7.85 7.85 0 0 0 12.05 4a7.94 7.94 0 0 0-6.9 11.86L4 20l4.28-1.12a7.9 7.9 0 0 0 3.77.96 7.95 7.95 0 0 0 7.94-7.94 7.9 7.9 0 0 0-2.39-5.58zM12.05 18.4a6.6 6.6 0 0 1-3.37-.92l-.24-.14-2.5.66.67-2.44-.16-.25a6.6 6.6 0 1 1 12.24-3.5 6.6 6.6 0 0 1-6.64 6.59zm3.62-4.94c-.2-.1-1.17-.58-1.35-.64-.18-.07-.31-.1-.44.1-.13.2-.5.64-.62.77-.11.13-.23.14-.42.05-.2-.1-.83-.31-1.58-.98-.58-.52-.98-1.16-1.09-1.36-.11-.2-.01-.3.09-.4.09-.09.2-.23.3-.35.1-.11.13-.2.2-.32.07-.13.03-.25-.02-.35-.05-.1-.44-1.06-.6-1.45-.16-.38-.32-.33-.44-.33h-.38c-.13 0-.34.05-.52.25-.18.2-.68.66-.68 1.62s.7 1.88.79 2.01c.1.13 1.37 2.1 3.32 2.94.46.2.83.32 1.11.41.47.15.9.13 1.24.08.38-.06 1.17-.48 1.34-.94.16-.46.16-.86.11-.94-.05-.08-.18-.13-.38-.23z"/></svg>';
-
-function _waNumber(phone) {
-  return phone.replace(/[^\d]/g, '');
+function _escHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function clientCardHTML(data) {
-  const tabs = [
-    '<button class="client-tab active" data-tab="details">Details</button>',
-    '<button class="client-tab" data-tab="cases-progress">Cases In Progress</button>',
-    '<button class="client-tab" data-tab="cases-accepted">Accepted Cases</button>',
-    '<button class="client-tab" data-tab="metrics">Metrics</button>',
-  ].join('');
+const _STATUS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  const panels = [
-    `<div class="client-tab-panel active" data-panel="details">${clientDetailsHTML(data.details)}</div>`,
-    `<div class="client-tab-panel" data-panel="cases-progress">${clientCasesHTML(data.casesInProgress, 'Date Initiated')}</div>`,
-    `<div class="client-tab-panel" data-panel="cases-accepted">${clientCasesHTML(data.acceptedCases, 'Date Accepted')}</div>`,
-    `<div class="client-tab-panel" data-panel="metrics">${clientMetricsHTML(data.metrics)}</div>`,
-  ].join('');
+function _formatStatusDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${d} ${_STATUS_MONTHS[m - 1]} ${y}`;
+}
+
+// One dated list, used for status updates and for each funnel metric.
+// Items are {date, text}, newest first.
+function _detailListHTML(items, emptyText) {
+  if (!items || !items.length) return `<div class="detail-empty">${emptyText}</div>`;
+  const rows = items.map(it => `
+    <li class="detail-item">
+      <span class="detail-date">${_formatStatusDate(it.date)}</span>
+      <span class="detail-text">${_escHtml(it.text)}</span>
+    </li>
+  `).join('');
+  return `<ul class="detail-list">${rows}</ul>`;
+}
+
+// Cases come from the in-progress and accepted lists, merged newest first.
+function _caseItems(data) {
+  const inProgress = (data.casesInProgress || []).map(c => ({ date: c.date, text: `${c.type} · initiated` }));
+  const accepted = (data.acceptedCases || []).map(c => ({ date: c.date, text: `${c.type} · accepted` }));
+  return inProgress.concat(accepted).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// Latest status (statuses are newest first), shown on the collapsed row.
+// Always rendered so it soaks up the free space between name and metrics,
+// even for a client with no updates yet.
+function _cardLastStatusHTML(statuses) {
+  const last = statuses && statuses[0];
+  if (!last) return '<div class="card-last-status"></div>';
+  return `
+    <div class="card-last-status" title="${_escHtml(last.text)}">${_escHtml(last.text)}</div>
+  `;
+}
+
+// Funnel metrics pass a `view` so clicking them opens their dated list;
+// Referrals has none and isn't clickable.
+function _cardMetric(label, value, view) {
+  const attrs = view ? ` data-view="${view}" title="Show ${label}"` : '';
+  return `
+    <div class="card-metric"${attrs}>
+      <span class="card-metric-value">${value}</span>
+      <span class="card-metric-label">${label}</span>
+    </div>
+  `;
+}
+
+// Each metric count is the length of its list, so the two can't disagree.
+function clientCardHTML(data) {
+  const meetings = data.meetings || [];
+  const fnas = data.fnas || [];
+  const quotes = data.quotes || [];
+  const cases = _caseItems(data);
 
   return `
     <div class="card-wrapper" draggable="true">
-      <div class="list-row" data-card-id="${data.id}">
-        <div class="name"><b>${data.firstName}</b><span>${data.lastName}</span></div>
-        <div class="contact-group">
-          <a class="contact-icon" href="mailto:${data.email}" title="Email ${data.firstName}" onclick="event.stopPropagation()">${CARD_ICON_MAIL}</a>
-          <span class="contact-text">${data.email}</span>
-          <button class="copy-btn" type="button" data-copy="${data.email}" title="Copy email" onclick="event.stopPropagation()">${CARD_ICON_COPY}</button>
+      <div class="list-row" data-card-id="${data.id}" data-view="statuses">
+        <div class="name"><b>${_escHtml(data.firstName)}</b><span>${_escHtml(data.lastName)}</span></div>
+        ${_cardLastStatusHTML(data.statuses)}
+        <div class="card-metrics">
+          ${_cardMetric('Referrals', data.referrals || 0)}
+          <span class="card-metrics-divider"></span>
+          ${_cardMetric('Meetings', meetings.length, 'meetings')}
+          ${_cardMetric('FNAs', fnas.length, 'fnas')}
+          ${_cardMetric('Quotes', quotes.length, 'quotes')}
+          ${_cardMetric('Cases', cases.length, 'cases')}
         </div>
-        <div class="contact-group">
-          <a class="contact-icon contact-icon-whatsapp" href="https://wa.me/${_waNumber(data.phone)}" target="_blank" rel="noopener" title="WhatsApp ${data.firstName}" onclick="event.stopPropagation()">${CARD_ICON_WHATSAPP}</a>
-          <span class="contact-text">${data.phone}</span>
-          <button class="copy-btn" type="button" data-copy="${data.phone}" title="Copy number" onclick="event.stopPropagation()">${CARD_ICON_COPY}</button>
-        </div>
-        <div class="spacer"></div>
       </div>
       <div class="row-detail" id="row-${data.id}">
-        <div class="client-tabs">
-          <div class="client-tab-bar">${tabs}</div>
-          ${panels}
-        </div>
+        <div class="detail-view active" data-view="statuses">${_detailListHTML(data.statuses, 'No status updates yet.')}</div>
+        <div class="detail-view" data-view="meetings">${_detailListHTML(meetings, 'No meetings yet.')}</div>
+        <div class="detail-view" data-view="fnas">${_detailListHTML(fnas, 'No FNAs yet.')}</div>
+        <div class="detail-view" data-view="quotes">${_detailListHTML(quotes, 'No quotes yet.')}</div>
+        <div class="detail-view" data-view="cases">${_detailListHTML(cases, 'No cases yet.')}</div>
       </div>
     </div>
   `;
 }
 
+// Client store: every rendered card's data, keyed by id, so other components
+// (the checkout) can look clients up and update them. Which tab a client is
+// in comes from the DOM, not the store, because cards get dragged between tabs.
+const CLIENT_STORE = new Map();
+const CLIENT_TAB_LABELS = {
+  prospects: 'Prospects',
+  business: 'Business',
+  clients: 'Clients',
+  'not-moved': 'Not Moved Forward',
+};
+
+function _notifyClientsChanged() {
+  document.dispatchEvent(new CustomEvent('clients:changed'));
+}
+
 function renderClientCards(containerId, cards) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  cards.forEach(card => CLIENT_STORE.set(card.id, card));
   container.innerHTML = cards.map(clientCardHTML).join('');
+  _notifyClientsChanged();
 }
 
+function appendClientCard(containerId, data) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  CLIENT_STORE.set(data.id, data);
+  container.insertAdjacentHTML('beforeend', clientCardHTML(data));
+  _notifyClientsChanged();
+}
+
+function getClientData(id) {
+  return CLIENT_STORE.get(id) || null;
+}
+
+// Every client with the tab they currently sit in.
+function getClientRecords() {
+  return Array.from(CLIENT_STORE.values()).map(data => {
+    const tabContent = document.getElementById(`row-${data.id}`)?.closest('.tab-content');
+    const tab = tabContent ? tabContent.id.replace('tab-', '') : '';
+    return {
+      id: data.id,
+      name: `${data.firstName} ${data.lastName}`.trim(),
+      tab,
+      tabLabel: CLIENT_TAB_LABELS[tab] || '',
+    };
+  });
+}
+
+// Apply `mutate` to a client's data and re-render just that card in place,
+// keeping it open on the same view if it was.
+function updateClient(id, mutate) {
+  const data = CLIENT_STORE.get(id);
+  if (!data) return;
+  mutate(data);
+  const row = document.querySelector(`.list-row[data-card-id="${id}"]`);
+  if (!row) return;
+  const wrapper = row.parentElement;
+  const wasOpen = wrapper.querySelector('.row-detail').classList.contains('open');
+  const view = row.dataset.view;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = clientCardHTML(data).trim();
+  const fresh = tmp.firstElementChild;
+  wrapper.replaceWith(fresh);
+  if (wasOpen) {
+    const freshRow = fresh.querySelector('.list-row');
+    const freshDetail = fresh.querySelector('.row-detail');
+    _setCardView(freshRow, freshDetail, view);
+    freshDetail.classList.add('open');
+    freshRow.classList.add('active');
+  }
+}
+
+function _setCardView(row, detail, view) {
+  row.dataset.view = view;
+  detail.querySelectorAll('.detail-view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
+  row.querySelectorAll('.card-metric[data-view]').forEach(m => m.classList.toggle('selected', m.dataset.view === view));
+}
+
+// Clicking the row opens the client's status history; clicking a funnel
+// metric opens that metric's list instead. Clicking the same thing again
+// closes the card. Only one card is open at a time.
 function initClientCards(root) {
   root.addEventListener('click', e => {
-    if (e.target.closest('.copy-btn')) {
-      const btn = e.target.closest('.copy-btn');
-      const value = btn.dataset.copy;
-      navigator.clipboard?.writeText(value);
-      btn.classList.add('copied');
-      setTimeout(() => btn.classList.remove('copied'), 1000);
-      return;
-    }
-
     const row = e.target.closest('.list-row');
     if (!row) return;
     const detail = row.parentElement.querySelector('.row-detail');
     if (!detail) return;
+    const metric = e.target.closest('.card-metric[data-view]');
+    const view = metric ? metric.dataset.view : 'statuses';
     const isOpen = detail.classList.contains('open');
+    const sameView = row.dataset.view === view;
     document.querySelectorAll('.row-detail').forEach(r => {
       r.classList.remove('open');
       r.previousElementSibling?.classList.remove('active');
     });
-    if (!isOpen) {
-      detail.classList.add('open');
-      row.classList.add('active');
-    }
+    if (isOpen && sameView) return;
+    _setCardView(row, detail, view);
+    detail.classList.add('open');
+    row.classList.add('active');
   });
 }

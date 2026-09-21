@@ -102,16 +102,6 @@ function _injectMonthBarCSS() {
       background: var(--mb-future-weekend);
     }
 
-    /* Checkout states (weekdays only): due but not done shows as an outline
-       of the day's own color instead of a solid fill; done stays solid. */
-    .mb-cell.elapsed.pending {
-      background: transparent;
-      border: 2px solid var(--mb-elapsed);
-    }
-    .mb-cell.current.pending {
-      background: transparent;
-      border: 2px solid var(--mb-current);
-    }
     .mb-cell.checkout-cell {
       cursor: pointer;
     }
@@ -215,20 +205,20 @@ function isoDate(date) {
 }
 
 // Checkout log: every completed weekday (today or in the past) lives in
-// this set. Placeholder — wire up to real checkout data later. Seeded
-// with recent history so most past weekdays show as done, except a
-// couple left "missed" to demonstrate that state; today starts
-// un-checked-out until submitted via the popover.
+// this set. Placeholder — wire up to real checkout data later. Checkout
+// itself is triggered automatically at 00h00 for the previous day and
+// enforced the next time the FA opens the app, so by the time a past
+// day is visible here it's already done — there's no lingering
+// "missed" state to render. Today stays open until its own midnight.
 const COMPLETED_CHECKOUT_DATES = new Set();
 
 function seedDemoCheckoutHistory() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const missedDaysAgo = new Set([3, 6]);
   for (let n = 1; n <= 30; n++) {
     const d = new Date(today);
     d.setDate(d.getDate() - n);
-    if (isWeekend(d) || missedDaysAgo.has(n)) continue;
+    if (isWeekend(d)) continue;
     COMPLETED_CHECKOUT_DATES.add(isoDate(d));
   }
 }
@@ -307,16 +297,14 @@ class MonthBar {
       else if (date < this.today) cell.classList.add('elapsed');
       else cell.classList.add('future');
 
-      // Checkout states live on weekdays only — no checkout on weekends.
-      // Not yet due: plain grey/state fill. Due but not done: outline.
-      // Done: full fill. Any past or current weekday can be checked out —
-      // missed days aren't locked out once they've gone by.
+      // Checkout is automatic at 00h00 for the previous day and enforced
+      // the next time the FA opens the app, so any past weekday shown
+      // here is already done. Only allow manual (re-)checkout on
+      // weekdays that are today or in the past.
       if (isWeekday && (isToday || date < this.today)) {
-        const done = isCheckedOut(date);
-        if (!done) cell.classList.add('pending');
         cell.classList.add('checkout-cell');
-        cell.title = done ? 'Checkout complete' : `Complete checkout for ${formatDayMonth(date)}`;
-        cell.addEventListener('click', () => window.openCheckoutPopover?.(cell, date));
+        cell.title = isCheckedOut(date) ? 'Checkout complete' : `Complete checkout for ${formatDayMonth(date)}`;
+        cell.addEventListener('click', () => window.openCheckout?.(date));
       }
 
       // Boundary days and today always show their date; every other cell

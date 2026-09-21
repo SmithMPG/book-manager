@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MyBook</title>
+    <title>Book Manager</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
@@ -11,7 +11,6 @@
     <link rel="stylesheet" href="components/toolbar.css" />
     <link rel="stylesheet" href="components/home-hero.css" />
     <link rel="stylesheet" href="components/stat-list.css" />
-    <link rel="stylesheet" href="components/leaderboard.css" />
     <style>
       :root {
         --navy: #0f1729;
@@ -58,27 +57,25 @@
   <body>
     <script src="constants.js"></script>
     <script src="components/month-bar.js"></script>
-    <script src="components/checkout-popover.js"></script>
     <script src="components/pcr-meter.js"></script>
     <script src="components/client-funnel.js"></script>
     <script src="components/monthly-stats.js"></script>
-    <script src="components/lifetime-badges.js"></script>
-    <script src="components/client-tabs.js"></script>
     <script src="components/field-helpers.js"></script>
     <script src="components/editable-panel.js"></script>
     <script src="components/client-details.js"></script>
     <script src="components/client-cases.js"></script>
     <script src="components/client-card.js"></script>
     <script src="components/commission-calculator.js"></script>
+    <script src="components/checkout.js"></script>
+    <script src="components/leaderboard.js"></script>
 
     <!-- ===== Top bar ===== -->
     <div class="topbar">
       <div class="topbar-left">
         <div class="brand">
-          <span class="shield">&#9830;</span>
-          <span class="brand-name">Adviser<span class="brand-gold">Book</span></span>
+          <span class="shield"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+          <span class="brand-name">Book<span class="brand-gold">Manager</span></span>
         </div>
-        <div id="lifetime-badges-container"></div>
       </div>
       <div class="topbar-center">
         <button class="btn-new">+ New Client</button>
@@ -90,6 +87,13 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="1" x2="12" y2="23" />
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        </button>
+        <button class="cc-trigger" id="checkout-trigger" title="Daily Checkout">
+          <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            <path d="m9 14 2 2 4-4" />
           </svg>
         </button>
       </div>
@@ -109,7 +113,7 @@
         </svg>
       </div>
       <div class="tab" data-tab="prospects">Prospects <span class="tab-count">2</span></div>
-      <div class="tab" data-tab="action-required">Action Required <span class="tab-count">2</span></div>
+      <div class="tab" data-tab="business">Business <span class="tab-count">2</span></div>
       <div class="tab" data-tab="clients">Clients <span class="tab-count">2</span></div>
       <div class="tab tab-icon" data-tab="not-moved" title="Not Moved Forward">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -126,9 +130,7 @@
     </div>
 
     <!-- Home hero: funnel, PCR meter (this cycle's hero, dead center), monthly stats.
-       Full width like the month bar, only shown on the Home tab.
-       Lifetime book-health numbers (AUM/Clients/Policies) live in the toolbar instead,
-       so they're visible from every tab, not just Home. -->
+       Full width like the month bar, only shown on the Home tab. -->
     <div class="home-hero-wrapper tab-content active" id="home-hero-wrapper">
       <div class="home-hero">
         <div class="hero-col hero-col-funnel">
@@ -147,33 +149,7 @@
       <!-- ===== DASHBOARD TAB ===== -->
       <div class="tab-content active" id="tab-dashboard">
         <!-- Leaderboard -->
-        <div class="leaderboard">
-          <h4>Team Leaderboard &mdash; MTD</h4>
-          <div class="lb-row lb-head">
-            <div class="lb-rank"></div>
-            <div class="lb-name"></div>
-            <div class="lb-value">Cases</div>
-            <div class="lb-value">PCR&rsquo;s</div>
-          </div>
-          <div class="lb-row">
-            <div class="lb-rank top">1</div>
-            <div class="lb-name">Robyn Hock</div>
-            <div class="lb-value">7</div>
-            <div class="lb-value">R820k</div>
-          </div>
-          <div class="lb-row">
-            <div class="lb-rank top">2</div>
-            <div class="lb-name">Matthew PG Smith (you)</div>
-            <div class="lb-value">4</div>
-            <div class="lb-value">R600k</div>
-          </div>
-          <div class="lb-row">
-            <div class="lb-rank">3</div>
-            <div class="lb-name">Willie Smith</div>
-            <div class="lb-value">3</div>
-            <div class="lb-value">R410k</div>
-          </div>
-        </div>
+        <div id="leaderboard-container"></div>
       </div>
 
       <!-- ===== PROSPECTS TAB ===== -->
@@ -181,9 +157,9 @@
         <div id="prospects-cards"></div>
       </div>
 
-      <!-- ===== ACTION REQUIRED TAB ===== -->
-      <div class="tab-content" id="tab-action-required">
-        <div id="action-required-cards"></div>
+      <!-- ===== BUSINESS TAB ===== -->
+      <div class="tab-content" id="tab-business">
+        <div id="business-cards"></div>
       </div>
 
       <!-- ===== CLIENTS TAB ===== -->
@@ -202,16 +178,145 @@
       initPcrMeter("pcr-meter-container", { periodLabel: getCurrentPeriodLabel() });
       initClientFunnel("client-funnel-container");
       initMonthlyStats("monthly-stats-container");
-      initLifetimeBadges("lifetime-badges-container");
-      initClientTabs(document);
       initClientCards(document);
       initCommissionCalculator("commission-calc-trigger");
+      initCheckout("checkout-trigger");
       initEditablePanels(document);
       initClientCaseLists(document);
+      initLeaderboard("leaderboard-container", {
+        reps: [
+          {
+            name: "Robyn Hock",
+            prospects: 24,
+            referrals: 6,
+            willsLeads: 5,
+            meetings: 15,
+            meetingsBreakdown: { factFinder: 7, closing: 5, relational: 3 },
+            fnas: 12,
+            quotes: 9,
+            cases: 7,
+            casesBreakdown: { risk: 4, investments: 3 },
+            pcr: 820000,
+            pcrBreakdown: { risk: 520000, investments: 300000 },
+          },
+          {
+            name: "Matthew PG Smith (you)",
+            prospects: 16,
+            referrals: 4,
+            willsLeads: 3,
+            meetings: 10,
+            meetingsBreakdown: { factFinder: 5, closing: 3, relational: 2 },
+            fnas: 8,
+            quotes: 5,
+            cases: 4,
+            casesBreakdown: { risk: 2, investments: 2 },
+            pcr: 600000,
+            pcrBreakdown: { risk: 380000, investments: 220000 },
+          },
+          {
+            name: "Willie Smith",
+            prospects: 12,
+            referrals: 3,
+            willsLeads: 2,
+            meetings: 7,
+            meetingsBreakdown: { factFinder: 3, closing: 2, relational: 2 },
+            fnas: 5,
+            quotes: 4,
+            cases: 3,
+            casesBreakdown: { risk: 2, investments: 1 },
+            pcr: 410000,
+            pcrBreakdown: { risk: 260000, investments: 150000 },
+          },
+          {
+            name: "Thandi Mokoena",
+            prospects: 28,
+            referrals: 8,
+            willsLeads: 6,
+            meetings: 18,
+            meetingsBreakdown: { factFinder: 8, closing: 6, relational: 4 },
+            fnas: 14,
+            quotes: 11,
+            cases: 9,
+            casesBreakdown: { risk: 5, investments: 4 },
+            pcr: 940000,
+            pcrBreakdown: { risk: 600000, investments: 340000 },
+          },
+          {
+            name: "Pieter van der Merwe",
+            prospects: 20,
+            referrals: 5,
+            willsLeads: 4,
+            meetings: 13,
+            meetingsBreakdown: { factFinder: 6, closing: 4, relational: 3 },
+            fnas: 10,
+            quotes: 8,
+            cases: 6,
+            casesBreakdown: { risk: 4, investments: 2 },
+            pcr: 710000,
+            pcrBreakdown: { risk: 480000, investments: 230000 },
+          },
+          {
+            name: "Aisha Patel",
+            prospects: 18,
+            referrals: 7,
+            willsLeads: 3,
+            meetings: 11,
+            meetingsBreakdown: { factFinder: 5, closing: 3, relational: 3 },
+            fnas: 9,
+            quotes: 6,
+            cases: 5,
+            casesBreakdown: { risk: 3, investments: 2 },
+            pcr: 520000,
+            pcrBreakdown: { risk: 330000, investments: 190000 },
+          },
+          {
+            name: "Sipho Dlamini",
+            prospects: 14,
+            referrals: 2,
+            willsLeads: 2,
+            meetings: 8,
+            meetingsBreakdown: { factFinder: 4, closing: 2, relational: 2 },
+            fnas: 6,
+            quotes: 4,
+            cases: 3,
+            casesBreakdown: { risk: 1, investments: 2 },
+            pcr: 350000,
+            pcrBreakdown: { risk: 150000, investments: 200000 },
+          },
+          {
+            name: "Karen Botha",
+            prospects: 9,
+            referrals: 1,
+            willsLeads: 1,
+            meetings: 5,
+            meetingsBreakdown: { factFinder: 3, closing: 1, relational: 1 },
+            fnas: 3,
+            quotes: 2,
+            cases: 1,
+            casesBreakdown: { risk: 1, investments: 0 },
+            pcr: 180000,
+            pcrBreakdown: { risk: 180000, investments: 0 },
+          },
+        ],
+      });
 
-      // Placeholder card data — one array per tab. Every card gets the same
-      // Metrics/Details/[Case] structure; a Case tab only shows up for cards
-      // that actually have one.
+      // Placeholder status updates — one per daily checkout, newest first.
+      // Every card shares the same list for now, just to see the layout.
+      const SAMPLE_STATUSES = [
+        { date: "2026-09-21", text: "Called to confirm the signed quote is on its way back. Client is travelling until Wednesday." },
+        { date: "2026-09-18", text: "Sent the revised Life Cover quote with the lower premium option." },
+        { date: "2026-09-17", text: "No change. Waiting on the client's medical results." },
+        { date: "2026-09-16", text: "Medical results received. Forwarded to underwriting." },
+        { date: "2026-09-15", text: "Meeting held at the client's office. Walked through the FNA outcome." },
+        { date: "2026-09-14", text: "Left a voicemail and sent a WhatsApp to book a follow-up meeting." },
+        { date: "2026-09-11", text: "Client asked for a comparison between Life Cover and Income Protection." },
+        { date: "2026-09-10", text: "Application submitted. Case moved to in progress." },
+        { date: "2026-09-09", text: "FNA completed. Client is keen to proceed with cover." },
+        { date: "2026-09-08", text: "Initial meeting held. Collected ID and proof of address." },
+      ];
+
+      // Placeholder card data — one array per tab. Each card shows its counts
+      // on the row and its status updates when expanded.
       renderClientCards("prospects-cards", [
         {
           id: "leonie-botes-prospect",
@@ -219,10 +324,14 @@
           lastName: "Botes",
           email: "leoniembotes@gmail.com",
           phone: "+27825766253",
-          metrics: { meetings: 1, fnas: 0, quotes: 0, referrals: 0 },
+          referrals: 0,
+          meetings: [{ date: "2026-09-08", text: "Fact Finder meeting" }],
+          fnas: [],
+          quotes: [],
           details: { fullName: "Leonie Botes" },
           casesInProgress: [],
           acceptedCases: [],
+          statuses: SAMPLE_STATUSES,
         },
         {
           id: "robyn-hock-prospect",
@@ -230,24 +339,32 @@
           lastName: "Hock",
           email: "hockrobyn@gmail.com",
           phone: "+27845992888",
-          metrics: { meetings: 1, fnas: 0, quotes: 0, referrals: 0 },
+          referrals: 0,
+          meetings: [{ date: "2026-09-08", text: "Fact Finder meeting" }],
+          fnas: [],
+          quotes: [],
           details: { fullName: "Robyn Hock" },
           casesInProgress: [],
           acceptedCases: [],
+          statuses: SAMPLE_STATUSES,
         },
       ]);
 
-      renderClientCards("action-required-cards", [
+      renderClientCards("business-cards", [
         {
           id: "dumisani-nkosi",
           firstName: "Dumisani",
           lastName: "Nkosi",
           email: "dumisani.nkosi@gmail.com",
           phone: "+27835551234",
-          metrics: { meetings: 2, fnas: 1, quotes: 1, referrals: 0 },
+          referrals: 0,
+          meetings: [{ date: "2026-09-15", text: "Closing meeting" }, { date: "2026-09-08", text: "Fact Finder meeting" }],
+          fnas: [{ date: "2026-09-09", text: "FNA completed" }],
+          quotes: [{ date: "2026-09-11", text: "Life Cover quote · R 1 250 pm" }],
           details: { fullName: "Dumisani Nkosi" },
           casesInProgress: [{ type: "Life Cover", date: "2026-09-10" }],
           acceptedCases: [],
+          statuses: SAMPLE_STATUSES,
         },
         {
           id: "willie-smith",
@@ -255,10 +372,14 @@
           lastName: "Smith",
           email: "willie@ssigroup.co.za",
           phone: "0823225633",
-          metrics: { meetings: 2, fnas: 1, quotes: 1, referrals: 1 },
+          referrals: 1,
+          meetings: [{ date: "2026-09-16", text: "Closing meeting" }, { date: "2026-09-09", text: "Fact Finder meeting" }],
+          fnas: [{ date: "2026-09-10", text: "FNA completed" }],
+          quotes: [{ date: "2026-09-12", text: "Disability Cover quote · R 890 pm" }],
           details: { fullName: "Willie Smith" },
           casesInProgress: [{ type: "Disability Cover", date: "2026-09-12" }],
           acceptedCases: [],
+          statuses: SAMPLE_STATUSES,
         },
       ]);
 
@@ -269,10 +390,14 @@
           lastName: "Botes",
           email: "leoniembotes@gmail.com",
           phone: "+27825766253",
-          metrics: { meetings: 4, fnas: 1, quotes: 2, referrals: 1 },
+          referrals: 1,
+          meetings: [{ date: "2026-08-18", text: "Closing meeting" }, { date: "2026-08-05", text: "Relational meeting" }, { date: "2026-07-22", text: "Fact Finder meeting" }, { date: "2026-07-10", text: "Fact Finder meeting" }],
+          fnas: [{ date: "2026-07-24", text: "FNA completed" }],
+          quotes: [{ date: "2026-08-12", text: "Retirement Annuity quote · R 2 000 pm" }, { date: "2026-08-01", text: "Retirement Annuity quote · R 1 500 pm" }],
           details: { fullName: "Leonie Botes" },
           casesInProgress: [],
           acceptedCases: [{ type: "Retirement Annuity", date: "2026-08-20" }],
+          statuses: SAMPLE_STATUSES,
         },
         {
           id: "robyn-hock-client",
@@ -280,10 +405,14 @@
           lastName: "Hock",
           email: "hockrobyn@gmail.com",
           phone: "+27845992888",
-          metrics: { meetings: 3, fnas: 1, quotes: 1, referrals: 0 },
+          referrals: 0,
+          meetings: [{ date: "2026-08-03", text: "Closing meeting" }, { date: "2026-07-27", text: "Fact Finder meeting" }, { date: "2026-07-15", text: "Fact Finder meeting" }],
+          fnas: [{ date: "2026-07-28", text: "FNA completed" }],
+          quotes: [{ date: "2026-07-31", text: "Life Cover quote · R 1 100 pm" }],
           details: { fullName: "Robyn Hock" },
           casesInProgress: [],
           acceptedCases: [{ type: "Life Cover", date: "2026-08-05" }],
+          statuses: SAMPLE_STATUSES,
         },
       ]);
 
@@ -294,10 +423,14 @@
           lastName: "Client",
           email: "sample.client@gmail.com",
           phone: "+27820000000",
-          metrics: { meetings: 1, fnas: 0, quotes: 0, referrals: 0 },
+          referrals: 0,
+          meetings: [{ date: "2026-09-01", text: "Fact Finder meeting" }],
+          fnas: [],
+          quotes: [],
           details: { fullName: "Sample Client" },
           casesInProgress: [],
           acceptedCases: [],
+          statuses: SAMPLE_STATUSES,
         },
       ]);
 
@@ -338,6 +471,11 @@
         const countEl = tab && tab.querySelector(".tab-count");
         if (countEl) countEl.textContent = tabContent.querySelectorAll(".card-wrapper").length;
       }
+
+      // Keep the tab counts right when clients are added (e.g. at checkout).
+      document.addEventListener("clients:changed", () => {
+        document.querySelectorAll(".tab-content").forEach(updateTabCount);
+      });
 
       document.querySelectorAll('.tab-bar .tab[data-tab]:not([data-tab="dashboard"])').forEach((tab) => {
         tab.addEventListener("dragover", (e) => {

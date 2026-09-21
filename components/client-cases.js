@@ -1,4 +1,5 @@
-// Client cases: Cases In Progress / Accepted Cases tabs. Both use the
+// Client cases: the In Progress and Accepted lists inside a card's Cases
+// tab. Both use the
 // same single-line-item layout (case type + a date, "Date Initiated" for
 // in-progress or "Date Accepted" for accepted) — no separate Edit mode,
 // rows are directly editable, and the "+" button appends a blank row.
@@ -8,6 +9,15 @@ function _injectClientCasesCSS() {
   const s = document.createElement('style');
   s.id = 'client-cases-styles';
   s.textContent = `
+    .cases-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink);
+      margin-top: 4px;
+    }
+
     .cases-panel {
       display: flex;
       flex-direction: column;

@@ -1,14 +1,14 @@
-// Lifetime badges: compact AUM / Clients / Policies indicators that live
+// Lifetime metrics: compact AUM / Clients / Policies indicators that will live
 // in the toolbar (visible on every tab, not just Home). Each shows a
 // rounded headline number; hover (or tap, for touch) reveals the exact
 // figure and, for policies, the Risk/Investment breakdown.
 
-function _injectLifetimeBadgesCSS() {
-  if (document.getElementById('lifetime-badges-styles')) return;
+function _injectLifetimeMetricsCSS() {
+  if (document.getElementById('lifetime-metrics-styles')) return;
   const s = document.createElement('style');
-  s.id = 'lifetime-badges-styles';
+  s.id = 'lifetime-metrics-styles';
   s.textContent = `
-    .lb-badges {
+    .lm-metrics {
       display: flex;
       align-items: baseline;
       gap: 18px;
@@ -18,7 +18,7 @@ function _injectLifetimeBadgesCSS() {
       flex-shrink: 0;
     }
 
-    .lb-badge {
+    .lm-metric {
       position: relative;
       display: flex;
       align-items: baseline;
@@ -28,13 +28,13 @@ function _injectLifetimeBadgesCSS() {
       cursor: default;
       white-space: nowrap;
     }
-    .lb-badge-value {
+    .lm-metric-value {
       font-size: 14px;
       font-weight: 700;
       color: var(--gold-soft);
     }
 
-    .lb-badge-tooltip {
+    .lm-metric-tooltip {
       position: absolute;
       top: 130%;
       left: 50%;
@@ -51,22 +51,22 @@ function _injectLifetimeBadgesCSS() {
       transition: opacity 0.12s ease;
       z-index: 20;
     }
-    .lb-badge-tooltip b { color: var(--gold-soft); font-weight: 700; }
-    .lb-badge:hover .lb-badge-tooltip,
-    .lb-badge.tapped .lb-badge-tooltip {
+    .lm-metric-tooltip b { color: var(--gold-soft); font-weight: 700; }
+    .lm-metric:hover .lm-metric-tooltip,
+    .lm-metric.tapped .lm-metric-tooltip {
       opacity: 1;
       pointer-events: auto;
     }
 
     @media (max-width: 1100px) {
-      .lb-badges { display: none; }
+      .lm-metrics { display: none; }
     }
   `;
   document.head.appendChild(s);
 }
-_injectLifetimeBadgesCSS();
+_injectLifetimeMetricsCSS();
 
-class LifetimeBadges {
+class LifetimeMetrics {
   constructor(container, config) {
     this.container = container;
     this.config = Object.assign({
@@ -83,41 +83,41 @@ class LifetimeBadges {
   render() {
     const c = this.config;
     this.container.innerHTML = `
-      <div class="lb-badges">
-        <div class="lb-badge">
-          <span class="lb-badge-label">AUM</span>
-          <span class="lb-badge-value">${c.aumRounded}</span>
-          <div class="lb-badge-tooltip">${c.aumExact}</div>
+      <div class="lm-metrics">
+        <div class="lm-metric">
+          <span class="lm-metric-label">AUM</span>
+          <span class="lm-metric-value">${c.aumRounded}</span>
+          <div class="lm-metric-tooltip">${c.aumExact}</div>
         </div>
-        <div class="lb-badge">
-          <span class="lb-badge-label">Clients</span>
-          <span class="lb-badge-value">${c.totalClients}</span>
-          <div class="lb-badge-tooltip">${c.totalClients} active clients</div>
+        <div class="lm-metric">
+          <span class="lm-metric-label">Clients</span>
+          <span class="lm-metric-value">${c.totalClients}</span>
+          <div class="lm-metric-tooltip">${c.totalClients} active clients</div>
         </div>
-        <div class="lb-badge">
-          <span class="lb-badge-label">Policies</span>
-          <span class="lb-badge-value">${c.policiesInForce}</span>
-          <div class="lb-badge-tooltip">Risk <b>${c.riskPolicies}</b> &middot; Investment <b>${c.investmentPolicies}</b></div>
+        <div class="lm-metric">
+          <span class="lm-metric-label">Policies</span>
+          <span class="lm-metric-value">${c.policiesInForce}</span>
+          <div class="lm-metric-tooltip">Risk <b>${c.riskPolicies}</b> &middot; Investment <b>${c.investmentPolicies}</b></div>
         </div>
       </div>
     `;
 
-    this.container.querySelectorAll('.lb-badge').forEach(badge => {
-      badge.addEventListener('click', e => {
+    this.container.querySelectorAll('.lm-metric').forEach(metric => {
+      metric.addEventListener('click', e => {
         e.stopPropagation();
-        const isOpen = badge.classList.contains('tapped');
-        this.container.querySelectorAll('.lb-badge').forEach(b => b.classList.remove('tapped'));
-        if (!isOpen) badge.classList.add('tapped');
+        const isOpen = metric.classList.contains('tapped');
+        this.container.querySelectorAll('.lm-metric').forEach(b => b.classList.remove('tapped'));
+        if (!isOpen) metric.classList.add('tapped');
       });
     });
     document.addEventListener('click', () => {
-      this.container.querySelectorAll('.lb-badge').forEach(b => b.classList.remove('tapped'));
+      this.container.querySelectorAll('.lm-metric').forEach(b => b.classList.remove('tapped'));
     });
   }
 }
 
-function initLifetimeBadges(containerId, config) {
+function initLifetimeMetrics(containerId, config) {
   const container = document.getElementById(containerId);
   if (!container) return null;
-  return new LifetimeBadges(container, config);
+  return new LifetimeMetrics(container, config);
 }

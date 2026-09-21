@@ -1,5 +1,5 @@
-// Client tabs: the sub-tab bar inside an expanded client card (Metrics,
-// Details, then one tab per case). Details is the default active tab.
+// Client tabs: the sub-tab bar inside an expanded client card (Metrics
+// and Cases). Metrics is the default active tab.
 // One delegated listener covers every client card, current and future,
 // so nothing needs re-initializing when cards move between tabs (e.g.
 // via drag-and-drop).

@@ -23,7 +23,7 @@
   font-size: 20px;
   white-space: nowrap;
 }
-.topbar-left .brand .shield { color: var(--gold); font-size: 20px; }
+.topbar-left .brand .shield { color: var(--gold); display: inline-flex; align-items: center; }
 .topbar-left .brand .brand-gold { color: var(--gold); }
 
 .topbar-center {

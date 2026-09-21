@@ -1,6 +1,7 @@
 // Commission Calculator: a modal reachable from the toolbar's $ icon.
 // Four product categories, each with its own commission/PCR formula:
-//   - Risk: commission = 10x monthly premium; PCR = annual premium x26.15
+//   - Risk: commission = 10x monthly premium in year 1, 1/3 in year 2;
+//     PCR = annual premium x26.15
 //   - Builder RA: commission = 4x monthly premium; PCR = annual premium x15
 //   - Investments: PCR = investment amount (1:1); an upfront commission %
 //     of the amount, plus an ongoing commission % applied to the
@@ -212,20 +213,20 @@ function _ccDefaultState() {
   return {
     'liberty-ra': { lumpSum: '', monthlyPremium: '', escalationPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
     'risk': { monthlyPremium: '', escalationPct: '' },
-    'builder-ra': { monthlyPremium: '', escalationPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
+    'builder-ra': { monthlyPremium: '', escalationPct: '', commissionTerm: 15, ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
     'investments': { amount: '', monthlyPremium: '', upfrontPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
   };
 }
 
 // Risk commission per premium "tranche" (the original premium, plus each
 // year's escalation increase — each increase is its own tranche): 10x its
-// own value in its first year, then 4x in its second year, then NOTHING
-// — a tranche only ever pays out twice. So a later escalation's first-year
-// 10x can land in the same calendar year as an older tranche's one-time
-// second-year 4x, and they add together; anything older than 2 years
-// contributes nothing.
+// own value in its first year, then 1/3 of its value in its second year,
+// then NOTHING — a tranche only ever pays out twice. So a later
+// escalation's first-year 10x can land in the same calendar year as an
+// older tranche's one-time second-year 1/3, and they add together;
+// anything older than 2 years contributes nothing.
 const CC_RISK_YEAR1_RATE = 10;
-const CC_RISK_YEAR2_RATE = 4;
+const CC_RISK_YEAR2_RATE = 1 / 3;
 const CC_RISK_PROJECTION_YEARS = 10;
 
 function _ccRiskProjection(monthlyPremium, escalationPct) {
@@ -292,7 +293,8 @@ function _ccCalc(category, v) {
     const g = _ccNum(v.escalationPct) / 100;
     const futureValue = _ccGrowingAnnuityFV(annual, g, r, years);
     const ongoingAnnual = futureValue * (_ccNum(v.ongoingPct) / 100);
-    return { annual, commission: monthly * 4, pcr: annual * 15, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12 };
+    const commissionTerm = _ccNum(v.commissionTerm);
+    return { annual, commission: monthly * 4, pcr: monthly * 12 * commissionTerm, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12 };
   }
   if (category === 'investments') {
     const amount = _ccNum(v.amount);
@@ -350,6 +352,10 @@ function _ccFieldsHTML(category, v) {
           <label>Annual Escalation %</label>
           <input type="number" min="0" step="0.1" data-field="escalationPct" value="${v.escalationPct}" placeholder="0">
         </div>
+      </div>
+      <div class="cc-field">
+        <label>Commission Term</label>
+        <input type="number" min="0" step="0.1" data-field="commissionTerm" value="${v.commissionTerm}" placeholder="15">
       </div>
       <div class="cc-field">
         <label>Ongoing Advice Fee %</label>
