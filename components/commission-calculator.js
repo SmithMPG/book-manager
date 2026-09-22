@@ -1,15 +1,20 @@
 // Commission Calculator: a modal reachable from the toolbar's $ icon.
-// Four product categories, each with its own commission/PCR formula:
-//   - Risk: commission = 10x monthly premium in year 1, 1/3 in year 2;
-//     PCR = annual premium x26.15
-//   - Builder RA: commission = 4x monthly premium; PCR = annual premium x15
+// Four product categories, each with its own commission/PCR formula. The
+// Risk/Builder RA/Liberty RA rate multipliers live in constants.js
+// (shared with the checkout's own, simpler case-commission tracker, so the
+// two can't drift apart) — Builder RA's PCR multiplier is the one exception,
+// since it's a slider the FA sets per case (commissionTerm), not a fixed rate:
+//   - Risk: commission = CC_RISK_YEAR1_RATE x monthly premium in year 1,
+//     CC_RISK_YEAR2_RATE x that in year 2; PCR = annual premium x CC_RISK_PCR_MULTIPLIER
+//   - Builder RA: commission = CC_BUILDER_RA_COMMISSION_MULTIPLIER x monthly
+//     premium; PCR = annual premium x commissionTerm (FA-set, default 15)
 //   - Investments: PCR = investment amount (1:1); an upfront commission %
 //     of the amount, plus an ongoing commission % applied to the
 //     projected balance after compounding at the given return rate for
 //     the chosen number of years.
 //   - Liberty RA: no upfront commission, only an ongoing advice fee % —
 //     applied to the projected value of the premiums compounded as a
-//     growing annuity over the chosen years. PCR = annual premium x5.
+//     growing annuity over the chosen years. PCR = annual premium x CC_LIBERTY_RA_PCR_MULTIPLIER.
 // Liberty RA and Investments are the two "grows over time" categories,
 // so they get the extra return-rate field and years slider; Risk and
 // Builder RA are simple once-off calculations.
@@ -211,9 +216,9 @@ const CC_CATEGORIES = [
 
 function _ccDefaultState() {
   return {
-    'liberty-ra': { lumpSum: '', monthlyPremium: '', escalationPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
+    'liberty-ra': { lumpSum: '', upfrontPct: '', monthlyPremium: '', escalationPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
     'risk': { monthlyPremium: '', escalationPct: '' },
-    'builder-ra': { monthlyPremium: '', escalationPct: '', commissionTerm: 15, ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
+    'builder-ra': { lumpSum: '', upfrontPct: '', monthlyPremium: '', escalationPct: '', ongoingPct: '', commissionTerm: 15, returnPct: '', feesPct: '', years: 5 },
     'investments': { amount: '', monthlyPremium: '', upfrontPct: '', ongoingPct: '', returnPct: '', feesPct: '', years: 5 },
   };
 }
@@ -225,9 +230,8 @@ function _ccDefaultState() {
 // escalation's first-year 10x can land in the same calendar year as an
 // older tranche's one-time second-year 1/3, and they add together;
 // anything older than 2 years contributes nothing.
-const CC_RISK_YEAR1_RATE = 10;
-const CC_RISK_YEAR2_RATE = 1 / 3;
-const CC_RISK_PROJECTION_YEARS = 10;
+// (CC_RISK_YEAR1_RATE / CC_RISK_YEAR2_RATE / CC_RISK_PROJECTION_YEARS come
+// from constants.js, shared with the checkout's case tracker.)
 
 function _ccRiskProjection(monthlyPremium, escalationPct) {
   const e = escalationPct / 100;
@@ -283,18 +287,23 @@ function _ccCalc(category, v) {
     const monthly = _ccNum(v.monthlyPremium);
     const annual = monthly * 12;
     const { yearlyCommission, yearlyBreakdown, premiums } = _ccRiskProjection(monthly, _ccNum(v.escalationPct));
-    return { annual, pcr: annual * 26.15, yearlyCommission, yearlyBreakdown, premiums };
+    return { annual, pcr: annual * CC_RISK_PCR_MULTIPLIER, yearlyCommission, yearlyBreakdown, premiums };
   }
   if (category === 'builder-ra') {
     const monthly = _ccNum(v.monthlyPremium);
     const annual = monthly * 12;
+    const lumpSum = _ccNum(v.lumpSum);
     const years = _ccNum(v.years);
     const r = (_ccNum(v.returnPct) - _ccNum(v.feesPct)) / 100;
     const g = _ccNum(v.escalationPct) / 100;
     const futureValue = _ccGrowingAnnuityFV(annual, g, r, years);
     const ongoingAnnual = futureValue * (_ccNum(v.ongoingPct) / 100);
     const commissionTerm = _ccNum(v.commissionTerm);
-    return { annual, commission: monthly * 4, pcr: monthly * 12 * commissionTerm, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12 };
+    const upfrontCommission = lumpSum * (_ccNum(v.upfrontPct) / 100);
+    return {
+      annual, commission: monthly * CC_BUILDER_RA_COMMISSION_MULTIPLIER, upfrontCommission,
+      pcr: monthly * 12 * commissionTerm, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12,
+    };
   }
   if (category === 'investments') {
     const amount = _ccNum(v.amount);
@@ -322,8 +331,9 @@ function _ccCalc(category, v) {
     const lumpFutureValue = lumpSum * Math.pow(1 + r, years);
     const premiumFutureValue = _ccGrowingAnnuityFV(annual, g, r, years);
     const futureValue = lumpFutureValue + premiumFutureValue;
+    const upfrontCommission = lumpSum * (_ccNum(v.upfrontPct) / 100);
     const ongoingAnnual = futureValue * (_ccNum(v.ongoingPct) / 100);
-    return { annual, pcr: annual * 5, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12 };
+    return { annual, pcr: annual * CC_LIBERTY_RA_PCR_MULTIPLIER, upfrontCommission, futureValue, ongoingAnnual, ongoingMonthly: ongoingAnnual / 12 };
   }
   return {};
 }
@@ -345,6 +355,16 @@ function _ccFieldsHTML(category, v) {
     return `
       <div class="cc-field-row">
         <div class="cc-field">
+          <label>Lump Sum</label>
+          <input type="number" min="0" data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
+        </div>
+        <div class="cc-field">
+          <label>Upfront Advice Fee %</label>
+          <input type="number" min="0" step="0.1" data-field="upfrontPct" value="${v.upfrontPct}" placeholder="0">
+        </div>
+      </div>
+      <div class="cc-field-row">
+        <div class="cc-field">
           <label>Monthly Premium</label>
           <input type="number" min="0" data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
         </div>
@@ -352,14 +372,14 @@ function _ccFieldsHTML(category, v) {
           <label>Annual Escalation %</label>
           <input type="number" min="0" step="0.1" data-field="escalationPct" value="${v.escalationPct}" placeholder="0">
         </div>
+        <div class="cc-field">
+          <label>Ongoing Advice Fee %</label>
+          <input type="number" min="0" step="0.1" data-field="ongoingPct" value="${v.ongoingPct}" placeholder="0">
+        </div>
       </div>
       <div class="cc-field">
         <label>Commission Term</label>
         <input type="number" min="0" step="0.1" data-field="commissionTerm" value="${v.commissionTerm}" placeholder="15">
-      </div>
-      <div class="cc-field">
-        <label>Ongoing Advice Fee %</label>
-        <input type="number" min="0" step="0.1" data-field="ongoingPct" value="${v.ongoingPct}" placeholder="0">
       </div>
       <div class="cc-field-row">
         <div class="cc-field">
@@ -421,9 +441,15 @@ function _ccFieldsHTML(category, v) {
   }
   if (category === 'liberty-ra') {
     return `
-      <div class="cc-field">
-        <label>Lump Sum</label>
-        <input type="number" min="0" data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
+      <div class="cc-field-row">
+        <div class="cc-field">
+          <label>Lump Sum</label>
+          <input type="number" min="0" data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
+        </div>
+        <div class="cc-field">
+          <label>Upfront Advice Fee %</label>
+          <input type="number" min="0" step="0.1" data-field="upfrontPct" value="${v.upfrontPct}" placeholder="0">
+        </div>
       </div>
       <div class="cc-field-row">
         <div class="cc-field">
@@ -489,7 +515,8 @@ function _ccResultsHTML(category, v) {
       <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
       <div class="cc-result-row cc-result-highlight"><span>Commission</span><b>${_ccCurrency(r.commission)}</b></div>
       <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${_ccCurrency(r.futureValue)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${_ccCurrency(r.upfrontCommission)}</b></div>
     `;
   }
   if (category === 'investments') {
@@ -506,7 +533,8 @@ function _ccResultsHTML(category, v) {
       <div class="cc-result-row"><span>Annual Premium</span><b>${_ccCurrency(r.annual)}</b></div>
       <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
       <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${_ccCurrency(r.futureValue)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${_ccCurrency(r.upfrontCommission)}</b></div>
     `;
   }
   return '';

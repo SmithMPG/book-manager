@@ -118,6 +118,11 @@ class PcrMeter {
     this.render();
   }
 
+  setPeriodLabel(periodLabel) {
+    this.config.periodLabel = periodLabel;
+    this.render();
+  }
+
   render() {
     const { validationTarget, highFlyerMultiplier, currentCount, periodLabel } = this.config;
     const highFlyerTarget = validationTarget * highFlyerMultiplier;

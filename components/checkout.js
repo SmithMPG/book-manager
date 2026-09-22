@@ -1,18 +1,37 @@
 // Checkout: the daily checkout wizard, opened from the toolbar's clipboard
-// icon (or a weekday cell in the month bar). One page per step:
-//   1. Prospects contacted, broken down by how they were reached
-//      (phoned, emailed, messaged, other); the total is worked out.
-//   2-6. Meetings (with a joint-call flag), FNAs, Quotes, Cases submitted
-//      and Wills leads — each item assigned to a client. Clients are picked
-//      from the DB; if the person isn't there yet, "+ Add ... as new client"
-//      creates them on the spot (they land in Prospects).
+// icon (or a weekday cell in the month bar). It always checks out
+// yesterday by default — the day just finished is what gets logged and
+// locked in, not the day still in progress — though a specific date can
+// still be passed in (e.g. from the month bar).
+//
+// One page per step:
+//   1. Prospects contacted, broken down by how they were reached (phoned,
+//      emailed, messaged, LinkedIn, other); the total is worked out.
+//   2. Meetings — client, meeting type (Fact Finder / Relational / Closing)
+//      and whether it was a joint call.
+//   3. FNAs — client only.
+//   4. Quotes — client, and whether it was for Risk, Investment, or both.
+//   5. Cases — client, case type, and the lump sum / monthly payment.
+//   6. Wills leads — client only.
 //   7. A status update for every client in the Business tab, every day,
-//      even when nothing changed ("Same as last" copies the previous one).
-// Next validates the page you're on; Submit writes the items and statuses
-// onto the clients' cards, dated for the checkout day, and marks that day
-// as checked out.
-// Depends on client-card.js (client store), client-cases.js (CASE_TYPES)
-// and month-bar.js (date helpers, markDateCheckedOut).
+//      even when nothing changed — pick a standard update, write a custom
+//      one, or "Same as last" to copy the previous one.
+//
+// Each item page (2-6) always ends in one empty, ready-to-fill row; picking
+// a client for it turns it into a real entry and a fresh empty row takes
+// its place automatically — there's no separate "add" button. Anything
+// already logged for the day (via the client card's own quick-add "+",
+// or an earlier checkout for the same date) shows above those rows as a
+// locked, read-only line, so it's never double-entered.
+//
+// Clients are picked from the DB; if the person isn't there yet, "+ Add
+// ... as new client" creates them on the spot (they land in Prospects).
+// Next validates the page you're on; Submit writes the new items and
+// statuses onto the clients' cards, dated for the checkout day, and marks
+// that day as checked out.
+// Depends on client-card.js (client store, _addDatedItem, _caseAmountsSuffix),
+// client-cases.js (CASE_TYPES) and month-bar.js (date helpers,
+// markDateCheckedOut).
 
 function _injectCheckoutCSS() {
   if (document.getElementById('checkout-styles')) return;
@@ -106,27 +125,37 @@ function _injectCheckoutCSS() {
     }
     .co-page-title { font-size: 16px; font-weight: 700; }
     .co-page-hint { font-size: 13px; color: var(--ink-dim); margin-top: 3px; }
-    .co-add-btn {
-      margin-left: auto;
-      flex-shrink: 0;
-      background: transparent;
-      border: 1px solid var(--gold);
-      color: #8a6d0a;
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-    }
-    .co-add-btn:hover { background: rgba(212, 175, 55, 0.12); }
     .co-empty { font-size: 13px; color: var(--ink-dim); padding: 18px 0; }
 
+    /* Already-logged items for the day: read-only, above the open rows. */
+    .co-locked { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .co-locked-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+    }
+    .co-locked-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f7f7f5;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: var(--ink-dim);
+    }
+    .co-locked-row svg { flex-shrink: 0; color: var(--ink-dim); }
+    .co-locked-name { font-weight: 600; color: var(--ink); flex-shrink: 0; }
+
+    /* Prospects page: one field per row, stacked. */
     .co-channels {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-      max-width: 460px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 320px;
     }
     .co-field { display: flex; flex-direction: column; gap: 4px; }
     .co-field label {
@@ -140,7 +169,7 @@ function _injectCheckoutCSS() {
       margin-top: 22px;
       padding-top: 16px;
       border-top: 1px solid rgba(0, 0, 0, 0.08);
-      max-width: 460px;
+      max-width: 320px;
       font-size: 14px;
       color: var(--ink-dim);
     }
@@ -158,9 +187,17 @@ function _injectCheckoutCSS() {
     }
     .co-input:focus, .co-select:focus, .co-textarea:focus { border-color: var(--gold); outline: none; }
     .co-input.error, .co-select.error, .co-textarea.error { border-color: var(--red); }
+    .co-input:disabled {
+      background: #f2f2f0;
+      border-color: rgba(0, 0, 0, 0.08);
+      color: var(--ink-dim);
+      cursor: not-allowed;
+    }
     .co-textarea { resize: vertical; min-height: 54px; }
 
-    .co-rows { display: flex; flex-direction: column; gap: 8px; }
+    .co-rows { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Simple rows (meetings, fnas, quotes, wills leads): one line. */
     .co-row { display: flex; align-items: center; gap: 12px; }
     .co-row .co-picker, .co-row .co-chip { flex: 1; min-width: 0; }
     .co-row .co-select { width: 190px; flex-shrink: 0; }
@@ -173,6 +210,16 @@ function _injectCheckoutCSS() {
       cursor: pointer;
       flex-shrink: 0;
     }
+    .co-checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+    }
+    .co-checkbox-group.error { border-color: var(--red); }
     .co-row-remove {
       background: transparent;
       border: none;
@@ -184,6 +231,33 @@ function _injectCheckoutCSS() {
       flex-shrink: 0;
     }
     .co-row-remove:hover { color: var(--red); }
+
+    /* Case rows: their own card — client + type on top, amounts below. */
+    .co-case-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 14px 40px 14px 14px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+    }
+    .co-case-card .co-picker { grid-column: 1 / 2; }
+    .co-case-card .co-chip { grid-column: 1 / 2; }
+    .co-case-card .co-row-remove {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+    }
+    .co-case-estimate {
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: #f7f7f5;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink);
+    }
 
     .co-picker { position: relative; }
     .co-dropdown {
@@ -262,7 +336,8 @@ function _injectCheckoutCSS() {
     .co-recap + .co-status { border-top: none; padding-top: 0; }
     .co-status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
     .co-status-name { font-size: 14px; font-weight: 600; }
-    .co-status-last { font-size: 12px; color: var(--ink-dim); margin-bottom: 6px; }
+    .co-status-last { font-size: 12px; color: var(--ink-dim); margin-bottom: 8px; }
+    .co-status-preset { margin-bottom: 6px; }
     .co-link {
       background: transparent;
       border: none;
@@ -313,22 +388,50 @@ function _injectCheckoutCSS() {
 }
 _injectCheckoutCSS();
 
+const _CO_LOCK_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
 // How the day's prospects were reached. The total is the sum.
 const CHECKOUT_CHANNELS = [
   { key: 'phoned', label: 'Phoned' },
   { key: 'emailed', label: 'Emailed' },
   { key: 'messaged', label: 'Messaged (WhatsApp / SMS)' },
+  { key: 'linkedin', label: 'LinkedIn' },
   { key: 'other', label: 'Other' },
 ];
 
-// The item pages, in wizard order. Each item is assigned to a client.
-const CHECKOUT_SECTIONS = [
-  { key: 'meetings', title: 'Meetings', noun: 'meeting', extra: 'joint', hint: 'Every meeting you held, and whether it was a joint call.' },
-  { key: 'fnas', title: 'FNAs', noun: 'FNA', hint: 'The clients you completed an FNA with.' },
-  { key: 'quotes', title: 'Quotes', noun: 'quote', hint: 'The clients you submitted a quote to.' },
-  { key: 'cases', title: 'Cases', noun: 'case', extra: 'caseType', hint: 'Cases you submitted, and the product for each.' },
-  { key: 'willsLeads', title: 'Wills leads', noun: 'wills lead', hint: 'The clients you got a wills lead from.' },
+// Meeting types, matching the labels used in the leaderboard's own
+// meetings breakdown (factFinder / closing / relational).
+const CHECKOUT_MEETING_TYPES = [
+  { key: 'factFinder', label: 'Fact Finder' },
+  { key: 'relational', label: 'Relational' },
+  { key: 'closing', label: 'Closing' },
 ];
+
+// A short menu of common updates; "Custom" leaves the box for free text.
+const CHECKOUT_STATUS_PRESETS = [
+  'No change since last update',
+  'Meeting held, awaiting next steps',
+  'Follow-up call made',
+  'Quote sent, awaiting feedback',
+  'Waiting on client documents',
+  'Application submitted to provider',
+  'Case underwritten, awaiting outcome',
+];
+
+// The item pages, in wizard order. Each item is assigned to a client. Every
+// page keeps one open, empty row at the end — picking a client for it
+// replaces it with a fresh empty one, so there's no separate "add" step.
+const CHECKOUT_SECTIONS = [
+  { key: 'meetings', title: 'Meetings', hint: 'Every meeting you held: who with, what kind, and whether it was a joint call.' },
+  { key: 'fnas', title: 'FNAs', hint: 'The clients you completed an FNA with.' },
+  { key: 'quotes', title: 'Quotes', hint: 'The clients you submitted a quote to, for Risk, Investment or both.' },
+  { key: 'cases', title: 'Cases', hint: 'Cases you submitted: the product, and the lump sum or monthly payment.' },
+  { key: 'willsLeads', title: 'Wills leads', hint: 'The clients you got a wills lead from.' },
+];
+
+// These products are premium-only — no lump sum, so that field is greyed
+// out for them.
+const CHECKOUT_MONTHLY_ONLY_CASE_TYPES = ['Risk', 'Educator'];
 
 // Every wizard page: prospects first, the item pages, statuses last.
 const CHECKOUT_STEPS = [
@@ -345,10 +448,29 @@ function _checkoutIso(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-// Newest first; same-date items keep the order they're inserted in, so a
-// fresh one lands on top of its day.
-function _checkoutAddItem(list, item) {
-  return [item, ...(list || [])].sort((a, b) => b.date.localeCompare(a.date));
+// The day a checkout defaults to when no date is given: yesterday, since
+// checkout always logs the day that just finished, not the one in
+// progress.
+function _checkoutDefaultDate() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - 1);
+  return d;
+}
+
+// A fresh row for a given section, with that section's own fields.
+function _newCheckoutRow(key, id) {
+  const row = { id, client: null };
+  if (key === 'meetings') { row.meetingType = ''; row.joint = false; }
+  if (key === 'quotes') { row.risk = false; row.investment = false; }
+  if (key === 'cases') { row.caseType = ''; row.lumpSum = ''; row.monthly = ''; row.adviceFeePercent = ''; }
+  return row;
+}
+
+// A case row's fields (caseType) don't line up 1:1 with the stored case
+// item shape (type) that constants.js expects — bridge the two.
+function _caseRowCommission(row) {
+  return caseUpfrontCommission({ type: row.caseType, lumpSum: row.lumpSum, monthly: row.monthly, adviceFeePercent: row.adviceFeePercent });
 }
 
 class Checkout {
@@ -394,15 +516,16 @@ class Checkout {
   }
 
   open(date) {
-    this.date = date ? new Date(date) : new Date();
+    this.date = date ? new Date(date) : _checkoutDefaultDate();
     this.date.setHours(0, 0, 0, 0);
     this.channels = {};
     CHECKOUT_CHANNELS.forEach(c => { this.channels[c.key] = ''; });
     this.rows = {};
-    CHECKOUT_SECTIONS.forEach(sec => { this.rows[sec.key] = []; });
+    this.nextId = 1;
+    CHECKOUT_SECTIONS.forEach(sec => { this.rows[sec.key] = []; this._normalizeRows(sec.key); });
+    this.locked = this._computeLocked();
     this.newClients = [];
     this.statuses = {};
-    this.nextId = 1;
     this.step = 0;
     this.maxStep = 0;
     this.showErrors = false;
@@ -416,6 +539,47 @@ class Checkout {
 
   close() {
     this.overlay.classList.remove('open');
+  }
+
+  // Opened from a client card's "+": today's checkout (a live, in-the-
+  // moment entry, not yesterday's wrap-up), jumped straight to the given
+  // section with this client already sitting in its open row.
+  openForClient(clientId, sectionKey) {
+    this.open(new Date());
+    const rows = this.rows[sectionKey];
+    if (!rows) return;
+    rows[rows.length - 1].client = { kind: 'existing', id: clientId };
+    this._normalizeRows(sectionKey);
+    const stepIndex = CHECKOUT_STEPS.findIndex(s => s.key === sectionKey);
+    this.maxStep = Math.max(this.maxStep, stepIndex);
+    this.step = stepIndex;
+    this._render();
+  }
+
+  // Anything already recorded against a client for this checkout's date —
+  // from the card's own quick-add "+", or an earlier checkout for the same
+  // day — shown read-only so it's never logged twice.
+  _computeLocked() {
+    const iso = _checkoutIso(this.date);
+    const locked = {};
+    CHECKOUT_SECTIONS.forEach(sec => { locked[sec.key] = []; });
+    getClientRecords().forEach(c => {
+      const data = getClientData(c.id);
+      (data.meetings || []).filter(x => x.date === iso).forEach(x => locked.meetings.push({ name: c.name, text: x.text }));
+      (data.fnas || []).filter(x => x.date === iso).forEach(x => locked.fnas.push({ name: c.name, text: x.text }));
+      (data.quotes || []).filter(x => x.date === iso).forEach(x => locked.quotes.push({ name: c.name, text: x.text }));
+      (data.casesInProgress || []).filter(x => x.date === iso).forEach(x => locked.cases.push({ name: c.name, text: `${x.type}${_caseAmountsSuffix(x)}` }));
+      (data.willsLeads || []).filter(x => x.date === iso).forEach(x => locked.willsLeads.push({ name: c.name, text: x.text }));
+    });
+    return locked;
+  }
+
+  // Drops any row that never got a client (nothing worth keeping) and adds
+  // exactly one fresh, empty row at the end — the one always waiting to be
+  // filled in next.
+  _normalizeRows(key) {
+    this.rows[key] = this.rows[key].filter(r => r.client);
+    this.rows[key].push(_newCheckoutRow(key, this.nextId++));
   }
 
   // ---------- navigation ----------
@@ -445,7 +609,7 @@ class Checkout {
     const step = CHECKOUT_STEPS[this.step];
     this.stepsEl.innerHTML = CHECKOUT_STEPS.map((st, i) => {
       const cls = `co-step${i === this.step ? ' active' : ''}${i <= this.maxStep ? ' visited' : ''}`;
-      const count = this.rows[st.key]?.length;
+      const count = (this.locked[st.key]?.length || 0) + (this.rows[st.key]?.filter(r => r.client).length || 0);
       const badge = count ? `<span class="co-step-count">${count}</span>` : '';
       return `<button class="${cls}" type="button" data-action="goto" data-step="${i}">${st.title}${badge}</button>`;
     }).join('');
@@ -483,11 +647,21 @@ class Checkout {
     `;
   }
 
+  _lockedHTML(sec) {
+    const items = this.locked[sec.key];
+    if (!items.length) return '';
+    const rows = items.map(it => `
+      <div class="co-locked-row">
+        ${_CO_LOCK_ICON}
+        <span class="co-locked-name">${_escHtml(it.name)}</span>
+        <span>${_escHtml(it.text)}</span>
+      </div>
+    `).join('');
+    return `<div class="co-locked"><div class="co-locked-title">Already logged for this day</div>${rows}</div>`;
+  }
+
   _sectionHTML(sec) {
     const rows = this.rows[sec.key];
-    const list = rows.length
-      ? `<div class="co-rows">${rows.map(r => this._rowHTML(sec, r)).join('')}</div>`
-      : `<div class="co-empty">No ${sec.title.toLowerCase()} logged. Add one, or continue if there were none.</div>`;
     return `
       <div data-section="${sec.key}">
         <div class="co-page-head">
@@ -495,48 +669,103 @@ class Checkout {
             <div class="co-page-title">${sec.title}</div>
             <div class="co-page-hint">${sec.hint}</div>
           </div>
-          <button class="co-add-btn" type="button" data-action="add-row">+ Add ${sec.noun}</button>
         </div>
-        ${list}
+        ${this._lockedHTML(sec)}
+        <div class="co-rows">${rows.map(r => this._rowHTML(sec, r)).join('')}</div>
       </div>
     `;
   }
 
-  _rowHTML(sec, row) {
-    const missingClient = this.showErrors && !row.client;
-    let picker;
+  _pickerHTML(row) {
     if (row.client) {
       const isNew = row.client.kind === 'new';
-      picker = `
+      return `
         <div class="co-chip">
           <span>${_escHtml(this._clientName(row.client))}</span>
           ${isNew ? '<span class="co-chip-new">New</span>' : ''}
           <button class="co-chip-x" type="button" data-action="clear-client" aria-label="Change client">&times;</button>
         </div>
       `;
-    } else {
-      picker = `
-        <div class="co-picker">
-          <input class="co-input co-picker-input${missingClient ? ' error' : ''}" type="text" autocomplete="off" placeholder="Search or add a client&hellip;">
-          <div class="co-dropdown"></div>
-        </div>
-      `;
     }
+    return `
+      <div class="co-picker">
+        <input class="co-input co-picker-input" type="text" autocomplete="off" placeholder="Search or add a client&hellip;">
+        <div class="co-dropdown"></div>
+      </div>
+    `;
+  }
 
-    let extra = '';
-    if (sec.extra === 'joint') {
-      extra = `<label class="co-check"><input type="checkbox" data-field="joint"${row.joint ? ' checked' : ''}> Joint call</label>`;
-    } else if (sec.extra === 'caseType') {
-      const opts = CASE_TYPES.map(t => `<option value="${_escHtml(t)}"${t === row.caseType ? ' selected' : ''}>${_escHtml(t)}</option>`).join('');
-      const missingType = this.showErrors && !row.caseType;
-      extra = `<select class="co-select${missingType ? ' error' : ''}" data-field="caseType"><option value="">Select type&hellip;</option>${opts}</select>`;
-    }
-
+  _rowHTML(sec, row) {
+    if (sec.key === 'cases') return this._caseRowHTML(row);
+    if (sec.key === 'meetings') return this._meetingRowHTML(row);
+    if (sec.key === 'quotes') return this._quoteRowHTML(row);
+    // FNAs and wills leads: just a client. A filled row can still be
+    // removed outright; the always-empty trailing row can't be (there's
+    // nothing to remove), so it has no remove button.
     return `
       <div class="co-row" data-row="${row.id}">
-        ${picker}
-        ${extra}
-        <button class="co-row-remove" type="button" data-action="remove-row" aria-label="Remove">&times;</button>
+        ${this._pickerHTML(row)}
+        ${row.client ? '<button class="co-row-remove" type="button" data-action="remove-row" aria-label="Remove">&times;</button>' : ''}
+      </div>
+    `;
+  }
+
+  _meetingRowHTML(row) {
+    const opts = CHECKOUT_MEETING_TYPES.map(t =>
+      `<option value="${t.key}"${t.key === row.meetingType ? ' selected' : ''}>${t.label}</option>`
+    ).join('');
+    const missingType = this.showErrors && row.client && !row.meetingType;
+    return `
+      <div class="co-row" data-row="${row.id}">
+        ${this._pickerHTML(row)}
+        <select class="co-select${missingType ? ' error' : ''}" data-field="meetingType"><option value="">Select type&hellip;</option>${opts}</select>
+        <label class="co-check"><input type="checkbox" data-field="joint"${row.joint ? ' checked' : ''}> Joint call</label>
+        ${row.client ? '<button class="co-row-remove" type="button" data-action="remove-row" aria-label="Remove">&times;</button>' : ''}
+      </div>
+    `;
+  }
+
+  _quoteRowHTML(row) {
+    const missingCover = this.showErrors && row.client && !row.risk && !row.investment;
+    return `
+      <div class="co-row" data-row="${row.id}">
+        ${this._pickerHTML(row)}
+        <div class="co-checkbox-group${missingCover ? ' error' : ''}">
+          <label class="co-check"><input type="checkbox" data-field="risk"${row.risk ? ' checked' : ''}> Risk</label>
+          <label class="co-check"><input type="checkbox" data-field="investment"${row.investment ? ' checked' : ''}> Investment</label>
+        </div>
+        ${row.client ? '<button class="co-row-remove" type="button" data-action="remove-row" aria-label="Remove">&times;</button>' : ''}
+      </div>
+    `;
+  }
+
+  _caseRowHTML(row) {
+    const missingType = this.showErrors && row.client && !row.caseType;
+    const opts = CASE_TYPES.map(t => `<option value="${_escHtml(t)}"${t === row.caseType ? ' selected' : ''}>${_escHtml(t)}</option>`).join('');
+    const monthlyOnly = CHECKOUT_MONTHLY_ONLY_CASE_TYPES.includes(row.caseType);
+    const usesAdviceFee = caseUsesAdviceFee(row.caseType);
+    const estimate = _formatRand(_caseRowCommission(row));
+    return `
+      <div class="co-case-card" data-row="${row.id}">
+        ${this._pickerHTML(row)}
+        <select class="co-select${missingType ? ' error' : ''}" data-field="caseType"><option value="">Select type&hellip;</option>${opts}</select>
+        <div class="co-field">
+          <label>Lump sum</label>
+          <input class="co-input" type="number" min="0" step="0.01" placeholder="R 0.00" data-field="lumpSum" value="${_escHtml(row.lumpSum)}"${monthlyOnly ? ' disabled' : ''}>
+        </div>
+        <div class="co-field">
+          <label>Monthly payment</label>
+          <input class="co-input" type="number" min="0" step="0.01" placeholder="R 0.00" data-field="monthly" value="${_escHtml(row.monthly)}">
+        </div>
+        <div class="co-field">
+          <label>Advice fee %</label>
+          <input class="co-input" type="number" min="0" step="0.01" placeholder="0.00" data-field="adviceFeePercent" value="${_escHtml(row.adviceFeePercent)}"${usesAdviceFee ? '' : ' disabled'}>
+        </div>
+        <div class="co-field">
+          <label>Est. upfront commission</label>
+          <div class="co-case-estimate">${estimate}</div>
+        </div>
+        ${row.client ? '<button class="co-row-remove" type="button" data-action="remove-row" aria-label="Remove">&times;</button>' : ''}
       </div>
     `;
   }
@@ -547,12 +776,16 @@ class Checkout {
 
   _recapHTML() {
     const chips = [`<span><b>${this._prospectsTotal()}</b> prospects</span>`]
-      .concat(CHECKOUT_SECTIONS.map(sec => `<span><b>${this.rows[sec.key].length}</b> ${sec.title.toLowerCase()}</span>`));
+      .concat(CHECKOUT_SECTIONS.map(sec => {
+        const count = this.locked[sec.key].length + this.rows[sec.key].filter(r => r.client).length;
+        return `<span><b>${count}</b> ${sec.title.toLowerCase()}</span>`;
+      }));
     return `<div class="co-recap">${chips.join('')}</div>`;
   }
 
   _statusesHTML() {
     const clients = this._businessClients();
+    const presetOpts = CHECKOUT_STATUS_PRESETS.map(p => `<option value="${_escHtml(p)}">${_escHtml(p)}</option>`).join('');
     const blocks = clients.length ? clients.map(c => {
       const last = (getClientData(c.id).statuses || [])[0];
       const missing = this.showErrors && !(this.statuses[c.id] || '').trim();
@@ -563,6 +796,11 @@ class Checkout {
             <button class="co-link" type="button" data-action="same-status" data-client="${c.id}"${last ? '' : ' disabled'}>Same as last</button>
           </div>
           ${last ? `<div class="co-status-last">Last update, ${_formatStatusDate(last.date)}: ${_escHtml(last.text)}</div>` : ''}
+          <select class="co-select co-status-preset" data-client="${c.id}">
+            <option value="">Choose a standard update&hellip;</option>
+            ${presetOpts}
+            <option value="__custom">Custom&hellip;</option>
+          </select>
           <textarea class="co-textarea co-status-input${missing ? ' error' : ''}" data-client="${c.id}" rows="2" placeholder="Today's status&hellip;">${_escHtml(this.statuses[c.id] || '')}</textarea>
         </div>
       `;
@@ -617,7 +855,7 @@ class Checkout {
   }
 
   _rowFor(el) {
-    const rowEl = el.closest('.co-row');
+    const rowEl = el.closest('[data-row]');
     const secEl = el.closest('[data-section]');
     if (!rowEl || !secEl) return null;
     return this.rows[secEl.dataset.section].find(r => r.id === Number(rowEl.dataset.row)) || null;
@@ -627,9 +865,12 @@ class Checkout {
     this.body.querySelector(`[data-row="${rowId}"] .co-picker-input`)?.focus();
   }
 
+  // A row just got its client — replace it with a fresh empty one so
+  // there's always exactly one open row waiting at the end, then focus it.
   _selectOption(optEl) {
     const row = this._rowFor(optEl);
-    if (!row) return;
+    const key = optEl.closest('[data-section]')?.dataset.section;
+    if (!row || !key) return;
     const { kind, id, name } = optEl.dataset;
     if (kind === 'create') {
       const parts = name.trim().split(/\s+/);
@@ -641,7 +882,9 @@ class Checkout {
     } else {
       row.client = { kind, id };
     }
+    this._normalizeRows(key);
     this._render();
+    this._focusPicker(key, this.rows[key][this.rows[key].length - 1].id);
   }
 
   // ---------- events ----------
@@ -660,27 +903,22 @@ class Checkout {
       return;
     }
 
-    if (action === 'add-row') {
-      const key = btn.closest('[data-section]').dataset.section;
-      const row = { id: this.nextId++, client: null, joint: false, caseType: '' };
-      this.rows[key].push(row);
-      this._render();
-      this._focusPicker(key, row.id);
-      return;
-    }
     if (action === 'remove-row') {
       const row = this._rowFor(btn);
       const key = btn.closest('[data-section]').dataset.section;
       this.rows[key] = this.rows[key].filter(r => r !== row);
+      this._normalizeRows(key);
       this._render();
       return;
     }
     if (action === 'clear-client') {
       const row = this._rowFor(btn);
-      if (!row) return;
+      const key = btn.closest('[data-section]')?.dataset.section;
+      if (!row || !key) return;
       row.client = null;
+      this._normalizeRows(key);
       this._render();
-      this._focusPicker(btn.closest('[data-section]').dataset.section, row.id);
+      this._focusPicker(key, this.rows[key][this.rows[key].length - 1].id);
       return;
     }
     if (action === 'same-status') {
@@ -700,19 +938,52 @@ class Checkout {
       this.statuses[t.dataset.client] = t.value;
       t.classList.remove('error');
     } else if (t.matches('.co-picker-input')) {
-      t.classList.remove('error');
       this._fillDropdown(t);
+    } else if (t.matches('[data-field]')) {
+      const row = this._rowFor(t);
+      if (!row) return;
+      row[t.dataset.field] = t.value;
+      t.classList.remove('error');
+      // Cases: update the live commission estimate without a full
+      // re-render, so typing doesn't lose the field's cursor position.
+      const card = t.closest('.co-case-card');
+      if (card) card.querySelector(".co-case-estimate").textContent = _formatRand(_caseRowCommission(row));
     }
   }
 
   _onChange(e) {
     const t = e.target;
+    if (t.matches('.co-status-preset')) {
+      const clientId = t.dataset.client;
+      const box = this.body.querySelector(`.co-status-input[data-client="${clientId}"]`);
+      if (t.value === '__custom') {
+        box.value = '';
+        box.focus();
+      } else if (t.value) {
+        box.value = t.value;
+      }
+      this.statuses[clientId] = box.value;
+      box.classList.remove('error');
+      t.value = '';
+      return;
+    }
     const row = this._rowFor(t);
-    if (!row) return;
-    if (t.matches('[data-field="joint"]')) row.joint = t.checked;
-    if (t.matches('[data-field="caseType"]')) {
-      row.caseType = t.value;
+    if (!row || !t.dataset.field) return;
+    if (t.type === 'checkbox') {
+      row[t.dataset.field] = t.checked;
+      t.closest('.co-checkbox-group')?.classList.remove('error');
+    } else {
+      row[t.dataset.field] = t.value;
       t.classList.remove('error');
+    }
+    // Risk and Educator are premium-only (no lump sum); everything except
+    // the advice-fee bucket has no fee field either — drop whichever
+    // doesn't apply to the newly chosen product and re-render so the
+    // fields grey in/out and the estimate reflects the new formula.
+    if (t.dataset.field === 'caseType') {
+      if (CHECKOUT_MONTHLY_ONLY_CASE_TYPES.includes(row.caseType)) row.lumpSum = '';
+      if (!caseUsesAdviceFee(row.caseType)) row.adviceFeePercent = '';
+      this._render();
     }
   }
 
@@ -761,15 +1032,22 @@ class Checkout {
 
   // ---------- validation ----------
 
-  // A page is valid when every row on it has a client (and a case type,
-  // for cases), or, for the status page, every Business client has a status.
+  // A page is valid when every row that's actually been started (has a
+  // client) also has that section's own required fields — the ever-present
+  // empty trailing row is skipped entirely, since it's not been touched.
+  // The status page instead needs every Business client filled in.
   _validateStep(i) {
     const step = CHECKOUT_STEPS[i];
     if (step.key === 'prospects') return true;
     if (step.key === 'status') {
       return this._businessClients().every(c => (this.statuses[c.id] || '').trim());
     }
-    return this.rows[step.key].every(row => row.client && (step.extra !== 'caseType' || row.caseType));
+    return this.rows[step.key].filter(row => row.client).every(row => {
+      if (step.key === 'meetings') return !!row.meetingType;
+      if (step.key === 'quotes') return row.risk || row.investment;
+      if (step.key === 'cases') return !!row.caseType;
+      return true;
+    });
   }
 
   _showStepErrors() {
@@ -815,32 +1093,43 @@ class Checkout {
       });
     });
 
-    // Collect everything per client, then write each client once.
+    // Collect everything per client (skipping the always-empty trailing
+    // row, which never got a client), then write each client once.
     const byClient = {};
     const slot = id => byClient[id] || (byClient[id] = { meetings: [], fnas: [], quotes: [], cases: [], willsLeads: [] });
     CHECKOUT_SECTIONS.forEach(sec => {
-      this.rows[sec.key].forEach(row => {
+      this.rows[sec.key].filter(row => row.client).forEach(row => {
         const id = row.client.kind === 'new' ? idFor[row.client.id] : row.client.id;
         slot(id)[sec.key].push(row);
       });
     });
     this._businessClients().forEach(c => { slot(c.id); });
 
+    const meetingLabel = key => (CHECKOUT_MEETING_TYPES.find(t => t.key === key) || {}).label || 'Meeting';
+
     Object.entries(byClient).forEach(([id, items]) => {
       updateClient(id, d => {
         items.meetings.forEach(r => {
-          d.meetings = _checkoutAddItem(d.meetings, { date: iso, text: r.joint ? 'Meeting · joint call' : 'Meeting' });
+          const text = `${meetingLabel(r.meetingType)} meeting${r.joint ? ' · joint call' : ''}`;
+          d.meetings = _addDatedItem(d.meetings, { date: iso, text });
         });
-        items.fnas.forEach(() => { d.fnas = _checkoutAddItem(d.fnas, { date: iso, text: 'FNA completed' }); });
-        items.quotes.forEach(() => { d.quotes = _checkoutAddItem(d.quotes, { date: iso, text: 'Quote submitted' }); });
+        items.fnas.forEach(() => { d.fnas = _addDatedItem(d.fnas, { date: iso, text: 'FNA completed' }); });
+        items.quotes.forEach(r => {
+          const cover = r.risk && r.investment ? 'Risk & Investment' : r.risk ? 'Risk' : 'Investment';
+          d.quotes = _addDatedItem(d.quotes, { date: iso, text: `Quote submitted · ${cover}` });
+        });
         items.cases.forEach(r => {
-          d.casesInProgress = _checkoutAddItem(d.casesInProgress, { date: iso, type: r.caseType });
+          const item = { date: iso, type: r.caseType };
+          if (r.lumpSum) item.lumpSum = Number(r.lumpSum);
+          if (r.monthly) item.monthly = Number(r.monthly);
+          if (r.adviceFeePercent) item.adviceFeePercent = Number(r.adviceFeePercent);
+          d.casesInProgress = _addDatedItem(d.casesInProgress, item);
         });
-        items.willsLeads.forEach(() => { d.willsLeads = _checkoutAddItem(d.willsLeads, { date: iso, text: 'Wills lead' }); });
+        items.willsLeads.forEach(() => { d.willsLeads = _addDatedItem(d.willsLeads, { date: iso, text: 'Wills lead' }); });
         const status = (this.statuses[id] || '').trim();
         if (status) {
           // One status per day: a second checkout the same day replaces it.
-          d.statuses = _checkoutAddItem((d.statuses || []).filter(st => st.date !== iso), { date: iso, text: status });
+          d.statuses = _addDatedItem((d.statuses || []).filter(st => st.date !== iso), { date: iso, text: status });
         }
       });
     });
@@ -848,7 +1137,7 @@ class Checkout {
     const prospectChannels = {};
     CHECKOUT_CHANNELS.forEach(c => { prospectChannels[c.key] = Number(this.channels[c.key]) || 0; });
     const counts = {};
-    CHECKOUT_SECTIONS.forEach(sec => { counts[sec.key] = this.rows[sec.key].length; });
+    CHECKOUT_SECTIONS.forEach(sec => { counts[sec.key] = this.rows[sec.key].filter(r => r.client).length; });
     const summary = { date: iso, prospects: this._prospectsTotal(), prospectChannels, ...counts };
     CHECKOUT_LOG[iso] = summary;
     document.dispatchEvent(new CustomEvent('checkout:submitted', { detail: summary }));
@@ -865,14 +1154,18 @@ let _checkoutTriggerId = null;
 function _syncCheckoutTrigger() {
   const trigger = _checkoutTriggerId && document.getElementById(_checkoutTriggerId);
   if (!trigger) return;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  trigger.classList.toggle('checked-out', isCheckedOut(today));
-  trigger.title = isCheckedOut(today) ? "Today's checkout is done" : 'Daily Checkout';
+  const pending = isCheckedOut(_checkoutDefaultDate());
+  trigger.classList.toggle('checked-out', pending);
+  trigger.title = pending ? "Yesterday's checkout is done" : 'Daily Checkout';
 }
 
 function openCheckout(date) {
   _checkoutInstance?.open(date);
+}
+
+// The client card's "+" quick-add: same wizard, jumped to one section.
+function openCheckoutForClient(clientId, sectionKey) {
+  _checkoutInstance?.openForClient(clientId, sectionKey);
 }
 
 function initCheckout(triggerId) {

@@ -229,8 +229,9 @@ function isCheckedOut(date) {
 }
 
 class MonthBar {
-  constructor(container) {
+  constructor(container, options = {}) {
     this.container = container;
+    this.onNavigate = options.onNavigate;
     this.periods = buildMonthPeriods();
     this.today = new Date();
     this.today.setHours(0, 0, 0, 0);
@@ -335,15 +336,17 @@ class MonthBar {
     row.appendChild(track);
     row.appendChild(nextBtn);
     this.container.appendChild(row);
+
+    this.onNavigate?.(period);
   }
 }
 
 let _monthBarInstance = null;
 
-function initMonthBar(containerId) {
+function initMonthBar(containerId, options) {
   const container = document.getElementById(containerId);
   if (!container) return null;
-  _monthBarInstance = new MonthBar(container);
+  _monthBarInstance = new MonthBar(container, options);
   return _monthBarInstance;
 }
 
@@ -352,10 +355,8 @@ function markDateCheckedOut(date) {
   _monthBarInstance?.render();
 }
 
-// The current real-world period's label (e.g. "September 2026") — not
-// whatever month the bar happens to be navigated to. Used by the PCR
-// meter, which always reflects the live period regardless of what
-// you're browsing in the calendar strip above it.
+// The current real-world period's label (e.g. "September 2026"). Used to
+// seed the PCR meter's initial label before any navigation happens.
 function getCurrentPeriodLabel() {
   const periods = buildMonthPeriods();
   const today = new Date();

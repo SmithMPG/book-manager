@@ -6,6 +6,8 @@ A daily "checkout" questionnaire (Google Form) helps a sales leader track ~15 fi
 ## Core principle
 **Clients are the single source of truth.** Meetings and activities (quotes, FNAs, cases, wills leads, referrals) both link directly to a client — never to each other. This avoids false-precision problems like "which of a client's 5 meetings does this quote belong to" when the quote happens weeks after the meeting that led to it.
 
+**A business month runs close-off to close-off, not calendar month to calendar month.** It starts the day after one close-off date and ends on (inclusive of) the next — see `month_periods` below and `CLOSE_OFF_DATES` in `constants.js`. Every "this month" figure in the app (PCR, conversion rate, cases submitted, expected commission, …) means this business month, never the calendar one.
+
 ---
 
 ## Data model (Supabase)

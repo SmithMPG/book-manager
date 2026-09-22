@@ -92,8 +92,10 @@ function _injectClientCasesCSS() {
 _injectClientCasesCSS();
 
 const CASE_TYPES = [
-  'Retirement Annuity', 'Life Cover', 'Disability Cover', 'Income Protection',
-  'Investment', 'Wills', 'Medical Aid', 'Short-Term Insurance', 'Other',
+  'Annuity Life', 'Ad hoc Investment', 'Annuity Living', 'Classic Investment',
+  'Educator', 'Endowment', 'Evolve', 'IB', 'INN8', 'INN8 RA', 'Investment',
+  'Investment Builder', 'Other', 'Preservation', 'RA Builder', 'RA Liberty',
+  'Risk', 'Sec 14 External', 'Sec 14 Internal', 'Stanlib IP', 'TFSA', 'UT',
 ];
 
 function _caseRow(dateLabel, item) {

@@ -98,6 +98,58 @@ function _injectClientCardCSS() {
       background: rgba(0, 0, 0, 0.18);
     }
     .list-row.active .card-metrics-divider { background: rgba(255, 255, 255, 0.25); }
+
+    /* Quick-add: logs one item against this client without opening the
+       full checkout. Sits at the end of the row, after Cases. */
+    .qa-btn {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: 1px dashed rgba(0, 0, 0, 0.25);
+      background: transparent;
+      color: var(--ink-dim);
+      font-size: 15px;
+      line-height: 1;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qa-btn:hover { border-color: var(--gold); border-style: solid; color: #8a6d0a; background: rgba(212, 175, 55, 0.1); }
+    .list-row.active .qa-btn { border-color: rgba(255, 255, 255, 0.35); color: var(--text-dim); }
+    .list-row.active .qa-btn:hover { border-color: var(--gold); border-style: solid; color: var(--gold-soft); background: rgba(255, 255, 255, 0.1); }
+
+    .qa-popover {
+      position: fixed;
+      z-index: 250;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+      width: 210px;
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .qa-item, .qa-back {
+      background: transparent;
+      border: none;
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--ink);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .qa-item:hover, .qa-back:hover { background: #f2f2f0; }
+    .qa-back { color: var(--ink-dim); font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .qa-divider { height: 1px; background: rgba(0, 0, 0, 0.08); margin: 4px 2px; }
     .card-metric[data-view] {
       cursor: pointer;
       padding: 4px 6px;
@@ -138,6 +190,38 @@ function _injectClientCardCSS() {
     }
     .detail-text { color: var(--ink-dim); line-height: 1.45; }
     .detail-empty { color: var(--ink-dim); }
+
+    .case-detail-item { align-items: center; }
+    .case-detail-item .detail-text { flex: 1; }
+    /* Segmented left/right switch between In Progress and Accepted — the
+       whole point is the two states read as opposite sides of one control,
+       not an independent tick. */
+    .case-status-toggle {
+      display: inline-flex;
+      flex-shrink: 0;
+      background: #ececea;
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .case-status-btn {
+      border: none;
+      background: transparent;
+      padding: 5px 12px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-dim);
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .case-status-btn:hover:not(.active) { color: var(--ink); }
+    .case-status-btn.active {
+      background: #ffffff;
+      color: #8a6d0a;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    }
   `;
   document.head.appendChild(s);
 }
@@ -171,11 +255,80 @@ function _detailListHTML(items, emptyText) {
   return `<ul class="detail-list">${rows}</ul>`;
 }
 
+function _todayIso() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Newest first; same-date items keep the order they're inserted in, so a
+// fresh one lands on top of its day. Shared with the checkout wizard.
+function _addDatedItem(list, item) {
+  return [item, ...(list || [])].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function _formatRand(n) {
+  return `R${Number(n).toLocaleString('en-ZA')}`;
+}
+
+// Lump sum / monthly payment / advice fee, when a case was logged with any
+// of them (the checkout wizard's cases page; quick-add doesn't collect
+// these), plus the upfront commission (constants.js) they work out
+// to, when it's non-zero.
+function _caseAmountsSuffix(c) {
+  const parts = [];
+  if (c.lumpSum) parts.push(`${_formatRand(c.lumpSum)} lump sum`);
+  if (c.monthly) parts.push(`${_formatRand(c.monthly)} pm`);
+  if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% advice fee`);
+  const commission = caseUpfrontCommission(c);
+  if (commission) parts.push(`${_formatRand(commission)} commission`);
+  return parts.length ? ` · ${parts.join(' / ')}` : '';
+}
+
 // Cases come from the in-progress and accepted lists, merged newest first.
+// Used just for the row's Cases count — the detail view below has its own
+// renderer, since in-progress cases carry an Accept toggle.
 function _caseItems(data) {
-  const inProgress = (data.casesInProgress || []).map(c => ({ date: c.date, text: `${c.type} · initiated` }));
-  const accepted = (data.acceptedCases || []).map(c => ({ date: c.date, text: `${c.type} · accepted` }));
+  const inProgress = (data.casesInProgress || []).map(c => ({ date: c.date, text: `${c.type} · in progress${_caseAmountsSuffix(c)}` }));
+  const accepted = (data.acceptedCases || []).map(c => ({ date: c.date, text: `${c.type} · accepted${_caseAmountsSuffix(c)}` }));
   return inProgress.concat(accepted).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// The Cases detail view: same dated list as everywhere else, except every
+// case gets a segmented In Progress / Accepted switch — a real two-way
+// toggle, not a one-time action: flipping it to Accepted moves that case
+// into acceptedCases, flipping it back moves it into casesInProgress.
+// Either way its date resets to today (the date of whichever state it's
+// now in), since that's what "accepted this month" is measured against.
+function _caseStatusToggleHTML(clientId, idx, kind) {
+  const btn = (target, label) => `
+    <button type="button" class="case-status-btn${kind === target ? ' active' : ''}"
+      data-action="set-case-status" data-client="${clientId}" data-idx="${idx}" data-kind="${kind}" data-target="${target}">${label}</button>
+  `;
+  return `<div class="case-status-toggle">${btn('in-progress', 'In Progress')}${btn('accepted', 'Accepted')}</div>`;
+}
+
+function _caseDetailHTML(data) {
+  const inProgress = data.casesInProgress || [];
+  const accepted = data.acceptedCases || [];
+  if (!inProgress.length && !accepted.length) return '<div class="detail-empty">No cases yet.</div>';
+
+  const rows = [
+    ...inProgress.map((c, idx) => ({ ...c, idx, kind: 'in-progress' })),
+    ...accepted.map((c, idx) => ({ ...c, idx, kind: 'accepted' })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
+  const items = rows.map(c => {
+    const label = c.kind === 'in-progress' ? 'in progress' : 'accepted';
+    return `
+      <li class="detail-item case-detail-item">
+        <span class="detail-date">${_formatStatusDate(c.date)}</span>
+        <span class="detail-text">${_escHtml(c.type)} · ${label}${_caseAmountsSuffix(c)}</span>
+        ${_caseStatusToggleHTML(data.id, c.idx, c.kind)}
+      </li>
+    `;
+  }).join('');
+  return `<ul class="detail-list">${items}</ul>`;
 }
 
 // Latest status (statuses are newest first), shown on the collapsed row.
@@ -220,6 +373,7 @@ function clientCardHTML(data) {
           ${_cardMetric('FNAs', fnas.length, 'fnas')}
           ${_cardMetric('Quotes', quotes.length, 'quotes')}
           ${_cardMetric('Cases', cases.length, 'cases')}
+          <button class="qa-btn" type="button" data-action="quick-add" title="Add for ${_escHtml(data.firstName)}">+</button>
         </div>
       </div>
       <div class="row-detail" id="row-${data.id}">
@@ -227,7 +381,7 @@ function clientCardHTML(data) {
         <div class="detail-view" data-view="meetings">${_detailListHTML(meetings, 'No meetings yet.')}</div>
         <div class="detail-view" data-view="fnas">${_detailListHTML(fnas, 'No FNAs yet.')}</div>
         <div class="detail-view" data-view="quotes">${_detailListHTML(quotes, 'No quotes yet.')}</div>
-        <div class="detail-view" data-view="cases">${_detailListHTML(cases, 'No cases yet.')}</div>
+        <div class="detail-view" data-view="cases">${_caseDetailHTML(data)}</div>
       </div>
     </div>
   `;
@@ -288,6 +442,7 @@ function updateClient(id, mutate) {
   const data = CLIENT_STORE.get(id);
   if (!data) return;
   mutate(data);
+  _notifyClientsChanged();
   const row = document.querySelector(`.list-row[data-card-id="${id}"]`);
   if (!row) return;
   const wrapper = row.parentElement;
@@ -306,6 +461,69 @@ function updateClient(id, mutate) {
   }
 }
 
+// Quick add: a small menu opened from a client's "+". A referral is simple
+// enough to apply immediately; everything else (meeting, FNA, quote, case)
+// has its own fields to fill in (meeting type, risk/investment, case type
+// and amounts…) that only the checkout wizard collects, so those instead
+// open the wizard itself, jumped straight to that page with this client
+// already selected in an open row — no separate, smaller version of the
+// same form to keep in sync.
+
+function _closeQuickAdd() {
+  document.getElementById('quick-add-popover')?.remove();
+  document.removeEventListener('click', _outsideQuickAddClick, true);
+}
+
+function _outsideQuickAddClick(e) {
+  if (e.target.closest('.qa-popover') || e.target.closest('.qa-btn')) return;
+  _closeQuickAdd();
+}
+
+function _quickAddMenuHTML() {
+  return `
+    <button class="qa-item" type="button" data-qa="referral">+1 Referral</button>
+    <div class="qa-divider"></div>
+    <button class="qa-item" type="button" data-qa="meetings">Meeting&hellip;</button>
+    <button class="qa-item" type="button" data-qa="fnas">FNA&hellip;</button>
+    <button class="qa-item" type="button" data-qa="quotes">Quote&hellip;</button>
+    <button class="qa-item" type="button" data-qa="cases">Case&hellip;</button>
+  `;
+}
+
+function _openQuickAdd(anchorEl, clientId) {
+  _closeQuickAdd();
+
+  const popover = document.createElement('div');
+  popover.className = 'qa-popover';
+  popover.id = 'quick-add-popover';
+  popover.innerHTML = _quickAddMenuHTML();
+  document.body.appendChild(popover);
+
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = popover.getBoundingClientRect();
+  let left = rect.right - popRect.width;
+  left = Math.max(12, Math.min(left, window.innerWidth - popRect.width - 12));
+  let top = rect.bottom + 6;
+  if (top + popRect.height > window.innerHeight - 12) top = rect.top - popRect.height - 6;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+
+  popover.addEventListener('click', e => {
+    const btn = e.target.closest('[data-qa]');
+    if (!btn) return;
+    const qa = btn.dataset.qa;
+    _closeQuickAdd();
+    if (qa === 'referral') {
+      updateClient(clientId, d => { d.referrals = (d.referrals || 0) + 1; });
+    } else {
+      openCheckoutForClient(clientId, qa);
+    }
+  });
+
+  // Deferred so the click that opened the popover doesn't immediately close it.
+  setTimeout(() => document.addEventListener('click', _outsideQuickAddClick, true), 0);
+}
+
 function _setCardView(row, detail, view) {
   row.dataset.view = view;
   detail.querySelectorAll('.detail-view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
@@ -317,6 +535,32 @@ function _setCardView(row, detail, view) {
 // closes the card. Only one card is open at a time.
 function initClientCards(root) {
   root.addEventListener('click', e => {
+    // The In Progress / Accepted switch: clicking the side that isn't
+    // already active moves the case into that array, dated today.
+    const statusBtn = e.target.closest('[data-action="set-case-status"]');
+    if (statusBtn) {
+      e.stopPropagation();
+      const target = statusBtn.dataset.target;
+      if (target === statusBtn.dataset.kind) return;
+      const clientId = statusBtn.dataset.client;
+      const idx = Number(statusBtn.dataset.idx);
+      const from = target === 'accepted' ? 'casesInProgress' : 'acceptedCases';
+      const to = target === 'accepted' ? 'acceptedCases' : 'casesInProgress';
+      updateClient(clientId, d => {
+        const [item] = (d[from] || []).splice(idx, 1);
+        if (item) d[to] = _addDatedItem(d[to] || [], { ...item, date: _todayIso() });
+      });
+      return;
+    }
+
+    const quickAddBtn = e.target.closest('.qa-btn');
+    if (quickAddBtn) {
+      e.stopPropagation();
+      const row = quickAddBtn.closest('.list-row');
+      _openQuickAdd(quickAddBtn, row.dataset.cardId);
+      return;
+    }
+
     const row = e.target.closest('.list-row');
     if (!row) return;
     const detail = row.parentElement.querySelector('.row-detail');

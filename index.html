@@ -55,6 +55,9 @@
     </style>
   </head>
   <body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="components/supabase-client.js"></script>
+    <script src="components/auth.js"></script>
     <script src="constants.js"></script>
     <script src="components/month-bar.js"></script>
     <script src="components/pcr-meter.js"></script>
@@ -174,8 +177,11 @@
     </div>
 
     <script>
-      initMonthBar("month-bar-container");
-      initPcrMeter("pcr-meter-container", { periodLabel: getCurrentPeriodLabel() });
+      initAuth();
+      const pcrMeter = initPcrMeter("pcr-meter-container", { periodLabel: getCurrentPeriodLabel() });
+      initMonthBar("month-bar-container", {
+        onNavigate: (period) => pcrMeter.setPeriodLabel(period.label),
+      });
       initClientFunnel("client-funnel-container");
       initMonthlyStats("monthly-stats-container");
       initClientCards(document);
