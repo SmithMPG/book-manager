@@ -113,8 +113,10 @@ const LEADERBOARD_COLUMNS = [
   { key: "pcr", label: "PCR’s" },
 ];
 
+// PCR in full with thousand separators (money.js); PCR is a score, not
+// rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (key === "pcr") return "R" + (value >= 1000 ? Math.round(value / 1000) + "k" : value);
+  if (key === "pcr") return formatNumber(value);
   return value;
 }
 

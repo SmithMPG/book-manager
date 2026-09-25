@@ -102,3 +102,15 @@ function casePcr(item) {
 function caseIsRisk(caseType) {
   return caseCommissionRule(caseType) === 'risk';
 }
+
+// Case statuses (card and checkout) are free text, plus the standard
+// ones in the status box's arrow (status-input.js). The ending statuses
+// close the case; a status matching one of them exactly is an ending,
+// anything else (on a closed case) reopens it. See
+// add_case_status in supabase/schema.sql.
+const CASE_ENDING_STATUSES = { Accepted: 'accepted', 'Not taken up': 'not-taken-up' };
+const CASE_FIRST_STATUS = 'Case opened';
+
+function caseEndingFor(text) {
+  return CASE_ENDING_STATUSES[(text || '').trim()] || null;
+}

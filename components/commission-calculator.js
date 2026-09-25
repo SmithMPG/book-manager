@@ -135,7 +135,8 @@ function _injectCommissionCalculatorCSS() {
       letter-spacing: 0.04em;
       color: var(--ink-dim);
     }
-    .cc-field input[type="number"] {
+    .cc-field input[type="number"],
+    .cc-field input[data-money] {
       border: 1px solid rgba(0, 0, 0, 0.12);
       border-radius: 6px;
       padding: 8px 10px;
@@ -143,7 +144,8 @@ function _injectCommissionCalculatorCSS() {
       font-family: inherit;
       color: var(--ink);
     }
-    .cc-field input[type="number"]:focus { border-color: var(--gold); outline: none; }
+    .cc-field input[type="number"]:focus,
+    .cc-field input[data-money]:focus { border-color: var(--gold); outline: none; }
 
     .cc-field-row {
       display: flex;
@@ -258,19 +260,13 @@ function _ccRiskProjection(monthlyPremium, escalationPct) {
   return { yearlyCommission, yearlyBreakdown, premiums };
 }
 
-function _ccCurrency(n) {
-  if (!isFinite(n)) n = 0;
-  return 'R' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
+// Rand and PCR are shown with formatRand / formatNumber (money.js) — PCR
+// is a scoring total, not a Rand payout, so it drops the currency prefix.
 
-// PCR is a scoring total, not a Rand payout, so it drops the currency prefix.
-function _ccNumberOnly(n) {
-  if (!isFinite(n)) n = 0;
-  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
-
+// Money fields hold formatted text ("2 500 000", money.js); percentages
+// and years are plain numbers.
 function _ccNum(v) {
-  const n = parseFloat(v);
+  const n = parseFloat(String(v ?? '').replace(/\s/g, ''));
   return isFinite(n) ? n : 0;
 }
 
@@ -343,7 +339,7 @@ function _ccFieldsHTML(category, v) {
     return `
       <div class="cc-field">
         <label>Monthly Premium</label>
-        <input type="number" min="0" data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
+        <input ${MONEY_INPUT_ATTRS} data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
       </div>
       <div class="cc-field">
         <label>Annual Escalation %</label>
@@ -356,7 +352,7 @@ function _ccFieldsHTML(category, v) {
       <div class="cc-field-row">
         <div class="cc-field">
           <label>Lump Sum</label>
-          <input type="number" min="0" data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
         </div>
         <div class="cc-field">
           <label>Upfront Advice Fee %</label>
@@ -366,7 +362,7 @@ function _ccFieldsHTML(category, v) {
       <div class="cc-field-row">
         <div class="cc-field">
           <label>Monthly Premium</label>
-          <input type="number" min="0" data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
         </div>
         <div class="cc-field">
           <label>Annual Escalation %</label>
@@ -405,11 +401,11 @@ function _ccFieldsHTML(category, v) {
       <div class="cc-field-row">
         <div class="cc-field">
           <label>Investment Amount</label>
-          <input type="number" min="0" data-field="amount" value="${v.amount}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="amount" value="${v.amount}" placeholder="0">
         </div>
         <div class="cc-field">
           <label>Monthly Premium</label>
-          <input type="number" min="0" data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
         </div>
       </div>
       <div class="cc-field">
@@ -444,7 +440,7 @@ function _ccFieldsHTML(category, v) {
       <div class="cc-field-row">
         <div class="cc-field">
           <label>Lump Sum</label>
-          <input type="number" min="0" data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="lumpSum" value="${v.lumpSum}" placeholder="0">
         </div>
         <div class="cc-field">
           <label>Upfront Advice Fee %</label>
@@ -454,7 +450,7 @@ function _ccFieldsHTML(category, v) {
       <div class="cc-field-row">
         <div class="cc-field">
           <label>Monthly Premium</label>
-          <input type="number" min="0" data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
+          <input ${MONEY_INPUT_ATTRS} data-field="monthlyPremium" value="${v.monthlyPremium}" placeholder="0">
         </div>
         <div class="cc-field">
           <label>Annual Escalation %</label>
@@ -497,44 +493,44 @@ function _ccResultsHTML(category, v) {
     const shownYears = hasEscalation ? r.yearlyCommission : r.yearlyCommission.slice(0, 2);
     const yearRows = shownYears.map((amt, i) => {
       const parts = r.yearlyBreakdown[i];
-      const breakdown = parts.length > 1 ? parts.map(p => _ccNumberOnly(p)).join(' + ') + ' = ' : '';
-      return `<div class="cc-year-row"><span>Year ${i + 1} <span class="cc-year-premium">(${_ccCurrency(r.premiums[i])} premium)</span></span><b>${breakdown}${_ccCurrency(amt)}</b></div>`;
+      const breakdown = parts.length > 1 ? parts.map(p => formatNumber(p)).join(' + ') + ' = ' : '';
+      return `<div class="cc-year-row"><span>Year ${i + 1} <span class="cc-year-premium">(${formatRand(r.premiums[i])} premium)</span></span><b>${breakdown}${formatRand(amt)}</b></div>`;
     }).join('');
     const total = shownYears.reduce((a, b) => a + b, 0);
     const totalLabel = hasEscalation ? `${CC_RISK_PROJECTION_YEARS}-Year Total` : '2-Year Total';
     return `
-      <div class="cc-result-row"><span>Annual Premium</span><b>${_ccCurrency(r.annual)}</b></div>
-      <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
+      <div class="cc-result-row"><span>Annual Premium</span><b>${formatRand(r.annual)}</b></div>
+      <div class="cc-result-row"><span>PCR</span><b>${formatNumber(r.pcr)}</b></div>
       <div class="cc-year-table">${yearRows}</div>
-      <div class="cc-result-row cc-result-highlight"><span>${totalLabel}</span><b>${_ccCurrency(total)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>${totalLabel}</span><b>${formatRand(total)}</b></div>
     `;
   }
   if (category === 'builder-ra') {
     return `
-      <div class="cc-result-row"><span>Annual Premium</span><b>${_ccCurrency(r.annual)}</b></div>
-      <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Commission</span><b>${_ccCurrency(r.commission)}</b></div>
-      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${_ccCurrency(r.futureValue)}</b></div>
-      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${_ccCurrency(r.upfrontCommission)}</b></div>
+      <div class="cc-result-row"><span>Annual Premium</span><b>${formatRand(r.annual)}</b></div>
+      <div class="cc-result-row"><span>PCR</span><b>${formatNumber(r.pcr)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Commission</span><b>${formatRand(r.commission)}</b></div>
+      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${formatRand(r.futureValue)}</b></div>
+      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${formatRand(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${formatRand(r.upfrontCommission)}</b></div>
     `;
   }
   if (category === 'investments') {
     return `
-      <div class="cc-result-row"><span>Annual Premium</span><b>${_ccCurrency(r.annual)}</b></div>
-      <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${_ccCurrency(r.upfrontCommission)}</b></div>
-      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${_ccCurrency(r.futureValue)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row"><span>Annual Premium</span><b>${formatRand(r.annual)}</b></div>
+      <div class="cc-result-row"><span>PCR</span><b>${formatNumber(r.pcr)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${formatRand(r.upfrontCommission)}</b></div>
+      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${formatRand(r.futureValue)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Ongoing Advice Fee / mo</span><b>${formatRand(r.ongoingMonthly)}</b></div>
     `;
   }
   if (category === 'liberty-ra') {
     return `
-      <div class="cc-result-row"><span>Annual Premium</span><b>${_ccCurrency(r.annual)}</b></div>
-      <div class="cc-result-row"><span>PCR</span><b>${_ccNumberOnly(r.pcr)}</b></div>
-      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${_ccCurrency(r.futureValue)}</b></div>
-      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${_ccCurrency(r.ongoingMonthly)}</b></div>
-      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${_ccCurrency(r.upfrontCommission)}</b></div>
+      <div class="cc-result-row"><span>Annual Premium</span><b>${formatRand(r.annual)}</b></div>
+      <div class="cc-result-row"><span>PCR</span><b>${formatNumber(r.pcr)}</b></div>
+      <div class="cc-result-row"><span>Projected Value (Yr ${v.years})</span><b>${formatRand(r.futureValue)}</b></div>
+      <div class="cc-result-row"><span>Ongoing Advice Fee / mo</span><b>${formatRand(r.ongoingMonthly)}</b></div>
+      <div class="cc-result-row cc-result-highlight"><span>Upfront Commission</span><b>${formatRand(r.upfrontCommission)}</b></div>
     `;
   }
   return '';

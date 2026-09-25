@@ -57,6 +57,7 @@
   <body>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="components/supabase-client.js"></script>
+    <script src="components/money.js"></script>
     <script src="components/app-mode.js"></script>
     <script src="components/auth.js"></script>
     <script src="constants.js"></script>
@@ -69,6 +70,9 @@
     <script src="components/client-details.js"></script>
     <script src="components/client-cases.js"></script>
     <script src="components/client-card.js"></script>
+    <script src="components/status-input.js"></script>
+    <script src="components/card-items.js"></script>
+    <script src="components/choice-dialog.js"></script>
     <script src="components/commission-calculator.js"></script>
     <script src="components/checkout.js"></script>
     <script src="components/leaderboard.js"></script>
@@ -192,6 +196,7 @@
       const funnel = initClientFunnel("client-funnel-container");
       const monthlyStats = initMonthlyStats("monthly-stats-container");
       initClientCards(document);
+      initCardItems(document);
       initCommissionCalculator("commission-calc-trigger");
       initCheckout("checkout-trigger");
       initEditablePanels(document);
@@ -215,6 +220,12 @@
       document.querySelectorAll(".tab-bar .tab").forEach((tab) => {
         tab.addEventListener("click", () => activateTab(tab));
       });
+
+      // Switch to a tab by name, e.g. after a client moves there.
+      function showTab(name) {
+        const tab = document.querySelector('.tab-bar .tab[data-tab="' + name + '"]');
+        if (tab) activateTab(tab);
+      }
 
       // Drag a card onto a tab heading to move it into that stage.
       // Delegated on document (rather than queried once at load) since
@@ -262,6 +273,16 @@
           if (!targetTabContent || sourceTabContent === targetTabContent) return;
           const card = draggedCard;
           const clientId = card.querySelector(".list-row").dataset.cardId;
+          // A client with an open case belongs in Business; they can be
+          // dragged there, but not out anywhere else until it's closed.
+          if (tab.dataset.tab !== "business" && (getClientData(clientId)?.casesInProgress || []).length) {
+            showChoiceDialog({
+              title: "Open cases",
+              message: "This client has open cases, please close the cases before moving them.",
+              choices: [{ label: "OK", value: true, primary: true }],
+            });
+            return;
+          }
           const sourceList = card.parentElement;
           // Move it straight away; put it back if the save fails.
           targetTabContent.querySelector('[id$="-cards"]').appendChild(card);

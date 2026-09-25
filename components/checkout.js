@@ -13,22 +13,25 @@
 //   4. Quotes — client, and whether it was for Risk, Investment, or both.
 //   5. Cases — client, case type, and the lump sum / monthly payment.
 //   6. Wills leads — client only.
-//   7. A status update for every client in the Business tab, every day,
-//      even when nothing changed — pick a standard update, write a custom
-//      one, or "Same as last" to copy the previous one.
+//   7. A status update for every open case, every day, even when nothing
+//      changed — type one, or pick "Same as last", "Accepted" or "Not
+//      taken up" (the last two close the case) from the box's arrow
+//      (status-input.js). It's added to that case's log.
 //
 // Each item page (2-6) always ends in one empty, ready-to-fill row; picking
 // a client for it turns it into a real entry and a fresh empty row takes
 // its place automatically — there's no separate "add" button. Anything
-// already logged for the day (via the client card's own quick-add "+",
-// or an earlier checkout for the same date) shows above those rows as a
+// already logged for the day (added on the client's card, or in an
+// earlier checkout for the same date) shows above those rows as a
 // locked, read-only line, so it's never double-entered.
 //
 // Clients are picked from the DB; if the person isn't there yet, "+ Add
 // ... as new client" creates them on the spot (they land in Prospects).
 // Next validates the page you're on; Submit saves the new clients, items
-// and statuses to the database (data.js), dated for the checkout day,
-// marks that day as checked out, then reloads the cards and dashboard.
+// and case statuses to the database (data.js), dated for the checkout
+// day, marks that day as checked out, then reloads the cards and
+// dashboard — and moves any client whose cases now say they belong in
+// another tab (card-items.js syncTabAfterCaseChange).
 // Depends on client-card.js (client store, _caseAmountsSuffix),
 // client-cases.js (CASE_TYPES), month-bar.js (date helpers) and data.js
 // (saving, reloading).
@@ -337,7 +340,6 @@ function _injectCheckoutCSS() {
     .co-status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
     .co-status-name { font-size: 14px; font-weight: 600; }
     .co-status-last { font-size: 12px; color: var(--ink-dim); margin-bottom: 8px; }
-    .co-status-preset { margin-bottom: 6px; }
     .co-link {
       background: transparent;
       border: none;
@@ -407,17 +409,6 @@ const CHECKOUT_MEETING_TYPES = [
   { key: 'closing', label: 'Closing' },
 ];
 
-// A short menu of common updates; "Custom" leaves the box for free text.
-const CHECKOUT_STATUS_PRESETS = [
-  'No change since last update',
-  'Meeting held, awaiting next steps',
-  'Follow-up call made',
-  'Quote sent, awaiting feedback',
-  'Waiting on client documents',
-  'Application submitted to provider',
-  'Case underwritten, awaiting outcome',
-];
-
 // The item pages, in wizard order. Each item is assigned to a client. Every
 // page keeps one open, empty row at the end — picking a client for it
 // replaces it with a fresh empty one, so there's no separate "add" step.
@@ -462,6 +453,12 @@ function _newCheckoutRow(key, id) {
   if (key === 'quotes') { row.risk = false; row.investment = false; }
   if (key === 'cases') { row.caseType = ''; row.lumpSum = ''; row.monthly = ''; row.adviceFeePercent = ''; }
   return row;
+}
+
+// A field's value as the row stores it: money boxes (money.js) as a
+// plain number, everything else as typed.
+function _checkoutFieldValue(el) {
+  return el.matches('[data-money]') ? (parseMoney(el.value) ?? '') : el.value;
 }
 
 // A case row's fields (caseType) don't line up 1:1 with the stored case
@@ -525,6 +522,7 @@ class Checkout {
     this.createdIds = {};
     this.activitiesSaved = false;
     this.casesSaved = false;
+    this.statusesSaved = new Set();
     this.statuses = {};
     this.step = 0;
     this.maxStep = 0;
@@ -541,23 +539,8 @@ class Checkout {
     this.overlay.classList.remove('open');
   }
 
-  // Opened from a client card's "+": today's checkout (a live, in-the-
-  // moment entry, not yesterday's wrap-up), jumped straight to the given
-  // section with this client already sitting in its open row.
-  openForClient(clientId, sectionKey) {
-    this.open(new Date());
-    const rows = this.rows[sectionKey];
-    if (!rows) return;
-    rows[rows.length - 1].client = { kind: 'existing', id: clientId };
-    this._normalizeRows(sectionKey);
-    const stepIndex = CHECKOUT_STEPS.findIndex(s => s.key === sectionKey);
-    this.maxStep = Math.max(this.maxStep, stepIndex);
-    this.step = stepIndex;
-    this._render();
-  }
-
   // Anything already recorded against a client for this checkout's date —
-  // from the card's own quick-add "+", or an earlier checkout for the same
+  // added on the client's card, or in an earlier checkout for the same
   // day — shown read-only so it's never logged twice.
   _computeLocked() {
     const iso = _checkoutIso(this.date);
@@ -744,21 +727,21 @@ class Checkout {
     const opts = CASE_TYPES.map(t => `<option value="${_escHtml(t)}"${t === row.caseType ? ' selected' : ''}>${_escHtml(t)}</option>`).join('');
     const monthlyOnly = CHECKOUT_MONTHLY_ONLY_CASE_TYPES.includes(row.caseType);
     const usesAdviceFee = caseUsesAdviceFee(row.caseType);
-    const estimate = _formatRand(_caseRowCommission(row));
+    const estimate = formatRand(_caseRowCommission(row));
     return `
       <div class="co-case-card" data-row="${row.id}">
         ${this._pickerHTML(row)}
         <select class="co-select${missingType ? ' error' : ''}" data-field="caseType"><option value="">Select type&hellip;</option>${opts}</select>
         <div class="co-field">
           <label>Lump sum</label>
-          <input class="co-input" type="number" min="0" step="0.01" placeholder="R 0.00" data-field="lumpSum" value="${_escHtml(row.lumpSum)}"${monthlyOnly ? ' disabled' : ''}>
+          <input class="co-input" ${MONEY_INPUT_ATTRS} placeholder="R 0" data-field="lumpSum" value="${moneyInputValue(row.lumpSum)}"${monthlyOnly ? ' disabled' : ''}>
         </div>
         <div class="co-field">
           <label>Monthly payment</label>
-          <input class="co-input" type="number" min="0" step="0.01" placeholder="R 0.00" data-field="monthly" value="${_escHtml(row.monthly)}">
+          <input class="co-input" ${MONEY_INPUT_ATTRS} placeholder="R 0" data-field="monthly" value="${moneyInputValue(row.monthly)}">
         </div>
         <div class="co-field">
-          <label>Advice fee %</label>
+          <label>Upfront advice fee %</label>
           <input class="co-input" type="number" min="0" step="0.01" placeholder="0.00" data-field="adviceFeePercent" value="${_escHtml(row.adviceFeePercent)}"${usesAdviceFee ? '' : ' disabled'}>
         </div>
         <div class="co-field">
@@ -770,8 +753,15 @@ class Checkout {
     `;
   }
 
-  _businessClients() {
-    return getClientRecords().filter(c => c.tab === 'business');
+  // Every open case across the FA's clients, with its client's name and
+  // current status. statuses below is keyed by case id.
+  _openCases() {
+    return getClientRecords().flatMap(c => (getClientData(c.id).casesInProgress || []).map(k => ({
+      id: k.id,
+      clientId: c.id,
+      label: `${c.name} · ${k.type}`,
+      last: (k.statuses || [])[0] || null,
+    })));
   }
 
   _recapHTML() {
@@ -784,39 +774,37 @@ class Checkout {
   }
 
   _statusesHTML() {
-    const clients = this._businessClients();
-    const presetOpts = CHECKOUT_STATUS_PRESETS.map(p => `<option value="${_escHtml(p)}">${_escHtml(p)}</option>`).join('');
-    const blocks = clients.length ? clients.map(c => {
-      const last = (getClientData(c.id).statuses || [])[0];
-      const missing = this.showErrors && !(this.statuses[c.id] || '').trim();
+    const cases = this._openCases();
+    const blocks = cases.length ? cases.map(k => {
+      const missing = this.showErrors && !(this.statuses[k.id] || '').trim();
       return `
         <div class="co-status">
           <div class="co-status-head">
-            <span class="co-status-name">${_escHtml(c.name)}</span>
-            <button class="co-link" type="button" data-action="same-status" data-client="${c.id}"${last ? '' : ' disabled'}>Same as last</button>
+            <span class="co-status-name">${_escHtml(k.label)}</span>
           </div>
-          ${last ? `<div class="co-status-last">Last update, ${_formatStatusDate(last.date)}: ${_escHtml(last.text)}</div>` : ''}
-          <select class="co-select co-status-preset" data-client="${c.id}">
-            <option value="">Choose a standard update&hellip;</option>
-            ${presetOpts}
-            <option value="__custom">Custom&hellip;</option>
-          </select>
-          <textarea class="co-textarea co-status-input${missing ? ' error' : ''}" data-client="${c.id}" rows="2" placeholder="Today's status&hellip;">${_escHtml(this.statuses[c.id] || '')}</textarea>
+          ${k.last ? `<div class="co-status-last">Current status, ${_formatStatusTime(k.last.at)}: ${_escHtml(k.last.text)}</div>` : ''}
+          ${statusInputHTML({
+            value: this.statuses[k.id] || '',
+            last: k.last?.text || '',
+            attrs: `data-case="${k.id}"`,
+            className: `co-status-input${missing ? ' error' : ''}`,
+          })}
         </div>
       `;
-    }).join('') : '<div class="co-empty">No clients in Business.</div>';
+    }).join('') : '<div class="co-empty">No open cases.</div>';
 
     return `
       <div class="co-page-head">
         <div>
           <div class="co-page-title">Status updates</div>
-          <div class="co-page-hint">Every client in Business needs a new status today, even if nothing has changed.</div>
+          <div class="co-page-hint">Every open case needs a new status today, even if nothing has changed.</div>
         </div>
       </div>
       ${this._recapHTML()}
       ${blocks}
     `;
   }
+
 
   // ---------- clients ----------
 
@@ -921,12 +909,6 @@ class Checkout {
       this._focusPicker(key, this.rows[key][this.rows[key].length - 1].id);
       return;
     }
-    if (action === 'same-status') {
-      const id = btn.dataset.client;
-      const last = (getClientData(id).statuses || [])[0];
-      if (last) this.statuses[id] = last.text;
-      this._render();
-    }
   }
 
   _onInput(e) {
@@ -935,45 +917,31 @@ class Checkout {
       this.channels[t.dataset.channel] = t.value;
       this.body.querySelector('.co-total-value').textContent = this._prospectsTotal();
     } else if (t.matches('.co-status-input')) {
-      this.statuses[t.dataset.client] = t.value;
+      this.statuses[t.dataset.case] = t.value;
       t.classList.remove('error');
     } else if (t.matches('.co-picker-input')) {
       this._fillDropdown(t);
     } else if (t.matches('[data-field]')) {
       const row = this._rowFor(t);
       if (!row) return;
-      row[t.dataset.field] = t.value;
+      row[t.dataset.field] = _checkoutFieldValue(t);
       t.classList.remove('error');
       // Cases: update the live commission estimate without a full
       // re-render, so typing doesn't lose the field's cursor position.
       const card = t.closest('.co-case-card');
-      if (card) card.querySelector(".co-case-estimate").textContent = _formatRand(_caseRowCommission(row));
+      if (card) card.querySelector(".co-case-estimate").textContent = formatRand(_caseRowCommission(row));
     }
   }
 
   _onChange(e) {
     const t = e.target;
-    if (t.matches('.co-status-preset')) {
-      const clientId = t.dataset.client;
-      const box = this.body.querySelector(`.co-status-input[data-client="${clientId}"]`);
-      if (t.value === '__custom') {
-        box.value = '';
-        box.focus();
-      } else if (t.value) {
-        box.value = t.value;
-      }
-      this.statuses[clientId] = box.value;
-      box.classList.remove('error');
-      t.value = '';
-      return;
-    }
     const row = this._rowFor(t);
     if (!row || !t.dataset.field) return;
     if (t.type === 'checkbox') {
       row[t.dataset.field] = t.checked;
       t.closest('.co-checkbox-group')?.classList.remove('error');
     } else {
-      row[t.dataset.field] = t.value;
+      row[t.dataset.field] = _checkoutFieldValue(t);
       t.classList.remove('error');
     }
     // Risk and Educator are premium-only (no lump sum); everything except
@@ -1035,12 +1003,12 @@ class Checkout {
   // A page is valid when every row that's actually been started (has a
   // client) also has that section's own required fields — the ever-present
   // empty trailing row is skipped entirely, since it's not been touched.
-  // The status page instead needs every Business client filled in.
+  // The status page instead needs every open case filled in.
   _validateStep(i) {
     const step = CHECKOUT_STEPS[i];
     if (step.key === 'prospects') return true;
     if (step.key === 'status') {
-      return this._businessClients().every(c => (this.statuses[c.id] || '').trim());
+      return this._openCases().every(k => (this.statuses[k.id] || '').trim());
     }
     return this.rows[step.key].filter(row => row.client).every(row => {
       if (step.key === 'meetings') return !!row.meetingType;
@@ -1079,6 +1047,9 @@ class Checkout {
       // show exactly what was saved.
       await loadAppData();
       this.close();
+      for (const clientId of this.clientsToSync) {
+        await syncTabAfterCaseChange(clientId).catch(showSaveError);
+      }
     } catch (err) {
       console.error(err);
       this.errorMsg.textContent = `Couldn't save — ${err.message || err}. Nothing was lost; try Submit again.`;
@@ -1128,9 +1099,15 @@ class Checkout {
       advice_fee_percent: r.adviceFeePercent ? Number(r.adviceFeePercent) : null,
     }));
 
-    const statuses = this._businessClients()
-      .map(c => ({ clientId: c.id, text: (this.statuses[c.id] || '').trim() }))
+    const statuses = this._openCases()
+      .map(k => ({ caseId: k.id, clientId: k.clientId, text: (this.statuses[k.id] || '').trim() }))
       .filter(st => st.text);
+    // Clients whose tab may need to change once this is saved: anyone
+    // with a new case, or whose case this closes.
+    this.clientsToSync = new Set([
+      ...cases.map(c => c.client_id),
+      ...statuses.filter(st => caseEndingFor(st.text)).map(st => st.clientId),
+    ]);
 
     // Items and cases in one insert each, so neither is ever half-written;
     // the flags stop a retry from saving either twice.
@@ -1142,7 +1119,11 @@ class Checkout {
       await dbInsertCases(cases);
       this.casesSaved = true;
     }
-    await dbReplaceStatuses(iso, statuses);
+    for (const st of statuses) {
+      if (this.statusesSaved.has(st.caseId)) continue;
+      await dbAddCaseStatus(st.caseId, st.text);
+      this.statusesSaved.add(st.caseId);
+    }
     await dbMarkCheckedOut(iso);
   }
 }
@@ -1160,11 +1141,6 @@ function _syncCheckoutTrigger() {
 
 function openCheckout(date) {
   _checkoutInstance?.open(date);
-}
-
-// The client card's "+" quick-add: same wizard, jumped to one section.
-function openCheckoutForClient(clientId, sectionKey) {
-  _checkoutInstance?.openForClient(clientId, sectionKey);
 }
 
 function initCheckout(triggerId) {

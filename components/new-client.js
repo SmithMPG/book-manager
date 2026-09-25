@@ -1,5 +1,5 @@
 // New client: the small form behind the top bar's "+ New Client" button.
-// Name is required, phone and email optional; the client is saved
+// Just first name and surname; the client is saved
 // (data.js) and lands in the Prospects tab, same as a client added
 // on the fly during checkout.
 
@@ -29,7 +29,7 @@ function _injectNewClientCSS() {
     }
     .nc-title { margin: 0 0 18px; font-size: 17px; font-weight: 700; }
     .nc-row { display: flex; gap: 12px; }
-    .nc-row .nc-field { flex: 1; }
+    .nc-row .nc-field { flex: 1; min-width: 0; }
     .nc-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
     .nc-field label {
       font-size: 11px;
@@ -39,6 +39,8 @@ function _injectNewClientCSS() {
       color: var(--ink-dim);
     }
     .nc-field input {
+      width: 100%;
+      box-sizing: border-box;
       border: 1px solid rgba(0, 0, 0, 0.15);
       border-radius: 6px;
       padding: 8px 10px;
@@ -91,14 +93,6 @@ function initNewClient(triggerSelector) {
             <input id="nc-last" autocomplete="off" required>
           </div>
         </div>
-        <div class="nc-field">
-          <label for="nc-phone">Phone (optional)</label>
-          <input id="nc-phone" type="tel" autocomplete="off">
-        </div>
-        <div class="nc-field">
-          <label for="nc-email">Email (optional)</label>
-          <input id="nc-email" type="email" autocomplete="off">
-        </div>
         <div class="nc-error" id="nc-error"></div>
         <div class="nc-actions">
           <button type="button" class="nc-cancel" id="nc-cancel">Cancel</button>
@@ -139,12 +133,7 @@ function initNewClient(triggerSelector) {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
     try {
-      const card = await dbCreateClient({
-        firstName,
-        lastName,
-        phone: document.getElementById('nc-phone').value.trim(),
-        email: document.getElementById('nc-email').value.trim(),
-      });
+      const card = await dbCreateClient({ firstName, lastName });
       appendClientCard('prospects-cards', card);
       close();
     } catch (err) {

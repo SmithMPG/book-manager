@@ -4,7 +4,7 @@
 // Admins (users.is_admin) get a toggle in the top bar to switch between
 // working as an FA (their own book) and admin mode (the whole team).
 // FAs never see it, and can't give themselves admin: is_admin isn't a
-// column they're granted update on (supabase/fa-list.sql).
+// column they're granted update on (supabase/schema.sql).
 //
 // The toggle is a view choice, not a permission: an admin's database
 // reads return everyone's rows either way (RLS's is_admin()), so any

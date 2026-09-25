@@ -23,13 +23,6 @@
 -- Don't delete and recreate their login: deleting it also deletes their
 -- users row and all their clients/cases/activities.
 
--- "users update own" let anyone update ANY column of their own row —
--- including is_admin, i.e. any FA could make themselves an admin. RLS
--- picks the rows; column grants pick the columns. Only these are the
--- person's own to change; everything else is the dashboard's.
-revoke update on users from authenticated;
-grant update (phone, password_set) on users to authenticated;
-
 -- pcr_target is the monthly Validation target in PCR; High Flyer is
 -- always 3x that (pcr-meter.js). Null = no target (Ameeth, as the
 -- manager; Joshua until his is confirmed).

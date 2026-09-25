@@ -6,6 +6,9 @@
 // every case still in progress (not yet accepted) across every client in
 // the Business tab — the pipeline that hasn't landed yet.
 //
+// PCR's in the Pot: PCR (casePcr in constants.js) for those same
+// in-progress cases — submitted, not yet accepted.
+//
 // Expected Commission This Month: upfront commission for cases that have
 // been accepted (see the Accept toggle on a client's Cases list) and
 // landed in the Clients tab, filtered to acceptances dated within the
@@ -31,6 +34,16 @@ function _commissionInThePot() {
   return total;
 }
 
+function _pcrInThePot() {
+  let total = 0;
+  getClientRecords().filter(c => c.tab === 'business').forEach(c => {
+    (getClientData(c.id).casesInProgress || []).forEach(item => {
+      total += casePcr(item);
+    });
+  });
+  return total;
+}
+
 function _expectedCommissionThisMonth() {
   const period = _commissionCurrentMonthPeriod();
   let total = 0;
@@ -43,9 +56,8 @@ function _expectedCommissionThisMonth() {
   return total;
 }
 
-function _formatCommissionRand(n) {
-  return `R${Math.round(n).toLocaleString('en-ZA')}`;
-}
+// Rand for commission; PCR is a score, not rand, so no currency prefix
+// (formatRand / formatNumber, money.js).
 
 class MonthlyStats {
   constructor(container, config) {
@@ -70,8 +82,9 @@ class MonthlyStats {
     const c = this.config;
     this.container.innerHTML = `
       <div class="stat-list">
-        <div class="stat-cell">Commission in the Pot: <b>${_formatCommissionRand(_commissionInThePot())}</b></div>
-        <div class="stat-cell">Expected Commission This Month: <b>${_formatCommissionRand(_expectedCommissionThisMonth())}</b></div>
+        <div class="stat-cell">Commission in the Pot: <b>${formatRand(_commissionInThePot())}</b></div>
+        <div class="stat-cell">PCR&#8217;s in the Pot: <b>${formatNumber(_pcrInThePot())}</b></div>
+        <div class="stat-cell">Expected Commission This Month: <b>${formatRand(_expectedCommissionThisMonth())}</b></div>
         <div class="stat-cell">Wills Leads Submitted MTD: <b>${c.willsLeadsMonthly}</b></div>
         <div class="stat-cell">Referrals This Month: <b>${c.referralsMonthly}</b></div>
       </div>

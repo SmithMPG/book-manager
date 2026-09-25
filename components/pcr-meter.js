@@ -67,12 +67,6 @@ function _injectPcrMeterCSS() {
 }
 _injectPcrMeterCSS();
 
-function pcrFormatNumber(n) {
-  return Math.round(n)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
-
 // Compact tick labels so the ring doesn't feel cramped: 400000 -> "400k", 1200000 -> "1.2m".
 function pcrFormatCompact(n) {
   if (n === 0) return "0";

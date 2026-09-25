@@ -3,7 +3,7 @@
 -- users       one row per person (FA or admin). Identity, role, PCR target.
 -- clients     one row per client card. Belongs to the user who owns them
 --             (fa_id) — this is what changes on a handover.
--- activities  meetings, FNAs, quotes, wills leads, statuses, prospect
+-- activities  meetings, FNAs, quotes, wills leads, referrals, prospect
 --             contacts, AND daily checkout confirmations — all in one
 --             table via `type` + a `details` jsonb column for whatever's
 --             specific to that type. Real rows, not JSON embedded on
@@ -15,10 +15,8 @@
 --             client records — call 50, 3 book a meeting, nothing to
 --             attach the other 47 to) and checkout (a day being reviewed
 --             isn't about any one client).
---             case_id is nullable too: a status entry can belong to a
---             specific case (case_id set — this is how "Case Accepted"
---             closes a case out) or to the client generally (case_id
---             null — the day-to-day relationship note).
+--             case_id is unused for now (statuses live on cases —
+--             see case_statuses below).
 --             fa_id here is who actually did the work, and it never
 --             changes — if a client is handed to a new FA, their history
 --             stays attributed to whoever really did it. Compare cases,
@@ -30,8 +28,8 @@
 --             this DOES change on a handover (see the trigger below),
 --             since the case and its commission genuinely transfer to
 --             whoever now services the client. Its own status history
---             lives on the row too (case_statuses), separate from
---             activities, since "Case Accepted" is a case-scoped event.
+--             lives on the row too (case_statuses) — there are no
+--             client-level statuses.
 --
 -- No separate checkouts table, and no compliance/admin dashboard yet —
 -- deferred until the admin dashboard actually gets built. A checkout
@@ -94,10 +92,12 @@ create index clients_fa_id_idx on clients(fa_id);
 
 -- ---------------------------------------------------------------------
 -- cases: the app's 22-product case-type list (see CASE_TYPES in
--- components/client-cases.js). Its own status history (case_statuses)
--- carries the day-to-day case-specific updates; "Case Accepted" is one
--- of those status values, and applying it is what flips `status` and
--- sets `accepted_at` on this same row.
+-- components/client-cases.js). Its status history (case_statuses,
+-- newest first — the first entry is the current status) carries the
+-- day-to-day updates, several a day if need be. The "Accepted" and "Not
+-- taken up" presets end the case; any other status on a closed case
+-- reopens it. add_case_status() (below) writes an entry and
+-- sets `status` / `accepted_at` to match, in one statement.
 -- ---------------------------------------------------------------------
 create table cases (
   id                  uuid primary key default gen_random_uuid(),
@@ -105,13 +105,13 @@ create table cases (
   fa_id               uuid not null references users(id) on delete cascade, -- current servicing FA; moves on handover
   case_type           text not null,
   status              text not null default 'in-progress'
-                        check (status in ('in-progress', 'accepted')),
+                        check (status in ('in-progress', 'accepted', 'not-taken-up')),
   initiated_date      date not null,
   accepted_at         date,
   lump_sum            numeric,
   monthly             numeric,
   advice_fee_percent  numeric,
-  case_statuses       jsonb not null default '[]'::jsonb, -- [{date, text}], newest first
+  case_statuses       jsonb not null default '[]'::jsonb, -- [{at, text, ending}], newest first
   created_at          timestamptz not null default now()
 );
 create index cases_fa_id_idx on cases(fa_id);
@@ -119,15 +119,13 @@ create index cases_client_id_idx on cases(client_id);
 create index cases_status_idx on cases(status);
 
 -- ---------------------------------------------------------------------
--- activities: meetings / fnas / quotes / wills_leads / statuses /
+-- activities: meetings / fnas / quotes / wills_leads / referrals /
 -- prospect_contacts / checkout confirmations, one table, `type` +
 -- `details` for whatever's type-specific:
 --   meeting          {meetingType: factFinder|relational|closing, joint: bool}
 --   fna              {}
 --   quote            {risk: bool, investment: bool}
 --   wills_lead       {}
---   status           {text: string} — client_id required; case_id set
---                    only when this status belongs to one specific case
 --   prospect_contact {channel: phoned|emailed|messaged|linkedin|other,
 --                    count: int} — one row per channel per checkout;
 --                    client_id left null (see header note)
@@ -143,7 +141,7 @@ create table activities (
   client_id   uuid references clients(id) on delete cascade,        -- null only for prospect_contact / checkout
   case_id     uuid references cases(id) on delete cascade,          -- set only for a case-scoped status
   type        text not null
-                check (type in ('meeting', 'fna', 'quote', 'wills_lead', 'status', 'prospect_contact', 'checkout', 'referral')),
+                check (type in ('meeting', 'fna', 'quote', 'wills_lead', 'prospect_contact', 'checkout', 'referral')),
   date        date not null,
   details     jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
@@ -219,3 +217,100 @@ grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on
   users, clients, cases, activities
   to authenticated, service_role;
+
+-- Column-level update rights on users: RLS picks the rows, this picks the
+-- columns. Without it "users update own" would let anyone change any
+-- column of their own row — including is_admin, i.e. any FA could make
+-- themselves an admin. Everything else is set from the dashboard.
+revoke update on users from authenticated;
+grant update (phone, password_set) on users to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Leaderboard. RLS rightly stops an FA reading anyone else's rows, but
+-- the leaderboard needs everyone's totals. This returns totals only —
+-- counts and summed amounts per FA for one business month, never an
+-- individual client, case or activity. PCR is worked out in the app
+-- (casePcr in constants.js) from the per-case-type sums, so its rules
+-- live in one place.
+-- ---------------------------------------------------------------------
+create or replace function public.leaderboard(p_start date, p_end date)
+returns jsonb
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce(jsonb_agg(to_jsonb(t) order by t.name), '[]'::jsonb)
+  from (
+    select
+      u.id,
+      u.name || ' ' || u.surname as name,
+      coalesce((select sum(coalesce((a.details->>'count')::int, 1)) from public.activities a
+        where a.fa_id = u.id and a.type = 'prospect_contact' and a.date between p_start and p_end), 0) as prospects,
+      (select count(*) from public.activities a
+        where a.fa_id = u.id and a.type = 'referral' and a.date between p_start and p_end) as referrals,
+      (select count(*) from public.activities a
+        where a.fa_id = u.id and a.type = 'wills_lead' and a.date between p_start and p_end) as "willsLeads",
+      (select count(*) from public.activities a
+        where a.fa_id = u.id and a.type = 'fna' and a.date between p_start and p_end) as fnas,
+      (select count(*) from public.activities a
+        where a.fa_id = u.id and a.type = 'quote' and a.date between p_start and p_end) as quotes,
+      (select jsonb_build_object(
+          'factFinder', count(*) filter (where a.details->>'meetingType' = 'factFinder'),
+          'closing',    count(*) filter (where a.details->>'meetingType' = 'closing'),
+          'relational', count(*) filter (where a.details->>'meetingType' = 'relational'))
+        from public.activities a
+        where a.fa_id = u.id and a.type = 'meeting' and a.date between p_start and p_end) as meetings,
+      (select coalesce(jsonb_agg(jsonb_build_object(
+          'type', x.case_type, 'submitted', x.submitted,
+          'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly)), '[]'::jsonb)
+        from (
+          select c.case_type,
+            count(*) filter (where c.initiated_date between p_start and p_end) as submitted,
+            coalesce(sum(c.lump_sum) filter (where c.status = 'accepted' and c.accepted_at between p_start and p_end), 0) as accepted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.status = 'accepted' and c.accepted_at between p_start and p_end), 0) as accepted_monthly
+          from public.cases c where c.fa_id = u.id
+          group by c.case_type
+        ) x) as cases
+    from public.users u
+    where u.is_active and coalesce(u.branch, '') <> 'Test group'
+  ) t;
+$$;
+
+revoke execute on function public.leaderboard(date, date) from public, anon;
+grant execute on function public.leaderboard(date, date) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Adding a case status: one statement, so the log entry and the case's
+-- open/closed state can never disagree. Entries are {at, text, ending}:
+-- ending is 'accepted' | 'not-taken-up' (the two statuses that close a
+-- case) or null — any other status on a closed case reopens it. Runs as
+-- the calling user (security invoker), so RLS still limits it to their
+-- own cases. p_date is the FA's local today, used as the accepted date.
+-- ---------------------------------------------------------------------
+create or replace function public.add_case_status(p_case_id uuid, p_text text, p_ending text, p_date date)
+returns public.cases
+language plpgsql security invoker set search_path = ''
+as $$
+declare result public.cases;
+begin
+  if p_ending is not null and p_ending not in ('accepted', 'not-taken-up') then
+    raise exception 'Unknown ending status: %', p_ending;
+  end if;
+  if coalesce(trim(p_text), '') = '' then
+    raise exception 'A status needs some text.';
+  end if;
+
+  update public.cases set
+    case_statuses = jsonb_build_array(jsonb_build_object('at', now(), 'text', trim(p_text), 'ending', p_ending)) || case_statuses,
+    status        = coalesce(p_ending, 'in-progress'),
+    accepted_at   = case when p_ending = 'accepted' then p_date else null end
+  where id = p_case_id
+  returning * into result;
+
+  if not found then
+    raise exception 'Case not found.';
+  end if;
+  return result;
+end;
+$$;
+
+revoke execute on function public.add_case_status(uuid, text, text, date) from public, anon;
+grant execute on function public.add_case_status(uuid, text, text, date) to authenticated;

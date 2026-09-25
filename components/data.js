@@ -9,21 +9,34 @@
 //
 // Card data shape (what client-card.js renders) is built from three
 // tables: clients (one row per card), activities (meetings, FNAs,
-// quotes, wills leads, statuses — each a dated line on the card), and
-// cases (in progress / accepted). Every item keeps its database id so
-// it can be updated later (e.g. the case Accept toggle).
+// quotes, wills leads, referrals — each a dated line on the card), and
+// cases (in progress / accepted / not taken up, each with its own
+// status history). Every item keeps its database id so it can be
+// updated or deleted later.
 
 const _MEETING_TYPE_LABELS = { factFinder: 'Fact Finder', relational: 'Relational', closing: 'Closing' };
 
 function meetingText(details) {
   const label = _MEETING_TYPE_LABELS[details.meetingType] || 'Meeting';
-  return `${label} meeting${details.joint ? ' · joint call' : ''}`;
+  return `${label}${details.joint ? ' · Joint call' : ''}`;
 }
 
 function quoteText(details) {
-  const cover = details.risk && details.investment ? 'Risk & Investment' : details.risk ? 'Risk' : 'Investment';
-  return `Quote submitted · ${cover}`;
+  return details.risk && details.investment ? 'Risk & Investment' : details.risk ? 'Risk' : 'Investment';
 }
+
+// The card list line for one activity row. FNAs (and referrals, which
+// the card only counts) are just their date, so no text.
+function activityItem(a) {
+  const text = a.type === 'meeting' ? meetingText(a.details)
+    : a.type === 'quote' ? quoteText(a.details)
+    : a.type === 'wills_lead' ? 'Wills lead'
+    : '';
+  return { id: a.id, date: a.date, text };
+}
+
+// Which card list each activity type lives in.
+const ACTIVITY_TYPE_FOR_VIEW = { meetings: 'meeting', fnas: 'fna', quotes: 'quote' };
 
 function _dbOk({ data, error }) {
   if (error) throw error;
@@ -50,9 +63,12 @@ function _faId() {
 
 // ---------- reads ----------
 
-function _caseItem(c) {
+// statuses: [{at, text, ending}], newest first — statuses[0] is current.
+function caseItem(c) {
   return {
     id: c.id,
+    status: c.status,
+    statuses: c.case_statuses || [],
     type: c.case_type,
     date: c.status === 'accepted' ? c.accepted_at : c.initiated_date,
     initiatedDate: c.initiated_date,
@@ -64,8 +80,7 @@ function _caseItem(c) {
 
 function _cardFromRows(client, activities, cases) {
   const byDate = (a, b) => b.date.localeCompare(a.date);
-  const of = type => activities.filter(a => a.type === type);
-  const item = (a, text) => ({ id: a.id, date: a.date, text });
+  const of = type => activities.filter(a => a.type === type).map(activityItem).sort(byDate);
   return {
     id: client.id,
     tab: client.tab,
@@ -73,15 +88,15 @@ function _cardFromRows(client, activities, cases) {
     lastName: client.last_name,
     email: client.email || '',
     phone: client.phone || '',
-    referrals: client.referrals,
     details: { fullName: `${client.first_name} ${client.last_name}`.trim() },
-    meetings: of('meeting').map(a => item(a, meetingText(a.details))).sort(byDate),
-    fnas: of('fna').map(a => item(a, 'FNA completed')).sort(byDate),
-    quotes: of('quote').map(a => item(a, quoteText(a.details))).sort(byDate),
-    willsLeads: of('wills_lead').map(a => item(a, 'Wills lead')).sort(byDate),
-    statuses: of('status').map(a => item(a, a.details.text || '')).sort(byDate),
-    casesInProgress: cases.filter(c => c.status === 'in-progress').map(_caseItem).sort(byDate),
-    acceptedCases: cases.filter(c => c.status === 'accepted').map(_caseItem).sort(byDate),
+    referrals: of('referral'),
+    meetings: of('meeting'),
+    fnas: of('fna'),
+    quotes: of('quote'),
+    willsLeads: of('wills_lead'),
+    casesInProgress: cases.filter(c => c.status === 'in-progress').map(caseItem).sort(byDate),
+    acceptedCases: cases.filter(c => c.status === 'accepted').map(caseItem).sort(byDate),
+    notTakenUpCases: cases.filter(c => c.status === 'not-taken-up').map(caseItem).sort(byDate),
   };
 }
 
@@ -126,9 +141,31 @@ async function dbSetClientTab(clientId, tab) {
   _dbOk(await supabaseClient.from('clients').update({ tab }).eq('id', clientId));
 }
 
-async function dbAddReferral(clientId, currentCount, date) {
-  _dbOk(await supabaseClient.from('clients').update({ referrals: currentCount + 1 }).eq('id', clientId));
-  _dbOk(await supabaseClient.from('activities').insert({ fa_id: _faId(), client_id: clientId, type: 'referral', date }));
+// Saves the move and moves the card on screen.
+async function moveClientToTab(clientId, tab) {
+  await dbSetClientTab(clientId, tab);
+  moveClientCard(clientId, tab);
+  await refreshDashboard();
+}
+
+// One activity from a card's inline add; returns the saved row.
+async function dbAddActivity(clientId, type, date, details) {
+  return _dbOk(await supabaseClient.from('activities')
+    .insert({ fa_id: _faId(), client_id: clientId, type, date, details: details || {} })
+    .select().single());
+}
+
+async function dbDeleteActivity(id) {
+  _dbOk(await supabaseClient.from('activities').delete().eq('id', id));
+}
+
+// One case from a card's inline add; returns the saved row.
+async function dbAddCase(row) {
+  return _dbOk(await supabaseClient.from('cases').insert(_newCaseRow(row, _faId())).select().single());
+}
+
+async function dbDeleteCase(id) {
+  _dbOk(await supabaseClient.from('cases').delete().eq('id', id));
 }
 
 // rows: [{client_id, type, date, details}] — fa_id filled in here.
@@ -138,28 +175,32 @@ async function dbInsertActivities(rows) {
   _dbOk(await supabaseClient.from('activities').insert(rows.map(r => ({ ...r, fa_id: faId }))));
 }
 
+// Every new case starts its log with "Case opened", timestamped now.
+function _newCaseRow(r, faId) {
+  return {
+    ...r,
+    fa_id: faId,
+    status: 'in-progress',
+    case_statuses: [{ at: new Date().toISOString(), text: CASE_FIRST_STATUS, ending: null }],
+  };
+}
+
 // rows: [{client_id, case_type, initiated_date, lump_sum, monthly, advice_fee_percent}]
 async function dbInsertCases(rows) {
   if (!rows.length) return;
   const faId = _faId();
-  _dbOk(await supabaseClient.from('cases').insert(rows.map(r => ({ ...r, fa_id: faId }))));
+  _dbOk(await supabaseClient.from('cases').insert(rows.map(r => _newCaseRow(r, faId))));
 }
 
-// One status per client per day: replaces any earlier one for that date.
-// statuses: [{clientId, text}]
-async function dbReplaceStatuses(date, statuses) {
-  if (!statuses.length) return;
-  _dbOk(await supabaseClient.from('activities').delete()
-    .eq('fa_id', _faId()).eq('type', 'status').eq('date', date).is('case_id', null)
-    .in('client_id', statuses.map(s => s.clientId)));
-  await dbInsertActivities(statuses.map(s => ({ client_id: s.clientId, type: 'status', date, details: { text: s.text } })));
-}
-
-// Accepted gets dated today; moving back to in progress keeps the
-// original initiated date.
-async function dbSetCaseStatus(caseId, status, date) {
-  const patch = status === 'accepted' ? { status, accepted_at: date } : { status, accepted_at: null };
-  _dbOk(await supabaseClient.from('cases').update(patch).eq('id', caseId));
+// Adds a status to a case; "Accepted" / "Not taken up" close it, any
+// other status reopens a closed one. Returns the updated case row.
+async function dbAddCaseStatus(caseId, text) {
+  return _dbOk(await supabaseClient.rpc('add_case_status', {
+    p_case_id: caseId,
+    p_text: text,
+    p_ending: caseEndingFor(text),
+    p_date: _todayIso(),
+  }));
 }
 
 // At most one per FA per day (unique index); a repeat checkout of the
