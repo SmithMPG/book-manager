@@ -12,6 +12,10 @@
 // fa_id = currentUser.id itself. Anything admin-only in the markup can
 // carry class="admin-only" and it's hidden outside admin mode.
 //
+// Admin mode is the Home view only, for the whole team (see data.js):
+// no tab bar, and none of the FA's own tools (new client, search,
+// checkout).
+//
 // Listen for changes with:
 //   document.addEventListener('appmodechange', e => e.detail.mode)
 
@@ -24,6 +28,10 @@ function _injectAppModeCSS() {
   s.id = 'app-mode-styles';
   s.textContent = `
     body:not([data-app-mode="admin"]) .admin-only { display: none !important; }
+    body[data-app-mode="admin"] .tab-bar,
+    body[data-app-mode="admin"] .btn-new,
+    body[data-app-mode="admin"] .search-wrap,
+    body[data-app-mode="admin"] #checkout-trigger { display: none !important; }
 
     .mode-toggle {
       display: inline-flex;

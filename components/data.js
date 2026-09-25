@@ -72,6 +72,7 @@ function caseItem(c) {
     type: c.case_type,
     date: c.status === 'accepted' ? c.accepted_at : c.initiated_date,
     initiatedDate: c.initiated_date,
+    acceptedAt: c.accepted_at,
     lumpSum: c.lump_sum,
     monthly: c.monthly,
     adviceFeePercent: c.advice_fee_percent,
@@ -120,8 +121,34 @@ async function _loadMyCheckoutDates() {
   return rows.map(r => r.date);
 }
 
-async function _loadLeaderboard(period) {
-  return _dbOk(await supabaseClient.rpc('leaderboard', { p_start: isoDate(period.start), p_end: isoDate(period.end) }));
+// days: Set of ISO dates; checkoutDay: ISO date to report check-outs
+// for (admin view), or null.
+async function _loadLeaderboard(days, checkoutDay) {
+  return _dbOk(await supabaseClient.rpc('leaderboard', { p_dates: [...days], p_checkout_date: checkoutDay }));
+}
+
+// Admin view only: every FA's cases (RLS's is_admin() allows it), with
+// their client's name and tab, and every active FA's target.
+async function _loadTeamCases() {
+  const rows = await _fetchAll(() => supabaseClient.from('cases')
+    .select('id, fa_id, case_type, status, lump_sum, monthly, advice_fee_percent, accepted_at, case_statuses, clients(first_name, last_name, tab)')
+    .order('initiated_date'));
+  return rows.map(c => ({
+    faId: c.fa_id,
+    clientName: c.clients ? `${c.clients.first_name} ${c.clients.last_name}` : '',
+    tab: c.clients?.tab || '',
+    status: c.status,
+    type: c.case_type,
+    lumpSum: c.lump_sum,
+    monthly: c.monthly,
+    adviceFeePercent: c.advice_fee_percent,
+    acceptedAt: c.accepted_at,
+    latest: (c.case_statuses || [])[0]?.text || '',
+  }));
+}
+
+async function _loadTeamTargets() {
+  return _dbOk(await supabaseClient.from('users').select('id, pcr_target').eq('is_active', true));
 }
 
 // ---------- writes ----------
@@ -227,6 +254,25 @@ function _currentPeriod() {
   return periods.find(p => today >= p.start && today <= p.end) || periods[periods.length - 1];
 }
 
+// Every day of a business month up to today: "month to date".
+function _periodDays(period) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = new Set();
+  for (const d = new Date(period.start); d <= period.end && d <= today; d.setDate(d.getDate() + 1)) {
+    days.add(isoDate(d));
+  }
+  return days;
+}
+
+// The last weekday before today — the day FAs should have checked out.
+function _lastWeekday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  do d.setDate(d.getDate() - 1); while (isWeekend(d));
+  return isoDate(d);
+}
+
 function _repFromLeaderboardRow(row) {
   const m = row.meetings || {};
   const cases = row.cases || [];
@@ -238,13 +284,15 @@ function _repFromLeaderboardRow(row) {
   return {
     id: row.id,
     name: isYou ? `${row.name} (you)` : row.name,
-    prospects: row.prospects,
-    referrals: row.referrals,
-    willsLeads: row.willsLeads,
+    plainName: row.name,
+    checkedOut: row.checkedOut,
+    prospects: row.prospects || 0,
+    referrals: row.referrals || 0,
+    willsLeads: row.willsLeads || 0,
     meetings: (m.factFinder || 0) + (m.closing || 0) + (m.relational || 0),
     meetingsBreakdown: { factFinder: m.factFinder || 0, closing: m.closing || 0, relational: m.relational || 0 },
-    fnas: row.fnas,
-    quotes: row.quotes,
+    fnas: row.fnas || 0,
+    quotes: row.quotes || 0,
     cases: sum(() => true, c => c.submitted),
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
     pcr: Math.round(sum(() => true, pcrOf)),
@@ -252,28 +300,180 @@ function _repFromLeaderboardRow(row) {
   };
 }
 
+// The whole team as one rep: every figure added up.
+function _teamRep(reps) {
+  const add = key => reps.reduce((t, r) => t + (r[key] || 0), 0);
+  const addIn = (key, sub) => reps.reduce((t, r) => t + (r[key]?.[sub] || 0), 0);
+  return {
+    prospects: add('prospects'), referrals: add('referrals'), willsLeads: add('willsLeads'),
+    meetings: add('meetings'),
+    meetingsBreakdown: { factFinder: addIn('meetingsBreakdown', 'factFinder'), closing: addIn('meetingsBreakdown', 'closing'), relational: addIn('meetingsBreakdown', 'relational') },
+    fnas: add('fnas'), quotes: add('quotes'), cases: add('cases'), pcr: add('pcr'),
+  };
+}
+
+// The signed-in FA's own cases, in the shape caseStats() takes.
+function _myCases() {
+  return getClientRecords().flatMap(r => {
+    const d = getClientData(r.id);
+    return [...(d.casesInProgress || []), ...(d.acceptedCases || []), ...(d.notTakenUpCases || [])]
+      .map(c => ({ ...c, tab: r.tab }));
+  });
+}
+
+// ---------- admin view ----------
+//
+// Home only (no tabs), with the whole team's figures: the funnel and
+// monthly stats add up every FA's, and the PCR meter measures the team
+// against teamPcrTarget() (constants.js). Month to date by default; days
+// picked on the month bar narrow everything to just those days, and the
+// PCR meter's label names them. Clicking a name on the leaderboard opens
+// that FA's Business-tab cases under their row and switches the hero to
+// their figures; clicking it again goes back to the team.
+
+const _adminDays = new Set();   // days picked on the month bar; empty = month to date
+let _adminFocusId = null;       // the FA whose row is open, or null for the team
+let _dash = null;               // the last load, re-rendered on focus changes
+let _refreshRun = 0;            // only the latest refresh gets to render
+let _lastMode = null;
+
+const _adminSelection = {
+  dates: _adminDays,
+  onToggle(iso) {
+    if (_adminDays.has(iso)) _adminDays.delete(iso); else _adminDays.add(iso);
+    setMonthBarSelection(_adminSelection);
+    refreshDashboard().catch(showSaveError);
+  },
+  onReset() {
+    _adminDays.clear();
+    setMonthBarSelection(_adminSelection);
+    refreshDashboard().catch(showSaveError);
+  },
+};
+
+function _isAdminView() {
+  return getAppMode() === 'admin';
+}
+
+// The PCR meter's label: whose figures (admin, one FA) and which days.
+function dashboardLabel(period) {
+  if (!_isAdminView()) return period?.label || '';
+  const days = _adminDays.size ? formatDaySelection(_adminDays) : period?.label || '';
+  const focus = _adminFocusId && _dash?.reps.find(r => r.id === _adminFocusId);
+  return focus ? `${focus.plainName} · ${days}` : days;
+}
+
+// Called by the month bar's ‹ › buttons: a new month starts unpicked.
+function onDashboardPeriodChange() {
+  if (!_isAdminView()) return;
+  _adminDays.clear();
+  setMonthBarSelection(_adminSelection);
+  refreshDashboard().catch(showSaveError);
+}
+
+function _businessCasesHTML(rep) {
+  const open = (_dash?.teamCases || []).filter(c => c.faId === rep.id && c.status === 'in-progress' && c.tab === 'business');
+  if (!open.length) return '<div class="lb-detail-empty">No open cases in Business.</div>';
+  return `
+    <div class="lb-detail-title">Business tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
+    ${open.map(c => `
+      <div class="lb-detail-row">
+        <span class="lb-detail-client">${_escHtml(c.clientName)}</span>
+        <span class="lb-detail-type">${_escHtml(c.type)}</span>
+        <span class="lb-detail-status" title="${_escHtml(c.latest)}">${_escHtml(c.latest)}</span>
+        <span class="lb-detail-pcr">PCR ${formatNumber(casePcr(c))}</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+// Draws the hero and leaderboard from the last load (_dash), so focusing
+// an FA needs no new request.
+function _renderDashboard() {
+  const d = _dash;
+  if (!d) return;
+  let rep, cases, target;
+  if (!d.admin) {
+    rep = d.reps.find(r => r.id === currentUser.id) || _repFromLeaderboardRow({ id: currentUser.id, name: '' });
+    cases = _myCases();
+    target = currentUser.pcr_target || null;
+  } else if (_adminFocusId) {
+    rep = d.reps.find(r => r.id === _adminFocusId) || _teamRep([]);
+    cases = d.teamCases.filter(c => c.faId === _adminFocusId);
+    target = d.targets.find(t => t.id === _adminFocusId)?.pcr_target || null;
+  } else {
+    rep = _teamRep(d.reps);
+    cases = d.teamCases;
+    target = teamPcrTarget(d.targets.map(t => t.pcr_target)) || null;
+  }
+
+  _widgets.funnel?.update({
+    prospectsContacted: rep.prospects,
+    meetings: rep.meetingsBreakdown,
+    fnas: rep.fnas,
+    quotes: rep.quotes,
+    casesSubmitted: rep.cases,
+  });
+  _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target });
+  _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(getMonthBarPeriod() || _currentPeriod()));
+  _widgets.monthlyStats?.update({
+    ...caseStats(cases, d.days),
+    willsLeads: rep.willsLeads,
+    referrals: rep.referrals,
+    periodWord: d.admin && _adminDays.size ? 'Selected Days' : 'This Month',
+  });
+
+  if (d.admin) {
+    const when = _adminDays.size ? formatDaySelection(_adminDays) : 'MTD';
+    _widgets.leaderboard?.setReps(d.reps, {
+      title: `Team Leaderboard — ${when}`,
+      selectedId: _adminFocusId,
+      checkoutDayLabel: formatDaySelection([d.checkoutDay]),
+      detailHTML: _businessCasesHTML,
+      onSelect: id => { _adminFocusId = id; _renderDashboard(); },
+    });
+  } else {
+    _widgets.leaderboard?.setReps(d.reps);
+  }
+}
+
 // Funnel, PCR meter, monthly stats, leaderboard and the month bar's
 // checked-out days — everything on the dashboard that isn't a card.
 async function refreshDashboard() {
   if (!currentUser) return;
-  const period = _currentPeriod();
-  const [board, checkoutDates] = await Promise.all([_loadLeaderboard(period), _loadMyCheckoutDates()]);
-  const reps = board.map(_repFromLeaderboardRow);
-  const me = reps.find(r => r.id === currentUser.id) || _repFromLeaderboardRow({ id: currentUser.id, name: '' });
+  const run = ++_refreshRun;
+  const admin = _isAdminView();
+  const days = admin && _adminDays.size ? new Set(_adminDays)
+    : _periodDays(admin ? (getMonthBarPeriod() || _currentPeriod()) : _currentPeriod());
+  const checkoutDay = admin ? (_adminDays.size === 1 ? [..._adminDays][0] : _lastWeekday()) : null;
 
-  _widgets.leaderboard?.setReps(reps);
-  _widgets.funnel?.update({
-    prospectsContacted: me.prospects,
-    meetings: me.meetingsBreakdown,
-    fnas: me.fnas,
-    quotes: me.quotes,
-    casesSubmitted: me.cases,
-  });
-  _widgets.pcrMeter?.update({ currentCount: me.pcr, validationTarget: currentUser.pcr_target || null });
-  _widgets.monthlyStats?.update({ willsLeadsMonthly: me.willsLeads, referralsMonthly: me.referrals });
+  const [board, checkoutDates, teamCases, targets] = await Promise.all([
+    _loadLeaderboard(days, checkoutDay),
+    _loadMyCheckoutDates(),
+    admin ? _loadTeamCases() : null,
+    admin ? _loadTeamTargets() : null,
+  ]);
+  if (run !== _refreshRun) return; // a newer refresh has started
+
+  _dash = { admin, days, checkoutDay, reps: board.map(_repFromLeaderboardRow), teamCases, targets };
+  if (admin && _adminFocusId && !_dash.reps.some(r => r.id === _adminFocusId)) _adminFocusId = null;
+  _renderDashboard();
   setCheckedOutDates(checkoutDates);
   _syncCheckoutTrigger();
 }
+
+// Switching FA ↔ Admin: start the admin view fresh (month to date, the
+// whole team), turn the month bar's day-picking on or off, and reload.
+document.addEventListener('appmodechange', e => {
+  const mode = e.detail.mode;
+  if (mode === _lastMode) return;
+  _lastMode = mode;
+  _adminDays.clear();
+  _adminFocusId = null;
+  setMonthBarSelection(mode === 'admin' ? _adminSelection : null);
+  if (mode === 'admin') showTab('dashboard');
+  if (currentUser) refreshDashboard().catch(showSaveError);
+});
 
 // The cards in every tab, then the dashboard. Called on sign-in and after
 // anything that writes more than one card's worth (e.g. a checkout).
@@ -287,6 +487,7 @@ async function loadAppData() {
 }
 
 function clearAppData() {
+  _dash = null;
   CLIENT_STORE.clear();
   Object.keys(CLIENT_TAB_LABELS).forEach(tab => renderClientCards(`${tab}-cards`, []));
   _widgets.leaderboard?.setReps([]);

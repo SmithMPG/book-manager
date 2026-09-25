@@ -114,3 +114,13 @@ const CASE_FIRST_STATUS = 'Case opened';
 function caseEndingFor(text) {
   return CASE_ENDING_STATUSES[(text || '').trim()] || null;
 }
+
+// Team PCR target (admin view's PCR meter): every FA's Validation target
+// x TEAM_PCR_TARGET_MULTIPLIER, added up. High Flyer is still 3x this,
+// as for an individual (pcr-meter.js). FAs without a target (e.g. the
+// manager) add nothing.
+const TEAM_PCR_TARGET_MULTIPLIER = 2;
+
+function teamPcrTarget(validationTargets) {
+  return validationTargets.reduce((sum, t) => sum + (Number(t) || 0), 0) * TEAM_PCR_TARGET_MULTIPLIER;
+}

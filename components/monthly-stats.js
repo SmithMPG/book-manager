@@ -1,92 +1,68 @@
-// Monthly stats: commission in the pipeline, this cycle's expected payout,
-// wills leads, and referrals — the monthly-cadence counterpart to the
-// client funnel and PCR meter it sits alongside in the hero bar.
+// Monthly stats: commission in the pipeline, the expected payout, wills
+// leads and referrals — the monthly-cadence counterpart to the client
+// funnel and PCR meter it sits alongside in the hero bar.
 //
-// Commission in the Pot: upfront commission (see constants.js) for
-// every case still in progress (not yet accepted) across every client in
-// the Business tab — the pipeline that hasn't landed yet.
+// Shows whatever data.js hands it (refreshDashboard): the FA's own
+// figures, the whole team's, or one FA's in the admin view. The figures
+// themselves come from caseStats() below, over a list of cases:
 //
-// PCR's in the Pot: PCR (casePcr in constants.js) for those same
-// in-progress cases — submitted, not yet accepted.
+// Commission in the Pot: upfront commission (see constants.js) for every
+// case still in progress on a client in the Business tab — the pipeline
+// that hasn't landed yet. A snapshot of what's open now, so it doesn't
+// follow the dates picked on the month bar.
 //
-// Expected Commission This Month: upfront commission for cases that have
-// been accepted (see the Accept toggle on a client's Cases list) and
-// landed in the Clients tab, filtered to acceptances dated within the
-// current business month — close-off date to close-off date (see
-// CLOSE_OFF_DATES in constants.js and buildMonthPeriods() in
-// components/month-bar.js). Both figures recompute whenever client data
-// changes (the 'clients:changed' event, dispatched on every render/update).
+// PCR's in the Pot: PCR (casePcr in constants.js) for those same cases.
+//
+// Expected Commission: upfront commission for cases accepted on the days
+// being looked at — this business month to date by default (close-off
+// to close-off, see CLOSE_OFF_DATES in constants.js), or the days picked
+// on the month bar in the admin view.
+//
+// Wills leads / referrals: counted over those same days (leaderboard()).
 
-function _commissionCurrentMonthPeriod() {
-  const periods = buildMonthPeriods();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return periods.find(p => today >= p.start && today <= p.end) || periods[periods.length - 1];
+// cases: [{status, tab, type, lumpSum, monthly, adviceFeePercent,
+// acceptedAt}]; days: Set of ISO dates.
+function caseStats(cases, days) {
+  const open = cases.filter(c => c.status === 'in-progress' && c.tab === 'business');
+  const accepted = cases.filter(c => c.status === 'accepted' && days.has(c.acceptedAt));
+  const sum = (list, fn) => list.reduce((t, c) => t + fn(c), 0);
+  return {
+    commissionInPot: sum(open, caseUpfrontCommission),
+    pcrInPot: sum(open, casePcr),
+    expectedCommission: sum(accepted, caseUpfrontCommission),
+  };
 }
-
-function _commissionInThePot() {
-  let total = 0;
-  getClientRecords().filter(c => c.tab === 'business').forEach(c => {
-    (getClientData(c.id).casesInProgress || []).forEach(item => {
-      total += caseUpfrontCommission(item);
-    });
-  });
-  return total;
-}
-
-function _pcrInThePot() {
-  let total = 0;
-  getClientRecords().filter(c => c.tab === 'business').forEach(c => {
-    (getClientData(c.id).casesInProgress || []).forEach(item => {
-      total += casePcr(item);
-    });
-  });
-  return total;
-}
-
-function _expectedCommissionThisMonth() {
-  const period = _commissionCurrentMonthPeriod();
-  let total = 0;
-  getClientRecords().filter(c => c.tab === 'clients').forEach(c => {
-    (getClientData(c.id).acceptedCases || []).forEach(item => {
-      const accepted = new Date(item.date + 'T00:00:00');
-      if (accepted >= period.start && accepted <= period.end) total += caseUpfrontCommission(item);
-    });
-  });
-  return total;
-}
-
-// Rand for commission; PCR is a score, not rand, so no currency prefix
-// (formatRand / formatNumber, money.js).
 
 class MonthlyStats {
   constructor(container, config) {
     this.container = container;
     this.config = Object.assign({
-      willsLeadsMonthly: 0,
-      referralsMonthly: 0,
+      commissionInPot: 0,
+      pcrInPot: 0,
+      expectedCommission: 0,
+      willsLeads: 0,
+      referrals: 0,
+      periodWord: 'This Month', // "Selected Days" when the admin picks days
     }, config);
-    this._onClientsChanged = () => this.render();
-    document.addEventListener('clients:changed', this._onClientsChanged);
     this.render();
   }
 
-  // Wills leads / referrals this month (data.js refreshDashboard); the
-  // commission figures come straight from the client cards.
   update(config) {
     Object.assign(this.config, config);
     this.render();
   }
 
+  // Rand for commission; PCR is a score, not rand, so no currency prefix
+  // (formatRand / formatNumber, money.js).
   render() {
     const c = this.config;
     this.container.innerHTML = `
       <div class="stat-list">
-        <div class="stat-cell">Commission in the Pot: <b>${formatRand(_commissionInThePot())}</b></div>
-        <div class="stat-cell">PCR&#8217;s in the Pot: <b>${formatNumber(_pcrInThePot())}</b></div>
-        <div class="stat-cell">Expected Commission This Month: <b>${formatRand(_expectedCommissionThisMonth())}</b></div>
-        <div class="stat-cell">Wills Leads Submitted MTD: <b>${c.willsLeadsMonthly}</b></div>
-        <div class="stat-cell">Referrals This Month: <b>${c.referralsMonthly}</b></div>
+        <div class="stat-cell">Commission in the Pot: <b>${formatRand(c.commissionInPot)}</b></div>
+        <div class="stat-cell">PCR&#8217;s in the Pot: <b>${formatNumber(c.pcrInPot)}</b></div>
+        <div class="stat-cell">Expected Commission ${c.periodWord}: <b>${formatRand(c.expectedCommission)}</b></div>
+        <div class="stat-cell">Wills Leads Submitted ${c.periodWord}: <b>${c.willsLeads}</b></div>
+        <div class="stat-cell">Referrals ${c.periodWord}: <b>${c.referrals}</b></div>
       </div>
     `;
   }

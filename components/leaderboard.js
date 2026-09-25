@@ -1,6 +1,12 @@
 // Team leaderboard: sortable by any funnel-stage column. Defaults to PCR's,
 // descending. Clicking a header sorts by that column (largest first);
 // clicking the active header again flips to smallest first.
+//
+// Admin view (setReps with options): each name is clickable — it opens
+// a panel under that row (options.detailHTML) and calls
+// options.onSelect(id), or onSelect(null) when clicked again. A ✓ / ✗
+// beside each name shows whether they checked out (rep.checkedOut) for
+// options.checkoutDayLabel.
 
 function _injectLeaderboardCSS() {
   if (document.getElementById("leaderboard-styles")) return;
@@ -32,7 +38,34 @@ function _injectLeaderboardCSS() {
       color: var(--ink);
       font-size: 13px;
     }
-    .lb-name { flex: 1; }
+    .lb-name { flex: 1; display: flex; align-items: center; gap: 8px; }
+    .lb-row.clickable { cursor: pointer; }
+    .lb-row.clickable:hover .lb-name-text { text-decoration: underline; }
+    .lb-row.selected { background: rgba(212, 175, 55, 0.12); }
+    .lb-row.selected .lb-name-text { font-weight: 700; }
+    .lb-checkout { font-size: 13px; font-weight: 700; width: 14px; text-align: center; }
+    .lb-checkout.yes { color: var(--green); }
+    .lb-checkout.no { color: var(--red); }
+    .lb-detail {
+      padding: 10px 14px 14px 40px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: rgba(212, 175, 55, 0.06);
+      font-size: 13px;
+    }
+    .lb-detail-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+      margin-bottom: 6px;
+    }
+    .lb-detail-row { display: flex; gap: 16px; padding: 5px 0; color: var(--ink); }
+    .lb-detail-client { width: 170px; flex-shrink: 0; font-weight: 600; }
+    .lb-detail-type { width: 150px; flex-shrink: 0; color: var(--ink-dim); }
+    .lb-detail-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-detail-pcr { flex-shrink: 0; color: var(--ink-dim); }
+    .lb-detail-empty { color: var(--ink-dim); }
     .lb-value {
       width: 70px;
       text-align: center;
@@ -142,10 +175,17 @@ class Leaderboard {
   constructor(container, config) {
     this.container = container;
     this.config = Object.assign({ title: "Team Leaderboard — MTD", reps: [] }, config);
+    this.options = {};
     this.sortKey = "pcr";
     this.sortDir = "desc";
     this.render();
     this.container.addEventListener("click", (e) => {
+      const row = e.target.closest(".lb-row.clickable");
+      if (row) {
+        const id = row.dataset.repId;
+        this.options.onSelect?.(this.options.selectedId === id ? null : id);
+        return;
+      }
       const head = e.target.closest("[data-sort-key]");
       if (!head) return;
       const key = head.dataset.sortKey;
@@ -158,13 +198,18 @@ class Leaderboard {
     });
   }
 
-  setReps(reps) {
+  // options (admin view): {onSelect, selectedId, detailHTML(rep),
+  // checkoutDayLabel, title}. Plain setReps(reps) is the FA view.
+  setReps(reps, options = {}) {
     this.config.reps = reps;
+    this.options = options;
     this.render();
   }
 
   render() {
-    const { title, reps } = this.config;
+    const { reps } = this.config;
+    const title = this.options.title || this.config.title;
+    const { onSelect, selectedId, detailHTML, checkoutDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
 
@@ -196,12 +241,17 @@ class Leaderboard {
           }
           return `<div class="lb-value${activeClass}">${value}</div>`;
         }).join("");
+        const selected = selectedId === rep.id;
+        const checkout = rep.checkedOut === true || rep.checkedOut === false
+          ? `<span class="lb-checkout ${rep.checkedOut ? "yes" : "no"}" title="${rep.checkedOut ? "Checked out" : "Not checked out"} for ${_escHtml(checkoutDayLabel || "")}">${rep.checkedOut ? "✓" : "✗"}</span>`
+          : "";
         return `
-          <div class="lb-row">
+          <div class="lb-row${onSelect ? " clickable" : ""}${selected ? " selected" : ""}" data-rep-id="${rep.id}">
             <div class="lb-rank">${rank}</div>
-            <div class="lb-name">${_escHtml(rep.name)}</div>
+            <div class="lb-name">${checkout}<span class="lb-name-text">${_escHtml(rep.name)}</span></div>
             ${cells}
           </div>
+          ${selected && detailHTML ? `<div class="lb-detail">${detailHTML(rep)}</div>` : ""}
         `;
       })
       .join("");

@@ -5,6 +5,14 @@
 // close-off date through this entry's close-off date. The first entry
 // in CLOSE_OFF_DATES has no prior entry to derive a start date from, so
 // it's excluded — navigation is bounded to periods we can fully compute.
+//
+// Two ways to click a day:
+//   - normally, a past weekday (or today) opens that day's checkout;
+//   - in admin mode, days up to today are selected / deselected instead
+//     (setMonthBarSelection), to narrow the dashboard to just those
+//     days; "Month to date" clears the selection.
+// onNavigate fires on every render (it keeps the PCR meter's label in
+// step); onPeriodChange only when the ‹ › buttons change the month.
 
 function _injectMonthBarCSS() {
   if (document.getElementById('month-bar-styles')) return;
@@ -102,12 +110,31 @@ function _injectMonthBarCSS() {
       background: var(--mb-future-weekend);
     }
 
-    .mb-cell.checkout-cell {
+    .mb-cell.checkout-cell,
+    .mb-cell.selectable {
       cursor: pointer;
     }
-    .mb-cell.checkout-cell:hover {
+    .mb-cell.checkout-cell:hover,
+    .mb-cell.selectable:hover {
       opacity: 0.85;
     }
+    .mb-cell.selected {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    .mb-reset-row { display: flex; justify-content: flex-end; margin-top: 26px; }
+    .mb-reset {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--ink-dim);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .mb-reset:hover { color: var(--ink); }
 
     .mb-caption {
       position: absolute;
@@ -224,6 +251,8 @@ class MonthBar {
   constructor(container, options = {}) {
     this.container = container;
     this.onNavigate = options.onNavigate;
+    this.onPeriodChange = options.onPeriodChange;
+    this.selection = null; // {dates: Set of ISO days, onToggle(iso), onReset()} in admin mode
     this.periods = buildMonthPeriods();
     this.today = new Date();
     this.today.setHours(0, 0, 0, 0);
@@ -254,6 +283,7 @@ class MonthBar {
     prevBtn.addEventListener('click', () => {
       this.index--;
       this.render();
+      this.onPeriodChange?.(this.periods[this.index]);
     });
 
     const nextBtn = document.createElement('button');
@@ -264,6 +294,7 @@ class MonthBar {
     nextBtn.addEventListener('click', () => {
       this.index++;
       this.render();
+      this.onPeriodChange?.(this.periods[this.index]);
     });
 
     const track = document.createElement('div');
@@ -294,7 +325,16 @@ class MonthBar {
       // the next time the FA opens the app, so any past weekday shown
       // here is already done. Only allow manual (re-)checkout on
       // weekdays that are today or in the past.
-      if (isWeekday && (isToday || date < this.today)) {
+      if (this.selection) {
+        // Admin: any day up to today can be picked, weekends included.
+        if (date <= this.today) {
+          const iso = isoDate(date);
+          cell.classList.add('selectable');
+          if (this.selection.dates.has(iso)) cell.classList.add('selected');
+          cell.title = this.selection.dates.has(iso) ? `Remove ${formatDayMonth(date)}` : `Show only selected days — add ${formatDayMonth(date)}`;
+          cell.addEventListener('click', () => this.selection.onToggle(iso));
+        }
+      } else if (isWeekday && (isToday || date < this.today)) {
         cell.classList.add('checkout-cell');
         cell.title = isCheckedOut(date) ? 'Checkout complete' : `Complete checkout for ${formatDayMonth(date)}`;
         cell.addEventListener('click', () => window.openCheckout?.(date));
@@ -329,6 +369,18 @@ class MonthBar {
     row.appendChild(nextBtn);
     this.container.appendChild(row);
 
+    if (this.selection?.dates.size) {
+      const resetRow = document.createElement('div');
+      resetRow.className = 'mb-reset-row';
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'mb-reset';
+      reset.textContent = 'Month to date';
+      reset.addEventListener('click', () => this.selection.onReset());
+      resetRow.appendChild(reset);
+      this.container.appendChild(resetRow);
+    }
+
     this.onNavigate?.(period);
   }
 }
@@ -340,6 +392,38 @@ function initMonthBar(containerId, options) {
   if (!container) return null;
   _monthBarInstance = new MonthBar(container, options);
   return _monthBarInstance;
+}
+
+// The month currently shown (it can be navigated away from today's).
+function getMonthBarPeriod() {
+  return _monthBarInstance ? _monthBarInstance.periods[_monthBarInstance.index] : null;
+}
+
+// Admin day-picking on (a {dates, onToggle, onReset} object) or off (null).
+function setMonthBarSelection(selection) {
+  if (!_monthBarInstance) return;
+  _monthBarInstance.selection = selection;
+  _monthBarInstance.render();
+}
+
+// "15–19 Sep, 24 Sep": a set of ISO days as runs of consecutive days.
+function formatDaySelection(isoDays) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const days = [...isoDays].sort().map(d => new Date(d + 'T00:00:00'));
+  const runs = [];
+  days.forEach(d => {
+    const run = runs[runs.length - 1];
+    const next = run && new Date(run.end);
+    if (next) next.setDate(next.getDate() + 1);
+    if (next && isSameDay(next, d)) run.end = d;
+    else runs.push({ start: d, end: d });
+  });
+  const label = d => `${d.getDate()} ${months[d.getMonth()]}`;
+  return runs.map(r => {
+    if (isSameDay(r.start, r.end)) return label(r.start);
+    if (r.start.getMonth() === r.end.getMonth()) return `${r.start.getDate()}–${label(r.end)}`;
+    return `${label(r.start)} – ${label(r.end)}`;
+  }).join(', ');
 }
 
 // Replaces the whole set, e.g. after loading from the database.

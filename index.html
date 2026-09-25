@@ -191,7 +191,8 @@
       initAuth();
       const pcrMeter = initPcrMeter("pcr-meter-container", { periodLabel: getCurrentPeriodLabel() });
       initMonthBar("month-bar-container", {
-        onNavigate: (period) => pcrMeter.setPeriodLabel(period.label),
+        onNavigate: (period) => pcrMeter.setPeriodLabel(dashboardLabel(period)),
+        onPeriodChange: onDashboardPeriodChange,
       });
       const funnel = initClientFunnel("client-funnel-container");
       const monthlyStats = initMonthlyStats("monthly-stats-container");

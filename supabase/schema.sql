@@ -228,12 +228,15 @@ grant update (phone, password_set) on users to authenticated;
 -- ---------------------------------------------------------------------
 -- Leaderboard. RLS rightly stops an FA reading anyone else's rows, but
 -- the leaderboard needs everyone's totals. This returns totals only —
--- counts and summed amounts per FA for one business month, never an
--- individual client, case or activity. PCR is worked out in the app
--- (casePcr in constants.js) from the per-case-type sums, so its rules
--- live in one place.
+-- counts and summed amounts per FA for a set of days, never an
+-- individual client, case or activity. p_dates is any set of days (month
+-- to date, or the days an admin picks on the month bar). PCR is worked
+-- out in the app (casePcr in constants.js) from the per-case-type sums,
+-- so its rules live in one place. checkedOut: did they check out for
+-- p_checkout_date (null when not asked)?
 -- ---------------------------------------------------------------------
-create or replace function public.leaderboard(p_start date, p_end date)
+drop function if exists public.leaderboard(date, date);
+create or replace function public.leaderboard(p_dates date[], p_checkout_date date)
 returns jsonb
 language sql stable security definer set search_path = ''
 as $$
@@ -243,39 +246,43 @@ as $$
       u.id,
       u.name || ' ' || u.surname as name,
       coalesce((select sum(coalesce((a.details->>'count')::int, 1)) from public.activities a
-        where a.fa_id = u.id and a.type = 'prospect_contact' and a.date between p_start and p_end), 0) as prospects,
+        where a.fa_id = u.id and a.type = 'prospect_contact' and a.date = any(p_dates)), 0) as prospects,
       (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'referral' and a.date between p_start and p_end) as referrals,
+        where a.fa_id = u.id and a.type = 'referral' and a.date = any(p_dates)) as referrals,
       (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'wills_lead' and a.date between p_start and p_end) as "willsLeads",
+        where a.fa_id = u.id and a.type = 'wills_lead' and a.date = any(p_dates)) as "willsLeads",
       (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'fna' and a.date between p_start and p_end) as fnas,
+        where a.fa_id = u.id and a.type = 'fna' and a.date = any(p_dates)) as fnas,
       (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'quote' and a.date between p_start and p_end) as quotes,
+        where a.fa_id = u.id and a.type = 'quote' and a.date = any(p_dates)) as quotes,
       (select jsonb_build_object(
           'factFinder', count(*) filter (where a.details->>'meetingType' = 'factFinder'),
           'closing',    count(*) filter (where a.details->>'meetingType' = 'closing'),
           'relational', count(*) filter (where a.details->>'meetingType' = 'relational'))
         from public.activities a
-        where a.fa_id = u.id and a.type = 'meeting' and a.date between p_start and p_end) as meetings,
+        where a.fa_id = u.id and a.type = 'meeting' and a.date = any(p_dates)) as meetings,
       (select coalesce(jsonb_agg(jsonb_build_object(
           'type', x.case_type, 'submitted', x.submitted,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly)), '[]'::jsonb)
         from (
           select c.case_type,
-            count(*) filter (where c.initiated_date between p_start and p_end) as submitted,
-            coalesce(sum(c.lump_sum) filter (where c.status = 'accepted' and c.accepted_at between p_start and p_end), 0) as accepted_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.status = 'accepted' and c.accepted_at between p_start and p_end), 0) as accepted_monthly
+            count(*) filter (where c.initiated_date = any(p_dates)) as submitted,
+            coalesce(sum(c.lump_sum) filter (where c.status = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.status = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_monthly
           from public.cases c where c.fa_id = u.id
           group by c.case_type
-        ) x) as cases
+        ) x) as cases,
+      case when p_checkout_date is null then null
+        else exists (select 1 from public.activities a
+          where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date)
+      end as "checkedOut"
     from public.users u
     where u.is_active and coalesce(u.branch, '') <> 'Test group'
   ) t;
 $$;
 
-revoke execute on function public.leaderboard(date, date) from public, anon;
-grant execute on function public.leaderboard(date, date) to authenticated;
+revoke execute on function public.leaderboard(date[], date) from public, anon;
+grant execute on function public.leaderboard(date[], date) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- Adding a case status: one statement, so the log entry and the case's
