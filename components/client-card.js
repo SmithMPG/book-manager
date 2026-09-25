@@ -298,8 +298,8 @@ function _caseItems(data) {
 // case gets a segmented In Progress / Accepted switch — a real two-way
 // toggle, not a one-time action: flipping it to Accepted moves that case
 // into acceptedCases, flipping it back moves it into casesInProgress.
-// Either way its date resets to today (the date of whichever state it's
-// now in), since that's what "accepted this month" is measured against.
+// Accepting dates it today, since that's what "accepted this month" is
+// measured against; moving it back shows its original initiated date.
 function _caseStatusToggleHTML(clientId, idx, kind) {
   const btn = (target, label) => `
     <button type="button" class="case-status-btn${kind === target ? ' active' : ''}"
@@ -514,7 +514,13 @@ function _openQuickAdd(anchorEl, clientId) {
     const qa = btn.dataset.qa;
     _closeQuickAdd();
     if (qa === 'referral') {
-      updateClient(clientId, d => { d.referrals = (d.referrals || 0) + 1; });
+      const current = getClientData(clientId)?.referrals || 0;
+      dbAddReferral(clientId, current, _todayIso())
+        .then(() => {
+          updateClient(clientId, d => { d.referrals = current + 1; });
+          return refreshDashboard();
+        })
+        .catch(showSaveError);
     } else {
       openCheckoutForClient(clientId, qa);
     }
@@ -546,10 +552,20 @@ function initClientCards(root) {
       const idx = Number(statusBtn.dataset.idx);
       const from = target === 'accepted' ? 'casesInProgress' : 'acceptedCases';
       const to = target === 'accepted' ? 'acceptedCases' : 'casesInProgress';
-      updateClient(clientId, d => {
-        const [item] = (d[from] || []).splice(idx, 1);
-        if (item) d[to] = _addDatedItem(d[to] || [], { ...item, date: _todayIso() });
-      });
+      const item = (getClientData(clientId)?.[from] || [])[idx];
+      if (!item) return;
+      statusBtn.disabled = true;
+      const date = target === 'accepted' ? _todayIso() : item.initiatedDate;
+      dbSetCaseStatus(item.id, target, date)
+        .then(() => {
+          updateClient(clientId, d => {
+            d[from] = (d[from] || []).filter(c => c.id !== item.id);
+            d[to] = _addDatedItem(d[to] || [], { ...item, date });
+          });
+          return refreshDashboard();
+        })
+        .catch(showSaveError)
+        .finally(() => { statusBtn.disabled = false; });
       return;
     }
 

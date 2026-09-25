@@ -200,29 +200,21 @@ function isWeekend(date) {
   return day === 0 || day === 6;
 }
 
+// Local calendar date, not UTC: toISOString() would turn local midnight
+// in South Africa (UTC+2) into the previous day.
 function isoDate(date) {
-  return date.toISOString().slice(0, 10);
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 // Checkout log: every completed weekday (today or in the past) lives in
-// this set. Placeholder — wire up to real checkout data later. Checkout
+// this set, loaded from the FA's checkout activities (data.js). Checkout
 // itself is triggered automatically at 00h00 for the previous day and
 // enforced the next time the FA opens the app, so by the time a past
 // day is visible here it's already done — there's no lingering
 // "missed" state to render. Today stays open until its own midnight.
 const COMPLETED_CHECKOUT_DATES = new Set();
 
-function seedDemoCheckoutHistory() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let n = 1; n <= 30; n++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - n);
-    if (isWeekend(d)) continue;
-    COMPLETED_CHECKOUT_DATES.add(isoDate(d));
-  }
-}
-seedDemoCheckoutHistory();
 
 function isCheckedOut(date) {
   return COMPLETED_CHECKOUT_DATES.has(isoDate(date));
@@ -348,6 +340,13 @@ function initMonthBar(containerId, options) {
   if (!container) return null;
   _monthBarInstance = new MonthBar(container, options);
   return _monthBarInstance;
+}
+
+// Replaces the whole set, e.g. after loading from the database.
+function setCheckedOutDates(isoDates) {
+  COMPLETED_CHECKOUT_DATES.clear();
+  isoDates.forEach(d => COMPLETED_CHECKOUT_DATES.add(d));
+  _monthBarInstance?.render();
 }
 
 function markDateCheckedOut(date) {

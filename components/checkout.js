@@ -26,12 +26,12 @@
 //
 // Clients are picked from the DB; if the person isn't there yet, "+ Add
 // ... as new client" creates them on the spot (they land in Prospects).
-// Next validates the page you're on; Submit writes the new items and
-// statuses onto the clients' cards, dated for the checkout day, and marks
-// that day as checked out.
-// Depends on client-card.js (client store, _addDatedItem, _caseAmountsSuffix),
-// client-cases.js (CASE_TYPES) and month-bar.js (date helpers,
-// markDateCheckedOut).
+// Next validates the page you're on; Submit saves the new clients, items
+// and statuses to the database (data.js), dated for the checkout day,
+// marks that day as checked out, then reloads the cards and dashboard.
+// Depends on client-card.js (client store, _caseAmountsSuffix),
+// client-cases.js (CASE_TYPES), month-bar.js (date helpers) and data.js
+// (saving, reloading).
 
 function _injectCheckoutCSS() {
   if (document.getElementById('checkout-styles')) return;
@@ -440,9 +440,6 @@ const CHECKOUT_STEPS = [
   { key: 'status', title: 'Status updates' },
 ];
 
-// Every submitted checkout by ISO date, for other components to read later.
-const CHECKOUT_LOG = {};
-
 function _checkoutIso(date) {
   const pad = n => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -525,6 +522,9 @@ class Checkout {
     CHECKOUT_SECTIONS.forEach(sec => { this.rows[sec.key] = []; this._normalizeRows(sec.key); });
     this.locked = this._computeLocked();
     this.newClients = [];
+    this.createdIds = {};
+    this.activitiesSaved = false;
+    this.casesSaved = false;
     this.statuses = {};
     this.step = 0;
     this.maxStep = 0;
@@ -1059,7 +1059,7 @@ class Checkout {
 
   // ---------- submit ----------
 
-  _submit() {
+  async _submit() {
     // Going back can invalidate an earlier page, so check them all.
     const bad = CHECKOUT_STEPS.findIndex((_, i) => !this._validateStep(i));
     if (bad !== -1) {
@@ -1067,84 +1067,83 @@ class Checkout {
       this._showStepErrors();
       return;
     }
+    if (this.saving) return;
+    this.saving = true;
+    this.nextBtn.disabled = true;
+    this.nextBtn.textContent = 'Saving…';
+    this.errorMsg.textContent = '';
 
+    try {
+      await this._save();
+      // Everything's in the database: reload so the cards and dashboard
+      // show exactly what was saved.
+      await loadAppData();
+      this.close();
+    } catch (err) {
+      console.error(err);
+      this.errorMsg.textContent = `Couldn't save — ${err.message || err}. Nothing was lost; try Submit again.`;
+    } finally {
+      this.saving = false;
+      this.nextBtn.disabled = false;
+      this.nextBtn.textContent = 'Submit checkout';
+    }
+  }
+
+  // Writes the whole checkout. New clients go first, so every item can
+  // point at a real id. If a later step fails, Submit can safely be
+  // retried: clients created on the first attempt are remembered
+  // (this.createdIds) rather than created twice.
+  async _save() {
     const iso = _checkoutIso(this.date);
 
-    // New clients first, so every item can point at a real id.
-    const idFor = {};
-    this.newClients.forEach(n => {
-      const slug = `${n.firstName}-${n.lastName}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      const id = `${slug}-${Date.now().toString(36)}${n.tempId.replace('new-', '')}`;
-      idFor[n.tempId] = id;
-      appendClientCard('prospects-cards', {
-        id,
-        firstName: n.firstName,
-        lastName: n.lastName,
-        email: '',
-        phone: '',
-        referrals: 0,
-        meetings: [],
-        fnas: [],
-        quotes: [],
-        details: { fullName: `${n.firstName} ${n.lastName}`.trim() },
-        casesInProgress: [],
-        acceptedCases: [],
-        statuses: [],
-      });
+    this.createdIds = this.createdIds || {};
+    for (const n of this.newClients) {
+      if (this.createdIds[n.tempId]) continue;
+      const card = await dbCreateClient({ firstName: n.firstName, lastName: n.lastName });
+      this.createdIds[n.tempId] = card.id;
+    }
+    const idOf = row => (row.client.kind === 'new' ? this.createdIds[row.client.id] : row.client.id);
+    const filled = key => this.rows[key].filter(row => row.client);
+
+    const activities = [];
+    filled('meetings').forEach(r => activities.push({
+      client_id: idOf(r), type: 'meeting', date: iso, details: { meetingType: r.meetingType, joint: !!r.joint },
+    }));
+    filled('fnas').forEach(r => activities.push({ client_id: idOf(r), type: 'fna', date: iso, details: {} }));
+    filled('quotes').forEach(r => activities.push({
+      client_id: idOf(r), type: 'quote', date: iso, details: { risk: !!r.risk, investment: !!r.investment },
+    }));
+    filled('willsLeads').forEach(r => activities.push({ client_id: idOf(r), type: 'wills_lead', date: iso, details: {} }));
+    CHECKOUT_CHANNELS.forEach(c => {
+      const count = Number(this.channels[c.key]) || 0;
+      if (count > 0) activities.push({ client_id: null, type: 'prospect_contact', date: iso, details: { channel: c.key, count } });
     });
 
-    // Collect everything per client (skipping the always-empty trailing
-    // row, which never got a client), then write each client once.
-    const byClient = {};
-    const slot = id => byClient[id] || (byClient[id] = { meetings: [], fnas: [], quotes: [], cases: [], willsLeads: [] });
-    CHECKOUT_SECTIONS.forEach(sec => {
-      this.rows[sec.key].filter(row => row.client).forEach(row => {
-        const id = row.client.kind === 'new' ? idFor[row.client.id] : row.client.id;
-        slot(id)[sec.key].push(row);
-      });
-    });
-    this._businessClients().forEach(c => { slot(c.id); });
+    const cases = filled('cases').map(r => ({
+      client_id: idOf(r),
+      case_type: r.caseType,
+      initiated_date: iso,
+      lump_sum: r.lumpSum ? Number(r.lumpSum) : null,
+      monthly: r.monthly ? Number(r.monthly) : null,
+      advice_fee_percent: r.adviceFeePercent ? Number(r.adviceFeePercent) : null,
+    }));
 
-    const meetingLabel = key => (CHECKOUT_MEETING_TYPES.find(t => t.key === key) || {}).label || 'Meeting';
+    const statuses = this._businessClients()
+      .map(c => ({ clientId: c.id, text: (this.statuses[c.id] || '').trim() }))
+      .filter(st => st.text);
 
-    Object.entries(byClient).forEach(([id, items]) => {
-      updateClient(id, d => {
-        items.meetings.forEach(r => {
-          const text = `${meetingLabel(r.meetingType)} meeting${r.joint ? ' · joint call' : ''}`;
-          d.meetings = _addDatedItem(d.meetings, { date: iso, text });
-        });
-        items.fnas.forEach(() => { d.fnas = _addDatedItem(d.fnas, { date: iso, text: 'FNA completed' }); });
-        items.quotes.forEach(r => {
-          const cover = r.risk && r.investment ? 'Risk & Investment' : r.risk ? 'Risk' : 'Investment';
-          d.quotes = _addDatedItem(d.quotes, { date: iso, text: `Quote submitted · ${cover}` });
-        });
-        items.cases.forEach(r => {
-          const item = { date: iso, type: r.caseType };
-          if (r.lumpSum) item.lumpSum = Number(r.lumpSum);
-          if (r.monthly) item.monthly = Number(r.monthly);
-          if (r.adviceFeePercent) item.adviceFeePercent = Number(r.adviceFeePercent);
-          d.casesInProgress = _addDatedItem(d.casesInProgress, item);
-        });
-        items.willsLeads.forEach(() => { d.willsLeads = _addDatedItem(d.willsLeads, { date: iso, text: 'Wills lead' }); });
-        const status = (this.statuses[id] || '').trim();
-        if (status) {
-          // One status per day: a second checkout the same day replaces it.
-          d.statuses = _addDatedItem((d.statuses || []).filter(st => st.date !== iso), { date: iso, text: status });
-        }
-      });
-    });
-
-    const prospectChannels = {};
-    CHECKOUT_CHANNELS.forEach(c => { prospectChannels[c.key] = Number(this.channels[c.key]) || 0; });
-    const counts = {};
-    CHECKOUT_SECTIONS.forEach(sec => { counts[sec.key] = this.rows[sec.key].filter(r => r.client).length; });
-    const summary = { date: iso, prospects: this._prospectsTotal(), prospectChannels, ...counts };
-    CHECKOUT_LOG[iso] = summary;
-    document.dispatchEvent(new CustomEvent('checkout:submitted', { detail: summary }));
-
-    markDateCheckedOut(this.date);
-    _syncCheckoutTrigger();
-    this.close();
+    // Items and cases in one insert each, so neither is ever half-written;
+    // the flags stop a retry from saving either twice.
+    if (!this.activitiesSaved) {
+      await dbInsertActivities(activities);
+      this.activitiesSaved = true;
+    }
+    if (!this.casesSaved) {
+      await dbInsertCases(cases);
+      this.casesSaved = true;
+    }
+    await dbReplaceStatuses(iso, statuses);
+    await dbMarkCheckedOut(iso);
   }
 }
 

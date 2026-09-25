@@ -128,8 +128,11 @@ create index cases_status_idx on cases(status);
 --   wills_lead       {}
 --   status           {text: string} — client_id required; case_id set
 --                    only when this status belongs to one specific case
---   prospect_contact {channel: phoned|emailed|messaged|linkedin|other} —
+--   prospect_contact {channel: phoned|emailed|messaged|linkedin|other,
+--                    count: int} — one row per channel per checkout;
 --                    client_id left null (see header note)
+--   referral         {} — logged alongside each +1 to clients.referrals,
+--                    so referrals can be counted per month
 --   checkout         {} — client_id left null; this date has been
 --                    reviewed and confirmed by this FA. At most one per
 --                    (fa_id, date) — see the unique index below.
@@ -140,7 +143,7 @@ create table activities (
   client_id   uuid references clients(id) on delete cascade,        -- null only for prospect_contact / checkout
   case_id     uuid references cases(id) on delete cascade,          -- set only for a case-scoped status
   type        text not null
-                check (type in ('meeting', 'fna', 'quote', 'wills_lead', 'status', 'prospect_contact', 'checkout')),
+                check (type in ('meeting', 'fna', 'quote', 'wills_lead', 'status', 'prospect_contact', 'checkout', 'referral')),
   date        date not null,
   details     jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),

@@ -156,6 +156,11 @@ class Leaderboard {
     });
   }
 
+  setReps(reps) {
+    this.config.reps = reps;
+    this.render();
+  }
+
   render() {
     const { title, reps } = this.config;
     const dir = this.sortDir === "desc" ? -1 : 1;
@@ -192,7 +197,7 @@ class Leaderboard {
         return `
           <div class="lb-row">
             <div class="lb-rank">${rank}</div>
-            <div class="lb-name">${rep.name}</div>
+            <div class="lb-name">${_escHtml(rep.name)}</div>
             ${cells}
           </div>
         `;

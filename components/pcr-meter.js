@@ -110,11 +110,16 @@ class PcrMeter {
       {
         validationTarget: 400000,
         highFlyerMultiplier: 3,
-        currentCount: 600000, // placeholder — wire up to real PCR data later
+        currentCount: 0, // set from real accepted cases by data.js refreshDashboard
         periodLabel: "", // e.g. "September 2026" — the live period, not whatever the month bar is navigated to
       },
       config,
     );
+    this.render();
+  }
+
+  update(config) {
+    Object.assign(this.config, config);
     this.render();
   }
 

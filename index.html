@@ -72,6 +72,8 @@
     <script src="components/commission-calculator.js"></script>
     <script src="components/checkout.js"></script>
     <script src="components/leaderboard.js"></script>
+    <script src="components/data.js"></script>
+    <script src="components/new-client.js"></script>
 
     <!-- ===== Top bar ===== -->
     <div class="topbar">
@@ -120,15 +122,15 @@
           <path d="M4 10v10a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V10" />
         </svg>
       </div>
-      <div class="tab" data-tab="prospects">Prospects <span class="tab-count">2</span></div>
-      <div class="tab" data-tab="business">Business <span class="tab-count">2</span></div>
-      <div class="tab" data-tab="clients">Clients <span class="tab-count">2</span></div>
+      <div class="tab" data-tab="prospects">Prospects <span class="tab-count">0</span></div>
+      <div class="tab" data-tab="business">Business <span class="tab-count">0</span></div>
+      <div class="tab" data-tab="clients">Clients <span class="tab-count">0</span></div>
       <div class="tab tab-icon" data-tab="not-moved" title="Not Moved Forward">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10" />
           <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
         </svg>
-        <span class="tab-count">1</span>
+        <span class="tab-count">0</span>
       </div>
     </div>
 
@@ -187,263 +189,19 @@
       initMonthBar("month-bar-container", {
         onNavigate: (period) => pcrMeter.setPeriodLabel(period.label),
       });
-      initClientFunnel("client-funnel-container");
-      initMonthlyStats("monthly-stats-container");
+      const funnel = initClientFunnel("client-funnel-container");
+      const monthlyStats = initMonthlyStats("monthly-stats-container");
       initClientCards(document);
       initCommissionCalculator("commission-calc-trigger");
       initCheckout("checkout-trigger");
       initEditablePanels(document);
       initClientCaseLists(document);
-      initLeaderboard("leaderboard-container", {
-        reps: [
-          {
-            name: "Robyn Hock",
-            prospects: 24,
-            referrals: 6,
-            willsLeads: 5,
-            meetings: 15,
-            meetingsBreakdown: { factFinder: 7, closing: 5, relational: 3 },
-            fnas: 12,
-            quotes: 9,
-            cases: 7,
-            casesBreakdown: { risk: 4, investments: 3 },
-            pcr: 820000,
-            pcrBreakdown: { risk: 520000, investments: 300000 },
-          },
-          {
-            name: "Matthew PG Smith (you)",
-            prospects: 16,
-            referrals: 4,
-            willsLeads: 3,
-            meetings: 10,
-            meetingsBreakdown: { factFinder: 5, closing: 3, relational: 2 },
-            fnas: 8,
-            quotes: 5,
-            cases: 4,
-            casesBreakdown: { risk: 2, investments: 2 },
-            pcr: 600000,
-            pcrBreakdown: { risk: 380000, investments: 220000 },
-          },
-          {
-            name: "Willie Smith",
-            prospects: 12,
-            referrals: 3,
-            willsLeads: 2,
-            meetings: 7,
-            meetingsBreakdown: { factFinder: 3, closing: 2, relational: 2 },
-            fnas: 5,
-            quotes: 4,
-            cases: 3,
-            casesBreakdown: { risk: 2, investments: 1 },
-            pcr: 410000,
-            pcrBreakdown: { risk: 260000, investments: 150000 },
-          },
-          {
-            name: "Thandi Mokoena",
-            prospects: 28,
-            referrals: 8,
-            willsLeads: 6,
-            meetings: 18,
-            meetingsBreakdown: { factFinder: 8, closing: 6, relational: 4 },
-            fnas: 14,
-            quotes: 11,
-            cases: 9,
-            casesBreakdown: { risk: 5, investments: 4 },
-            pcr: 940000,
-            pcrBreakdown: { risk: 600000, investments: 340000 },
-          },
-          {
-            name: "Pieter van der Merwe",
-            prospects: 20,
-            referrals: 5,
-            willsLeads: 4,
-            meetings: 13,
-            meetingsBreakdown: { factFinder: 6, closing: 4, relational: 3 },
-            fnas: 10,
-            quotes: 8,
-            cases: 6,
-            casesBreakdown: { risk: 4, investments: 2 },
-            pcr: 710000,
-            pcrBreakdown: { risk: 480000, investments: 230000 },
-          },
-          {
-            name: "Aisha Patel",
-            prospects: 18,
-            referrals: 7,
-            willsLeads: 3,
-            meetings: 11,
-            meetingsBreakdown: { factFinder: 5, closing: 3, relational: 3 },
-            fnas: 9,
-            quotes: 6,
-            cases: 5,
-            casesBreakdown: { risk: 3, investments: 2 },
-            pcr: 520000,
-            pcrBreakdown: { risk: 330000, investments: 190000 },
-          },
-          {
-            name: "Sipho Dlamini",
-            prospects: 14,
-            referrals: 2,
-            willsLeads: 2,
-            meetings: 8,
-            meetingsBreakdown: { factFinder: 4, closing: 2, relational: 2 },
-            fnas: 6,
-            quotes: 4,
-            cases: 3,
-            casesBreakdown: { risk: 1, investments: 2 },
-            pcr: 350000,
-            pcrBreakdown: { risk: 150000, investments: 200000 },
-          },
-          {
-            name: "Karen Botha",
-            prospects: 9,
-            referrals: 1,
-            willsLeads: 1,
-            meetings: 5,
-            meetingsBreakdown: { factFinder: 3, closing: 1, relational: 1 },
-            fnas: 3,
-            quotes: 2,
-            cases: 1,
-            casesBreakdown: { risk: 1, investments: 0 },
-            pcr: 180000,
-            pcrBreakdown: { risk: 180000, investments: 0 },
-          },
-        ],
-      });
+      const leaderboard = initLeaderboard("leaderboard-container");
+      initNewClient(".btn-new");
 
-      // Placeholder status updates — one per daily checkout, newest first.
-      // Every card shares the same list for now, just to see the layout.
-      const SAMPLE_STATUSES = [
-        { date: "2026-09-21", text: "Called to confirm the signed quote is on its way back. Client is travelling until Wednesday." },
-        { date: "2026-09-18", text: "Sent the revised Life Cover quote with the lower premium option." },
-        { date: "2026-09-17", text: "No change. Waiting on the client's medical results." },
-        { date: "2026-09-16", text: "Medical results received. Forwarded to underwriting." },
-        { date: "2026-09-15", text: "Meeting held at the client's office. Walked through the FNA outcome." },
-        { date: "2026-09-14", text: "Left a voicemail and sent a WhatsApp to book a follow-up meeting." },
-        { date: "2026-09-11", text: "Client asked for a comparison between Life Cover and Income Protection." },
-        { date: "2026-09-10", text: "Application submitted. Case moved to in progress." },
-        { date: "2026-09-09", text: "FNA completed. Client is keen to proceed with cover." },
-        { date: "2026-09-08", text: "Initial meeting held. Collected ID and proof of address." },
-      ];
-
-      // Placeholder card data — one array per tab. Each card shows its counts
-      // on the row and its status updates when expanded.
-      renderClientCards("prospects-cards", [
-        {
-          id: "leonie-botes-prospect",
-          firstName: "Leonie",
-          lastName: "Botes",
-          email: "leoniembotes@gmail.com",
-          phone: "+27825766253",
-          referrals: 0,
-          meetings: [{ date: "2026-09-08", text: "Fact Finder meeting" }],
-          fnas: [],
-          quotes: [],
-          details: { fullName: "Leonie Botes" },
-          casesInProgress: [],
-          acceptedCases: [],
-          statuses: SAMPLE_STATUSES,
-        },
-        {
-          id: "robyn-hock-prospect",
-          firstName: "Robyn",
-          lastName: "Hock",
-          email: "hockrobyn@gmail.com",
-          phone: "+27845992888",
-          referrals: 0,
-          meetings: [{ date: "2026-09-08", text: "Fact Finder meeting" }],
-          fnas: [],
-          quotes: [],
-          details: { fullName: "Robyn Hock" },
-          casesInProgress: [],
-          acceptedCases: [],
-          statuses: SAMPLE_STATUSES,
-        },
-      ]);
-
-      renderClientCards("business-cards", [
-        {
-          id: "dumisani-nkosi",
-          firstName: "Dumisani",
-          lastName: "Nkosi",
-          email: "dumisani.nkosi@gmail.com",
-          phone: "+27835551234",
-          referrals: 0,
-          meetings: [{ date: "2026-09-15", text: "Closing meeting" }, { date: "2026-09-08", text: "Fact Finder meeting" }],
-          fnas: [{ date: "2026-09-09", text: "FNA completed" }],
-          quotes: [{ date: "2026-09-11", text: "Life Cover quote · R 1 250 pm" }],
-          details: { fullName: "Dumisani Nkosi" },
-          casesInProgress: [{ type: "Life Cover", date: "2026-09-10" }],
-          acceptedCases: [],
-          statuses: SAMPLE_STATUSES,
-        },
-        {
-          id: "willie-smith",
-          firstName: "Willie",
-          lastName: "Smith",
-          email: "willie@ssigroup.co.za",
-          phone: "0823225633",
-          referrals: 1,
-          meetings: [{ date: "2026-09-16", text: "Closing meeting" }, { date: "2026-09-09", text: "Fact Finder meeting" }],
-          fnas: [{ date: "2026-09-10", text: "FNA completed" }],
-          quotes: [{ date: "2026-09-12", text: "Disability Cover quote · R 890 pm" }],
-          details: { fullName: "Willie Smith" },
-          casesInProgress: [{ type: "Disability Cover", date: "2026-09-12" }],
-          acceptedCases: [],
-          statuses: SAMPLE_STATUSES,
-        },
-      ]);
-
-      renderClientCards("clients-cards", [
-        {
-          id: "leonie-botes-client",
-          firstName: "Leonie",
-          lastName: "Botes",
-          email: "leoniembotes@gmail.com",
-          phone: "+27825766253",
-          referrals: 1,
-          meetings: [{ date: "2026-08-18", text: "Closing meeting" }, { date: "2026-08-05", text: "Relational meeting" }, { date: "2026-07-22", text: "Fact Finder meeting" }, { date: "2026-07-10", text: "Fact Finder meeting" }],
-          fnas: [{ date: "2026-07-24", text: "FNA completed" }],
-          quotes: [{ date: "2026-08-12", text: "Retirement Annuity quote · R 2 000 pm" }, { date: "2026-08-01", text: "Retirement Annuity quote · R 1 500 pm" }],
-          details: { fullName: "Leonie Botes" },
-          casesInProgress: [],
-          acceptedCases: [{ type: "Retirement Annuity", date: "2026-08-20" }],
-          statuses: SAMPLE_STATUSES,
-        },
-        {
-          id: "robyn-hock-client",
-          firstName: "Robyn",
-          lastName: "Hock",
-          email: "hockrobyn@gmail.com",
-          phone: "+27845992888",
-          referrals: 0,
-          meetings: [{ date: "2026-08-03", text: "Closing meeting" }, { date: "2026-07-27", text: "Fact Finder meeting" }, { date: "2026-07-15", text: "Fact Finder meeting" }],
-          fnas: [{ date: "2026-07-28", text: "FNA completed" }],
-          quotes: [{ date: "2026-07-31", text: "Life Cover quote · R 1 100 pm" }],
-          details: { fullName: "Robyn Hock" },
-          casesInProgress: [],
-          acceptedCases: [{ type: "Life Cover", date: "2026-08-05" }],
-          statuses: SAMPLE_STATUSES,
-        },
-      ]);
-
-      renderClientCards("not-moved-cards", [
-        {
-          id: "sample-client",
-          firstName: "Sample",
-          lastName: "Client",
-          email: "sample.client@gmail.com",
-          phone: "+27820000000",
-          referrals: 0,
-          meetings: [{ date: "2026-09-01", text: "Fact Finder meeting" }],
-          fnas: [],
-          quotes: [],
-          details: { fullName: "Sample Client" },
-          casesInProgress: [],
-          acceptedCases: [],
-          statuses: SAMPLE_STATUSES,
-        },
-      ]);
+      // Cards and dashboard numbers load from Supabase once someone's
+      // signed in (data.js, on 'currentuser:changed').
+      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard });
 
       // Tab switching
       function activateTab(tab) {
@@ -502,10 +260,22 @@
           const sourceTabContent = draggedCard.closest(".tab-content");
           const targetTabContent = document.getElementById("tab-" + tab.dataset.tab);
           if (!targetTabContent || sourceTabContent === targetTabContent) return;
-          targetTabContent.appendChild(draggedCard);
+          const card = draggedCard;
+          const clientId = card.querySelector(".list-row").dataset.cardId;
+          const sourceList = card.parentElement;
+          // Move it straight away; put it back if the save fails.
+          targetTabContent.querySelector('[id$="-cards"]').appendChild(card);
           updateTabCount(sourceTabContent);
           updateTabCount(targetTabContent);
           activateTab(tab);
+          dbSetClientTab(clientId, tab.dataset.tab)
+            .then(() => refreshDashboard())
+            .catch((err) => {
+              sourceList.appendChild(card);
+              updateTabCount(sourceTabContent);
+              updateTabCount(targetTabContent);
+              showSaveError(err);
+            });
         });
       });
     </script>

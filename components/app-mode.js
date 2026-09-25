@@ -73,7 +73,11 @@ function setAppMode(mode) {
   _applyAppMode();
 }
 
+// Fires 'currentuser:changed' only when the person actually changes
+// (sign in / sign out), not on every auth event — token refreshes re-run
+// auth.js's render too, and data.js reloads everything on this event.
 function setCurrentUser(user) {
+  const changed = (currentUser?.id || null) !== (user?.id || null);
   currentUser = user;
 
   const fullName = user ? `${user.name} ${user.surname}` : '';
@@ -87,6 +91,7 @@ function setCurrentUser(user) {
 
   document.getElementById('mode-toggle')?.classList.toggle('hidden', !user?.is_admin);
   _applyAppMode();
+  if (changed) document.dispatchEvent(new CustomEvent('currentuser:changed'));
 }
 
 document.addEventListener('DOMContentLoaded', () => {

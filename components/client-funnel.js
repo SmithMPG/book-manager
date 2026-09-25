@@ -115,13 +115,19 @@ class ClientFunnel {
   constructor(container, config) {
     this.container = container;
     this.config = Object.assign({
-      prospectsContacted: 65,
-      meetings: { factFinder: 24, closing: 11, relational: 5 }, // placeholder — wire up to real activity data later
-      fnas: 18,
-      quotes: 10,
-      casesSubmitted: 4,
+      prospectsContacted: 0,
+      meetings: { factFinder: 0, closing: 0, relational: 0 },
+      fnas: 0,
+      quotes: 0,
+      casesSubmitted: 0,
     }, config);
     this.selectedStage = 'meetings';
+    this.render();
+  }
+
+  // Real numbers for this business month (data.js refreshDashboard).
+  update(config) {
+    Object.assign(this.config, config);
     this.render();
   }
 

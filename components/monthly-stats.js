@@ -51,11 +51,18 @@ class MonthlyStats {
   constructor(container, config) {
     this.container = container;
     this.config = Object.assign({
-      willsLeadsMonthly: 2,
-      referralsMonthly: 3,
+      willsLeadsMonthly: 0,
+      referralsMonthly: 0,
     }, config);
     this._onClientsChanged = () => this.render();
     document.addEventListener('clients:changed', this._onClientsChanged);
+    this.render();
+  }
+
+  // Wills leads / referrals this month (data.js refreshDashboard); the
+  // commission figures come straight from the client cards.
+  update(config) {
+    Object.assign(this.config, config);
     this.render();
   }
 

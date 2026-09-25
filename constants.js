@@ -79,3 +79,26 @@ function caseUpfrontCommission(item) {
     default: return (Number(item.lumpSum) || 0) * ((Number(item.adviceFeePercent) || 0) / 100);
   }
 }
+
+// PCR for one case (or a sum of same-type cases): {type, lumpSum, monthly}.
+// Mirrors the Commission Calculator's formulas: Risk (and Educator, as
+// above) = annual premium x CC_RISK_PCR_MULTIPLIER; RA Builder = annual
+// premium x 15 (the calculator's default commission term); RA Liberty =
+// annual premium x CC_LIBERTY_RA_PCR_MULTIPLIER; everything else is an
+// investment, PCR = lump sum 1:1. Linear in lumpSum/monthly, so it works
+// on the leaderboard's per-type sums too. The dashboard counts PCR on
+// cases accepted this business month. ASSUMED, not yet confirmed.
+const CASE_PCR_BUILDER_RA_TERM = 15;
+
+function casePcr(item) {
+  const annual = (Number(item.monthly) || 0) * 12;
+  if (caseCommissionRule(item.type) === 'risk') return annual * CC_RISK_PCR_MULTIPLIER;
+  if (item.type === 'RA Builder') return annual * CASE_PCR_BUILDER_RA_TERM;
+  if (item.type === 'RA Liberty') return annual * CC_LIBERTY_RA_PCR_MULTIPLIER;
+  return Number(item.lumpSum) || 0;
+}
+
+// Leaderboard/PCR split: Risk-rule products vs everything else.
+function caseIsRisk(caseType) {
+  return caseCommissionRule(caseType) === 'risk';
+}
