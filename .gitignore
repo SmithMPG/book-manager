@@ -3,3 +3,10 @@ MyBook-output.md
 MyBook-output.txt
 BookManager-output.md
 BookManager-output.txt
+
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*

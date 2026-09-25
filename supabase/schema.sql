@@ -60,6 +60,18 @@ create table users (
   pcr_target  int,
   is_admin    boolean not null default false, -- sees everyone's data, not just their own
   is_active   boolean not null default true,  -- false = "left", data retained
+  branch      text,                           -- open-ended, not a fixed list — real
+                                                -- branches/offices over time (e.g.
+                                                -- "Bryanston Academy"), plus "Test
+                                                -- group" for QA-only data. Drives the
+                                                -- leaderboard's group filter.
+  password_set boolean not null default false, -- flips true once they finish the
+                                                -- set-password screen after their
+                                                -- invite — see components/auth.js.
+                                                -- Needed because Supabase's invite
+                                                -- links grant a real session before
+                                                -- a password exists; this is what
+                                                -- stops that counting as "in".
   created_at  timestamptz not null default now()
 );
 
@@ -192,12 +204,15 @@ end $$;
 -- ---------------------------------------------------------------------
 -- Table-level grants: with "Automatically expose new tables" turned off
 -- at project creation, nothing is reachable via the API until granted
--- explicitly. Everything here goes to `authenticated` only — never
--- `anon` — since the whole app sits behind login; RLS above then further
--- narrows each authenticated request to that FA's own rows (or every
--- FA's, if is_admin()).
+-- explicitly. `authenticated` is what the logged-in app itself uses —
+-- RLS above then narrows each request to that FA's own rows (or every
+-- FA's, if is_admin()). `service_role` (the secret key, used only by the
+-- dashboard and any admin scripts, never the app) bypasses RLS's row filtering, but
+-- bypassing RLS and having baseline permission to touch a table at all
+-- are two separate things in Postgres — it still needs its own grant.
+-- Neither role gets `anon` access — the whole app sits behind login.
 -- ---------------------------------------------------------------------
-grant usage on schema public to authenticated;
+grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on
   users, clients, cases, activities
-  to authenticated;
+  to authenticated, service_role;

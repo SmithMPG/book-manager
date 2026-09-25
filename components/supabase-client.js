@@ -3,8 +3,7 @@
 // ship in the browser — it identifies the project, nothing more. What
 // actually keeps one FA's data from another's is the RLS policies in
 // supabase/schema.sql. The *secret* key is never used here, and never
-// should be — it bypasses those policies entirely; it only ever belongs
-// in supabase/seed-fas.js, run locally.
+// should be — it bypasses those policies entirely.
 //
 // The CDN script (loaded in index.html before this file) declares a
 // global `supabase` object — that's the SDK namespace, not a client.
