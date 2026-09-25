@@ -108,7 +108,7 @@ class PcrMeter {
     this.container = container;
     this.config = Object.assign(
       {
-        validationTarget: 400000,
+        validationTarget: null, // users.pcr_target, set by data.js; null = no target
         highFlyerMultiplier: 3,
         currentCount: 0, // set from real accepted cases by data.js refreshDashboard
         periodLabel: "", // e.g. "September 2026" — the live period, not whatever the month bar is navigated to
@@ -130,6 +130,10 @@ class PcrMeter {
 
   render() {
     const { validationTarget, highFlyerMultiplier, currentCount, periodLabel } = this.config;
+    if (!validationTarget) {
+      this._renderNoTarget();
+      return;
+    }
     const highFlyerTarget = validationTarget * highFlyerMultiplier;
 
     const size = 280;
@@ -197,6 +201,27 @@ class PcrMeter {
     `;
   }
 }
+
+// No Validation target (e.g. the manager): no gauge to fill, just this
+// month's PCR total.
+PcrMeter.prototype._renderNoTarget = function () {
+  const { currentCount, periodLabel } = this.config;
+  const size = 280;
+  const cx = size / 2;
+  const viewBoxHeight = periodLabel ? size + 46 : size;
+  const headingY = size / 2 + 100 * 0.92;
+  const periodLabelHtml = periodLabel ? `<text x="${cx}" y="${headingY + 52}" class="pcr-period" text-anchor="middle">${periodLabel}</text>` : "";
+  this.container.innerHTML = `
+    <div class="pcr-meter">
+      <svg viewBox="0 0 ${size} ${viewBoxHeight}" class="pcr-meter-svg">
+        <text x="${cx}" y="${size / 2 - 4}" class="pcr-percent" text-anchor="middle">${pcrFormatCompact(currentCount)}</text>
+        <text x="${cx}" y="${size / 2 + 20}" class="pcr-stage" text-anchor="middle">No target set</text>
+        <text x="${cx}" y="${headingY}" class="pcr-heading" text-anchor="middle">PCR&#8217;s</text>
+        ${periodLabelHtml}
+      </svg>
+    </div>
+  `;
+};
 
 function initPcrMeter(containerId, config) {
   const container = document.getElementById(containerId);

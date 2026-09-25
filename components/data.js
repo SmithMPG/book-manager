@@ -228,10 +228,7 @@ async function refreshDashboard() {
     quotes: me.quotes,
     casesSubmitted: me.cases,
   });
-  _widgets.pcrMeter?.update({
-    currentCount: me.pcr,
-    ...(currentUser.pcr_target ? { validationTarget: currentUser.pcr_target } : {}),
-  });
+  _widgets.pcrMeter?.update({ currentCount: me.pcr, validationTarget: currentUser.pcr_target || null });
   _widgets.monthlyStats?.update({ willsLeadsMonthly: me.willsLeads, referralsMonthly: me.referrals });
   setCheckedOutDates(checkoutDates);
   _syncCheckoutTrigger();
