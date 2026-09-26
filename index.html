@@ -78,6 +78,7 @@
     <script src="components/leaderboard.js"></script>
     <script src="components/data.js"></script>
     <script src="components/new-client.js"></script>
+    <script src="components/client-search.js"></script>
 
     <!-- ===== Top bar ===== -->
     <div class="topbar">
@@ -204,6 +205,7 @@
       initClientCaseLists(document);
       const leaderboard = initLeaderboard("leaderboard-container");
       initNewClient(".btn-new");
+      initClientSearch(".search-input");
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').

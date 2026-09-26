@@ -334,6 +334,22 @@ function _setCardView(row, detail, view) {
   row.querySelectorAll('.card-metric[data-view]').forEach(m => m.classList.toggle('selected', m.dataset.view === view));
 }
 
+// Opens one client's card (on its Cases, closing any other) and scrolls
+// to it, with a brief highlight — used by search.
+function openClientCard(id) {
+  const row = document.querySelector(`.list-row[data-card-id="${id}"]`);
+  const detail = row?.parentElement.querySelector('.row-detail');
+  if (!row || !detail) return;
+  document.querySelectorAll('.row-detail').forEach(r => {
+    r.classList.remove('open');
+    r.previousElementSibling?.classList.remove('active');
+  });
+  _setCardView(row, detail, 'cases');
+  detail.classList.add('open');
+  row.classList.add('active');
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // Clicking the row opens the client's Cases; clicking a funnel metric
 // opens that metric's list instead. Clicking the same thing again
 // closes the card. Only one card is open at a time.

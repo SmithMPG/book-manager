@@ -27,6 +27,11 @@
 //
 // Clients are picked from the DB; if the person isn't there yet, "+ Add
 // ... as new client" creates them on the spot (they land in Prospects).
+// Required checkouts: an FA who hasn't checked out the previous weekday
+// gets that checkout opened for them on sign-in (data.js
+// enforceCheckout), with no way to close it — no ×, Esc or clicking
+// away — until it's submitted.
+//
 // Next validates the page you're on; Submit saves the new clients, items
 // and case statuses to the database (data.js), dated for the checkout
 // day, marks that day as checked out, then reloads the cards and
@@ -74,6 +79,9 @@ function _injectCheckoutCSS() {
       padding: 20px 24px 12px;
     }
     .co-title { font-size: 17px; font-weight: 700; }
+    .co-required-note { display: none; font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+    .co-overlay.required .co-required-note { display: block; }
+    .co-overlay.required .co-close-btn { display: none; }
     .co-close-btn {
       background: transparent;
       border: none;
@@ -478,7 +486,10 @@ class Checkout {
     this.overlay.innerHTML = `
       <div class="co-modal" role="dialog" aria-modal="true">
         <div class="co-header">
-          <div class="co-title"></div>
+          <div>
+            <div class="co-title"></div>
+            <div class="co-required-note">Check out for your last working day to carry on using the app.</div>
+          </div>
           <button class="co-close-btn" type="button" data-action="close" aria-label="Close">&times;</button>
         </div>
         <div class="co-steps"></div>
@@ -509,7 +520,10 @@ class Checkout {
     });
   }
 
-  open(date) {
+  // required: can't be closed until submitted (see the header note).
+  open(date, { required = false } = {}) {
+    this.required = required;
+    this.overlay.classList.toggle('required', required);
     this.date = date ? new Date(date) : _checkoutDefaultDate();
     this.date.setHours(0, 0, 0, 0);
     this.channels = {};
@@ -536,6 +550,7 @@ class Checkout {
   }
 
   close() {
+    if (this.required) return;
     this.overlay.classList.remove('open');
   }
 
@@ -1046,6 +1061,7 @@ class Checkout {
       // Everything's in the database: reload so the cards and dashboard
       // show exactly what was saved.
       await loadAppData();
+      this.required = false;
       this.close();
       for (const clientId of this.clientsToSync) {
         await syncTabAfterCaseChange(clientId).catch(showSaveError);
@@ -1139,8 +1155,12 @@ function _syncCheckoutTrigger() {
   trigger.title = pending ? "Yesterday's checkout is done" : 'Daily Checkout';
 }
 
-function openCheckout(date) {
-  _checkoutInstance?.open(date);
+function isCheckoutOpen() {
+  return !!_checkoutInstance?.overlay.classList.contains('open');
+}
+
+function openCheckout(date, options) {
+  _checkoutInstance?.open(date, options);
 }
 
 function initCheckout(triggerId) {

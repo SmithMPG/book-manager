@@ -445,7 +445,9 @@ async function refreshDashboard() {
   const admin = _isAdminView();
   const days = admin && _adminDays.size ? new Set(_adminDays)
     : _periodDays(admin ? (getMonthBarPeriod() || _currentPeriod()) : _currentPeriod());
-  const checkoutDay = admin ? (_adminDays.size === 1 ? [..._adminDays][0] : _lastWeekday()) : null;
+  // The ✓ / ✗ on the leaderboard is always the previous weekday's
+  // checkout, whatever days are picked.
+  const checkoutDay = admin ? _lastWeekday() : null;
 
   const [board, checkoutDates, teamCases, targets] = await Promise.all([
     _loadLeaderboard(days, checkoutDay),
@@ -462,17 +464,40 @@ async function refreshDashboard() {
   _syncCheckoutTrigger();
 }
 
+// ---------- required checkout ----------
+//
+// An FA can't use the app until the previous weekday is checked out: if
+// it isn't, that day's checkout opens and can't be closed until it's
+// submitted (checkout.js). Checked on sign-in and on switching back to
+// FA mode — never in the admin view, and never for a day before the
+// person was added to the app.
+function enforceCheckout() {
+  if (!currentUser || _isAdminView()) return;
+  const day = _lastWeekday();
+  const joined = (currentUser.created_at || '').slice(0, 10);
+  if (joined && day < joined) return;
+  if (COMPLETED_CHECKOUT_DATES.has(day)) return;
+  if (isCheckoutOpen()) return;
+  openCheckout(new Date(`${day}T00:00:00`), { required: true });
+}
+
 // Switching FA ↔ Admin: start the admin view fresh (month to date, the
 // whole team), turn the month bar's day-picking on or off, and reload.
 document.addEventListener('appmodechange', e => {
   const mode = e.detail.mode;
   if (mode === _lastMode) return;
+  // A real flip of the toggle, not the first mode set on sign-in — then,
+  // the cards aren't loaded yet and the sign-in handler below enforces
+  // the checkout once they are.
+  const switched = _lastMode !== null;
   _lastMode = mode;
   _adminDays.clear();
   _adminFocusId = null;
   setMonthBarSelection(mode === 'admin' ? _adminSelection : null);
   if (mode === 'admin') showTab('dashboard');
-  if (currentUser) refreshDashboard().catch(showSaveError);
+  if (currentUser) {
+    refreshDashboard().then(() => { if (switched) enforceCheckout(); }).catch(showSaveError);
+  }
 });
 
 // The cards in every tab, then the dashboard. Called on sign-in and after
@@ -505,6 +530,7 @@ document.addEventListener('currentuser:changed', async () => {
   if (!currentUser) { clearAppData(); return; }
   try {
     await loadAppData();
+    enforceCheckout();
   } catch (err) {
     console.error(err);
     alert(`Couldn't load your clients — ${err.message || err}. Try refreshing the page.`);

@@ -190,7 +190,7 @@ function _showOverlay(id) {
 async function _fetchCurrentUser(userId) {
   const { data, error } = await supabaseClient
     .from('users')
-    .select('id, name, surname, email, is_admin, branch, pcr_target, password_set')
+    .select('id, name, surname, email, is_admin, branch, pcr_target, password_set, created_at')
     .eq('id', userId)
     .single();
   return error ? null : data;
