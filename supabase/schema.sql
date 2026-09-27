@@ -142,8 +142,9 @@ create index cases_stage_idx on cases(stage);
 --   referral         {} — the client gave a referral
 --   case             {event: opened|submitted|accepted|not-taken-up} —
 --                    case_id set; written by open_case / set_case_stage
---   checkout         {} — client_id left null; this date has been
---                    reviewed and confirmed by this FA. At most one per
+--   checkout         {noActivity: bool} — client_id left null; this date
+--                    has been reviewed (the Review) by this FA — noActivity
+--                    when nothing at all was logged. At most one per
 --                    (fa_id, date) — see the unique index below.
 -- ---------------------------------------------------------------------
 create table activities (
@@ -307,7 +308,10 @@ as $$
       case when p_checkout_date is null then null
         else exists (select 1 from public.activities a
           where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date)
-      end as "checkedOut"
+      end as "checkedOut",
+      -- Reviewed that day, but with nothing at all logged.
+      coalesce((select (a.details->>'noActivity')::boolean from public.activities a
+        where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date), false) as "noActivity"
     from public.users u
     where u.is_active and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
   ) t;

@@ -4,9 +4,9 @@
 //
 // Admin view (setReps with options): each name is clickable — it opens
 // a panel under that row (options.detailHTML) and calls
-// options.onSelect(id), or onSelect(null) when clicked again. A ✓ / ✗
-// beside each name shows whether they checked out (rep.checkedOut) for
-// options.checkoutDayLabel.
+// options.onSelect(id), or onSelect(null) when clicked again. Beside each
+// name, whether they did the Review for options.checkoutDayLabel: ✓, ✗,
+// or – when they did it with nothing logged (rep.noActivity).
 
 function _injectLeaderboardCSS() {
   if (document.getElementById("leaderboard-styles")) return;
@@ -46,6 +46,7 @@ function _injectLeaderboardCSS() {
     .lb-checkout { font-size: 13px; font-weight: 700; width: 14px; text-align: center; }
     .lb-checkout.yes { color: var(--green); }
     .lb-checkout.no { color: var(--red); }
+    .lb-checkout.none { color: var(--ink-dim); }
     .lb-detail {
       padding: 10px 14px 14px 40px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
@@ -242,9 +243,14 @@ class Leaderboard {
           return `<div class="lb-value${activeClass}">${value}</div>`;
         }).join("");
         const selected = selectedId === rep.id;
-        const checkout = rep.checkedOut === true || rep.checkedOut === false
-          ? `<span class="lb-checkout ${rep.checkedOut ? "yes" : "no"}" title="${rep.checkedOut ? "Checked out" : "Not checked out"} for ${_escHtml(checkoutDayLabel || "")}">${rep.checkedOut ? "✓" : "✗"}</span>`
-          : "";
+        const day = _escHtml(checkoutDayLabel || "");
+        const checkout = rep.checkedOut === false
+          ? `<span class="lb-checkout no" title="No Review for ${day}">✗</span>`
+          : rep.checkedOut && rep.noActivity
+            ? `<span class="lb-checkout none" title="Reviewed ${day} — no activity">–</span>`
+            : rep.checkedOut
+              ? `<span class="lb-checkout yes" title="Reviewed ${day}">✓</span>`
+              : "";
         return `
           <div class="lb-row${onSelect ? " clickable" : ""}${selected ? " selected" : ""}" data-rep-id="${rep.id}">
             <div class="lb-rank">${rank}</div>

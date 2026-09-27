@@ -484,7 +484,7 @@ function _addFormFieldsHTML(kind) {
     return '<input type="text" class="item-text" data-field="text" placeholder="Note&hellip;" autocomplete="off">';
   }
   if (kind === 'meeting') {
-    const opts = CHECKOUT_MEETING_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
+    const opts = MEETING_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
     return `
       <select data-field="meetingType"><option value="">Meeting type&hellip;</option>${opts}</select>
       <label class="item-check"><input type="checkbox" data-field="joint"> Joint call</label>
@@ -534,13 +534,13 @@ function _closeAddForm(form) {
 }
 
 // A case's own fields depend on its type, and appear once one's picked:
-// premium-only products (Risk, Educator — CHECKOUT_MONTHLY_ONLY_CASE_TYPES)
+// premium-only products (Risk, Educator — PREMIUM_ONLY_CASE_TYPES)
 // take just the monthly premium; everything else takes lump sum, monthly
 // premium and upfront advice fee.
 function _syncCaseFields(form) {
   if (form.dataset.kind !== 'case') return;
   const type = form.querySelector('[data-field="caseType"]').value;
-  const premiumOnly = CHECKOUT_MONTHLY_ONLY_CASE_TYPES.includes(type);
+  const premiumOnly = PREMIUM_ONLY_CASE_TYPES.includes(type);
   const show = (key, on) => {
     const wrap = form.querySelector(`[data-wrap="${key}"]`);
     wrap.classList.toggle('hidden', !on);
@@ -689,23 +689,33 @@ async function _confirmStage(c, stage, lastOpen, d) {
   });
 }
 
-async function _setStage(btn) {
-  const { client: clientId, case: caseId, stage } = btn.dataset;
+// Moves a case to its next stage after confirming, keeps the card and
+// the client's tab in step, and refreshes the dashboard. date: the day
+// it's recorded against (today on the card, the review day in the
+// Review). Returns true if it went ahead.
+async function changeCaseStage(clientId, caseId, stage, date) {
   const d = getClientData(clientId) || {};
   const c = _findCase(d, caseId);
-  if (!c) return;
+  if (!c) return false;
   const lastOpen = !(d.cases || []).some(k => k.id !== caseId && isOpenCase(k));
-  if (!await _confirmStage(c, stage, lastOpen, d)) return;
+  if (!await _confirmStage(c, stage, lastOpen, d)) return false;
+  const r = await dbSetCaseStage(caseId, stage, date);
+  _addToCard(clientId, { activity: r.activity, caseItem: r.case });
+  if (stage === 'accepted' && lastOpen) await moveClientToTab(clientId, 'clients').catch(showSaveError);
+  else await syncTabAfterCaseChange(clientId).catch(showSaveError);
+  await refreshDashboard();
+  return true;
+}
+
+async function _setStage(btn) {
+  const { client: clientId, case: caseId, stage } = btn.dataset;
   btn.disabled = true;
   try {
-    const r = await dbSetCaseStage(caseId, stage, _todayIso());
-    _addToCard(clientId, { activity: r.activity, caseItem: r.case });
-    if (stage === 'accepted' && lastOpen) await moveClientToTab(clientId, 'clients').catch(showSaveError);
-    else await syncTabAfterCaseChange(clientId).catch(showSaveError);
-    await refreshDashboard();
+    await changeCaseStage(clientId, caseId, stage, _todayIso());
   } catch (err) {
-    btn.disabled = false;
     showSaveError(err);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -807,7 +817,7 @@ function initCardItems(root) {
   });
 
   root.addEventListener('keydown', e => {
-    const form = e.target.closest?.('.item-add-form');
+    const form = e.target.closest?.('.row-detail .item-add-form');
     if (!form) return;
     if (e.key === 'Enter') { e.preventDefault(); _saveAddForm(form); }
     if (e.key === 'Escape') { e.stopPropagation(); _closeAddForm(form); }

@@ -216,15 +216,16 @@ async function dbDeleteActivity(id) {
 }
 
 // Opens a case: the case and its "opened" timeline entry, together.
-// fields: {caseType, lumpSum, monthly, adviceFeePercent}. Returns
-// {case, activity} as card items.
+// fields: {caseType, lumpSum, monthly, adviceFeePercent}; any amount left
+// blank counts as 0. Returns {case, activity} as card items.
 async function dbOpenCase(clientId, fields, date) {
+  const amount = x => (x === '' || x == null || !isFinite(Number(x)) ? 0 : Number(x));
   const r = _dbOk(await supabaseClient.rpc('open_case', {
     p_client_id: clientId,
     p_case_type: fields.caseType,
-    p_lump_sum: fields.lumpSum ?? null,
-    p_monthly: fields.monthly ?? null,
-    p_advice_fee_percent: fields.adviceFeePercent ?? null,
+    p_lump_sum: amount(fields.lumpSum),
+    p_monthly: amount(fields.monthly),
+    p_advice_fee_percent: amount(fields.adviceFeePercent),
     p_date: date,
   }));
   return { case: caseItem(r.case), activity: activityItem(r.activity) };
@@ -253,11 +254,34 @@ async function dbInsertActivities(rows) {
   _dbOk(await supabaseClient.from('activities').insert(rows.map(r => ({ ...r, fa_id: faId }))));
 }
 
-// At most one per FA per day (unique index); a repeat checkout of the
-// same day is already marked, so a duplicate is fine to ignore.
-async function dbMarkCheckedOut(date) {
-  const { error } = await supabaseClient.from('activities').insert({ fa_id: _faId(), type: 'checkout', date, details: {} });
-  if (error && error.code !== '23505') throw error;
+// Marks a day reviewed (stored as a `checkout` activity — at most one per
+// FA per day). noActivity: nothing at all was logged that day. Doing the
+// Review again for the same day updates it.
+async function dbMarkReviewed(date, noActivity) {
+  const details = { noActivity: !!noActivity };
+  const { error } = await supabaseClient.from('activities').insert({ fa_id: _faId(), type: 'checkout', date, details });
+  if (!error) return;
+  if (error.code !== '23505') throw error;
+  _dbOk(await supabaseClient.from('activities').update({ details })
+    .eq('fa_id', _faId()).eq('type', 'checkout').eq('date', date));
+}
+
+// Prospects contacted on a day: {channel: count} (PROSPECT_CHANNELS).
+async function dbLoadProspectCounts(date) {
+  const rows = _dbOk(await supabaseClient.from('activities').select('details')
+    .eq('fa_id', _faId()).eq('type', 'prospect_contact').eq('date', date));
+  const counts = {};
+  rows.forEach(r => { counts[r.details.channel] = (counts[r.details.channel] || 0) + (Number(r.details.count) || 0); });
+  return counts;
+}
+
+// Replaces a day's prospect counts with these: one row per channel > 0.
+async function dbReplaceProspectCounts(date, counts) {
+  _dbOk(await supabaseClient.from('activities').delete()
+    .eq('fa_id', _faId()).eq('type', 'prospect_contact').eq('date', date));
+  await dbInsertActivities(Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .map(([channel, count]) => ({ client_id: null, type: 'prospect_contact', date, details: { channel, count } })));
 }
 
 // ---------- loading into the UI ----------
@@ -309,6 +333,7 @@ function _repFromLeaderboardRow(row) {
     name: isYou ? `${row.name} (you)` : row.name,
     plainName: row.name,
     checkedOut: row.checkedOut,
+    noActivity: !!row.noActivity,
     prospects: row.prospects || 0,
     referrals: row.referrals || 0,
     willsLeads: row.willsLeads || 0,
@@ -485,25 +510,44 @@ async function refreshDashboard() {
   if (admin && _adminFocusId && !_dash.reps.some(r => r.id === _adminFocusId)) _adminFocusId = null;
   _renderDashboard();
   setCheckedOutDates(checkoutDates);
-  _syncCheckoutTrigger();
+  syncReviewTrigger();
 }
 
-// ---------- required checkout ----------
+// ---------- required Review ----------
 //
-// An FA can't use the app until the previous weekday is checked out: if
-// it isn't, that day's checkout opens and can't be closed until it's
-// submitted (checkout.js). Checked on sign-in and on switching back to
-// My book — never in the admin view or test mode, and never for a day
-// before the person was added to the app.
-function enforceCheckout() {
+// An FA can't use the app until the last weekday is reviewed: if it
+// isn't, its Review opens and can't be closed until it's done
+// (review.js). Checked on sign-in, on switching back to My book, and
+// whenever the app is used again after midnight — never in Admin or Test
+// mode, and never for a day before the person was added to the app.
+function enforceReview() {
   if (!currentUser || getAppMode() !== 'fa') return;
-  const day = _lastWeekday();
+  const day = reviewDay();
   const joined = (currentUser.created_at || '').slice(0, 10);
   if (joined && day < joined) return;
   if (COMPLETED_CHECKOUT_DATES.has(day)) return;
-  if (isCheckoutOpen()) return;
-  openCheckout(new Date(`${day}T00:00:00`), { required: true });
+  if (isReviewOpen()) return;
+  openReview(day, { required: true });
 }
+
+// The day under review: the last weekday before today.
+function reviewDay() {
+  return _lastWeekday();
+}
+
+// "From 00:00, the next time the app is used": coming back to the tab or
+// window, or a minute ticking past midnight while it's open.
+let _watchedDay = _todayIso();
+function _onAppUsed() {
+  if (!currentUser) return;
+  const today = _todayIso();
+  if (today === _watchedDay) return enforceReview();
+  _watchedDay = today;
+  refreshDashboard().then(enforceReview).catch(showSaveError);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _onAppUsed(); });
+window.addEventListener('focus', _onAppUsed);
+setInterval(_onAppUsed, 60 * 1000);
 
 // Switching mode: start the admin view fresh (month to date, the whole
 // team), turn the month bar's day-picking on or off, and reload — the
@@ -529,7 +573,7 @@ document.addEventListener('appmodechange', async e => {
     } else {
       await refreshDashboard();
     }
-    enforceCheckout();
+    enforceReview();
   } catch (err) {
     showSaveError(err);
   }
@@ -575,7 +619,7 @@ document.addEventListener('currentuser:changed', async () => {
   if (!currentUser) { clearAppData(); return; }
   try {
     await loadAppData();
-    enforceCheckout();
+    enforceReview();
   } catch (err) {
     console.error(err);
     alert(`Couldn't load your clients — ${err.message || err}. Try refreshing the page.`);

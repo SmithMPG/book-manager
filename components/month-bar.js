@@ -6,11 +6,10 @@
 // in CLOSE_OFF_DATES has no prior entry to derive a start date from, so
 // it's excluded — navigation is bounded to periods we can fully compute.
 //
-// Two ways to click a day:
-//   - normally, a past weekday (or today) opens that day's checkout;
-//   - in admin mode, days up to today are selected / deselected instead
-//     (setMonthBarSelection), to narrow the dashboard to just those
-//     days; "Month to date" clears the selection.
+// Clicking a day only does something in admin mode: days up to today are
+// selected / deselected (setMonthBarSelection), to narrow the dashboard
+// to just those days; "Month to date" clears the selection. (Past days
+// can't be reviewed later, so there's nothing to open otherwise.)
 // onNavigate fires on every render (it keeps the PCR meter's label in
 // step); onPeriodChange only when the ‹ › buttons change the month.
 
@@ -110,11 +109,9 @@ function _injectMonthBarCSS() {
       background: var(--mb-future-weekend);
     }
 
-    .mb-cell.checkout-cell,
     .mb-cell.selectable {
       cursor: pointer;
     }
-    .mb-cell.checkout-cell:hover,
     .mb-cell.selectable:hover {
       opacity: 0.85;
     }
@@ -334,10 +331,8 @@ class MonthBar {
           cell.title = this.selection.dates.has(iso) ? `Remove ${formatDayMonth(date)}` : `Show only selected days — add ${formatDayMonth(date)}`;
           cell.addEventListener('click', () => this.selection.onToggle(iso));
         }
-      } else if (isWeekday && (isToday || date < this.today)) {
-        cell.classList.add('checkout-cell');
-        cell.title = isCheckedOut(date) ? 'Checkout complete' : `Complete checkout for ${formatDayMonth(date)}`;
-        cell.addEventListener('click', () => window.openCheckout?.(date));
+      } else if (isWeekday && date < this.today && isCheckedOut(date)) {
+        cell.title = 'Reviewed';
       }
 
       // Boundary days and today always show their date; every other cell
@@ -430,11 +425,6 @@ function formatDaySelection(isoDays) {
 function setCheckedOutDates(isoDates) {
   COMPLETED_CHECKOUT_DATES.clear();
   isoDates.forEach(d => COMPLETED_CHECKOUT_DATES.add(d));
-  _monthBarInstance?.render();
-}
-
-function markDateCheckedOut(date) {
-  COMPLETED_CHECKOUT_DATES.add(isoDate(date));
   _monthBarInstance?.render();
 }
 

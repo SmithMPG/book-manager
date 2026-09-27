@@ -177,27 +177,24 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 The Review is the day's timeline entries, across all clients, laid out **activity first, client last** — "what did I do yesterday, and for whom?" — the opposite of the card, where you start from the client.
 
 ### When it appears
-- **Review day** = the last weekday before today (Monday, Saturday and Sunday all review Friday). Only ever one day; missed days show ✗ to the team lead.
-- From **00:00**, the next time the app is used (opened, refreshed, returned to, or in use as midnight passes), the Review for the review day opens and **can't be closed until done**. Signing out doesn't matter.
-- Not in Admin mode, and never for a day before the FA was added.
-- **No early Reviews** — today can't be reviewed.
-- It can also be opened from the toolbar for the review day, and closed.
+- **Review day** = the last weekday before today (Monday, Saturday and Sunday all review Friday). Only ever that one day: a missed day **can't be reviewed later** — it stays ✗ for the team lead. No early reviews (today can't be reviewed).
+- From **00:00**, the next time the app is used (opened, refreshed, returned to, or in use as midnight passes), the Review opens and **can't be closed until done**. Signing out doesn't matter.
+- Not in Admin or Test mode, and never for a day before the FA was added.
+- The toolbar button opens the Review for the review day (closable once it's done).
 
 ### The screen
 One screen, "Review — Friday 25 Sep", in funnel order:
 
-1. **Prospects contacted** — counts by channel, with a total.
-2. **Meetings, FNAs, Quotes** — each line: the activity's fields (a meeting's include referrals and wills lead), then the client.
-3. **Contacts & notes** — each line: method · outcome, or a note, then the client. Any number per client.
-4. **Cases** — opened, submitted, accepted and not taken up that day, plus opening a new case.
-5. **Client updates** (required) — every client with an open case, showing their last update ("Yesterday: Waiting on PPS") with **Same as last** — FAs write their own updates, and repeating one is legitimate. Clients who already have an entry that day show as done.
-   - **Follow-up nudge:** when a client has had the same update 3 days running, the Review suggests "Same update for 3 days — follow up?". A nudge, not a block.
+1. **Prospects contacted** — counts by channel (Phoned, Emailed, Messaged, LinkedIn, Other), with a total. Only people who **aren't** clients in the app; contact with a client is a Contact entry.
+2. **Meetings · FNAs · Quotes · New cases · Contacts & notes** — each section lists that day's entries, then an add line. Every line looks exactly like the card's add form — the event and its fields — with a **client box at the end**: search any client in any tab, or "+ Add … as new client" (lands in Prospects). A new case moves its client to Business (Move / Cancel), as on the card.
+3. **Open cases** (required) — one block per client with an open case: their cases, each with its stage and the same **Mark submitted / Mark accepted / Not taken up** actions as the card, and one **update** box (type your own, or **Same as last** from the arrow).
+   - A client with **any** entry that day already counts as updated.
+   - **Follow-up nudge:** when a client's last 3 updates were the same, the Review suggests "Same update for 3 days — follow up?". A nudge, not a block.
 
-- Lines already logged that day (on a card, or earlier) show as normal lines and can be deleted.
-- **Client box** on every line: search any client in any tab, or "+ Add … as new client" (lands in Prospects; opening a case moves them to Business).
-- **Saving:** each line saves the moment it's added or deleted, straight onto that client's timeline, dated the review day. After a line is saved, a fresh empty line of the same kind appears for the next one.
-- **Done** checks the required client updates, then marks the day reviewed (✓ on the leaderboard).
-- **No activity:** if the day is marked reviewed with **nothing at all** logged, it's recorded as **No activity**, and the leaderboard shows that instead of ✓. Every entry counts as activity, including a repeated client update — it shows the FA knows where things stand.
+- **Saving:** every line saves the moment it's added or deleted, straight onto the client's timeline, dated the review day. A fresh empty line appears after each save. Entries can be deleted (×), as on the timeline.
+- **Done** checks every open-case client has an update, then marks the day reviewed (✓ on the leaderboard).
+- **No activity:** a day reviewed with **nothing at all** logged is recorded as **No activity**, and the leaderboard shows that instead of ✓. Every entry counts, including a repeated update.
+- Internally the day is still recorded as a `checkout` activity, so the leaderboard needs no migration for the rename.
 
 ## Data model changes (for the timeline and Review)
 Built as if the app had always worked this way — the old case status logs and client statuses are dropped, not converted.

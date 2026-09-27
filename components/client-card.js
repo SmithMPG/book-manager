@@ -170,19 +170,6 @@ function _addDatedItem(list, item) {
   return [item, ...(list || [])].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-// Lump sum / monthly payment / advice fee, when a case was logged with any
-// of them, plus the upfront commission (constants.js) they work out to,
-// when it's non-zero. Used by the checkout's already-logged lines.
-function _caseAmountsSuffix(c) {
-  const parts = [];
-  if (c.lumpSum) parts.push(`${formatRand(c.lumpSum)} lump sum`);
-  if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
-  if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% upfront advice fee`);
-  const commission = caseUpfrontCommission(c);
-  if (commission) parts.push(`${formatRand(commission)} commission`);
-  return parts.length ? ` · ${parts.join(' / ')}` : '';
-}
-
 // The latest timeline entry, shown on the collapsed row. Always rendered
 // so it soaks up the free space between name and metrics, even for a
 // client with nothing on their timeline yet.
@@ -233,11 +220,29 @@ function _notifyClientsChanged() {
   document.dispatchEvent(new CustomEvent('clients:changed'));
 }
 
+// Every tab lists its clients alphabetically — first name, then surname —
+// and a card added or moved into a tab goes straight to its place.
+function _cardSortKey(data) {
+  return `${data.firstName} ${data.lastName}`.toLowerCase();
+}
+
+function placeCardSorted(list, wrapper) {
+  const id = wrapper.querySelector('.list-row')?.dataset.cardId;
+  const key = _cardSortKey(CLIENT_STORE.get(id) || { firstName: '', lastName: '' });
+  const next = [...list.children].find(w => {
+    if (w === wrapper) return false;
+    const other = CLIENT_STORE.get(w.querySelector('.list-row')?.dataset.cardId);
+    return other && _cardSortKey(other).localeCompare(key) > 0;
+  });
+  list.insertBefore(wrapper, next || null);
+}
+
 function renderClientCards(containerId, cards) {
   const container = document.getElementById(containerId);
   if (!container) return;
   cards.forEach(card => CLIENT_STORE.set(card.id, card));
-  container.innerHTML = cards.map(clientCardHTML).join('');
+  const sorted = [...cards].sort((a, b) => _cardSortKey(a).localeCompare(_cardSortKey(b)));
+  container.innerHTML = sorted.map(clientCardHTML).join('');
   _notifyClientsChanged();
 }
 
@@ -245,7 +250,9 @@ function appendClientCard(containerId, data) {
   const container = document.getElementById(containerId);
   if (!container) return;
   CLIENT_STORE.set(data.id, data);
-  container.insertAdjacentHTML('beforeend', clientCardHTML(data));
+  const tmp = document.createElement('div');
+  tmp.innerHTML = clientCardHTML(data).trim();
+  placeCardSorted(container, tmp.firstElementChild);
   _notifyClientsChanged();
 }
 
@@ -265,7 +272,7 @@ function moveClientCard(id, tab) {
   const wrapper = document.querySelector(`.list-row[data-card-id="${id}"]`)?.parentElement;
   const list = document.getElementById(`${tab}-cards`);
   if (!wrapper || !list) return;
-  list.appendChild(wrapper);
+  placeCardSorted(list, wrapper);
   _notifyClientsChanged();
 }
 
@@ -306,19 +313,21 @@ function updateClient(id, mutate) {
 // Opens a card (closing any other). Returns its detail element.
 function _openCard(row) {
   const detail = row.parentElement.querySelector('.row-detail');
-  document.querySelectorAll('.row-detail').forEach(r => {
-    if (r === detail) return;
-    r.classList.remove('open');
-    r.previousElementSibling?.classList.remove('active');
+  document.querySelectorAll('.row-detail.open').forEach(r => {
+    if (r !== detail) _closeCard(r.previousElementSibling);
   });
   detail.classList.add('open');
   row.classList.add('active');
   return detail;
 }
 
+// Closing a card also lets go of its selected case, so the chip doesn't
+// stay highlighted on a collapsed row.
 function _closeCard(row) {
-  row.parentElement.querySelector('.row-detail').classList.remove('open');
+  const detail = row.parentElement.querySelector('.row-detail');
+  detail.classList.remove('open');
   row.classList.remove('active');
+  focusCase(detail, row.dataset.cardId, null);
 }
 
 // Opens one client's card (closing any other) and scrolls
@@ -386,6 +395,6 @@ function initClientCards(root) {
       return;
     }
     if (row.parentElement.querySelector('.row-detail').classList.contains('open')) _closeCard(row);
-    else _openCard(row);
+    else focusCase(_openCard(row), row.dataset.cardId, null);
   });
 }

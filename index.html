@@ -74,7 +74,7 @@
     <script src="components/card-items.js"></script>
     <script src="components/choice-dialog.js"></script>
     <script src="components/commission-calculator.js"></script>
-    <script src="components/checkout.js"></script>
+    <script src="components/review.js"></script>
     <script src="components/leaderboard.js"></script>
     <script src="components/data.js"></script>
     <script src="components/new-client.js"></script>
@@ -100,7 +100,7 @@
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
           </svg>
         </button>
-        <button class="cc-trigger" id="checkout-trigger" title="Daily Checkout">
+        <button class="cc-trigger" id="checkout-trigger" title="Review">
           <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
@@ -203,7 +203,7 @@
       initClientCards(document);
       initCardItems(document);
       initCommissionCalculator("commission-calc-trigger");
-      initCheckout("checkout-trigger");
+      initReview("checkout-trigger");
       initEditablePanels(document);
       initClientCaseLists(document);
       const leaderboard = initLeaderboard("leaderboard-container");
@@ -291,14 +291,14 @@
           }
           const sourceList = card.parentElement;
           // Move it straight away; put it back if the save fails.
-          targetTabContent.querySelector('[id$="-cards"]').appendChild(card);
+          placeCardSorted(targetTabContent.querySelector('[id$="-cards"]'), card);
           updateTabCount(sourceTabContent);
           updateTabCount(targetTabContent);
           activateTab(tab);
           dbSetClientTab(clientId, tab.dataset.tab)
             .then(() => refreshDashboard())
             .catch((err) => {
-              sourceList.appendChild(card);
+              placeCardSorted(sourceList, card);
               updateTabCount(sourceTabContent);
               updateTabCount(targetTabContent);
               showSaveError(err);

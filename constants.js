@@ -48,7 +48,7 @@ const CC_LIBERTY_RA_PCR_MULTIPLIER = 5;
 // type list onto whichever of the rates above applies. Only Risk and RA
 // Builder have a fixed multiplier; RA Liberty has no entry here because its
 // upfront rule is just the advice-fee default. Educator has no lump sum
-// (see CHECKOUT_MONTHLY_ONLY_CASE_TYPES in checkout.js) so it can't use the
+// (see PREMIUM_ONLY_CASE_TYPES below) so it can't use the
 // advice-fee rule either — mapped to the same rule as Risk as a best guess,
 // unconfirmed. Everything else (the various Investment/INN8/Stanlib/TFSA/
 // UT/Sec 14/... names, and RA Liberty) falls back to "advice fee % x lump
@@ -102,6 +102,27 @@ function casePcr(item) {
 function caseIsRisk(caseType) {
   return caseCommissionRule(caseType) === 'risk';
 }
+
+// Meeting types, as on the leaderboard's meetings breakdown.
+const MEETING_TYPES = [
+  { key: 'factFinder', label: 'Fact Finder' },
+  { key: 'relational', label: 'Relational' },
+  { key: 'closing', label: 'Closing' },
+];
+
+// Premium-only products: no lump sum or upfront advice fee, just the
+// monthly premium.
+const PREMIUM_ONLY_CASE_TYPES = ['Risk', 'Educator'];
+
+// How prospects (people not yet in the app) were reached — the Review's
+// "Prospects contacted" counts. The total is the sum.
+const PROSPECT_CHANNELS = [
+  { key: 'phoned', label: 'Phoned' },
+  { key: 'emailed', label: 'Emailed' },
+  { key: 'messaged', label: 'WhatsApp / SMS' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'other', label: 'Other' },
+];
 
 // Case stages: opened → submitted → accepted, or not taken up (from
 // opened or submitted). A case is open while opened or submitted. See
