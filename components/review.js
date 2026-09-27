@@ -1,24 +1,28 @@
-// Review: the daily look back at the last weekday (see SPEC.md, "Review").
-// Everything logged that day across all clients, laid out activity first,
-// client last — "what did I do, and for whom?" — on one screen:
+// Review: the daily look back at the last weekday (see SPEC.md, "Review"),
+// as three steps, built from the client cards everyone already uses:
 //
-//   Prospects contacted   counts by channel, for people not in the app
-//   Meetings · FNAs · Quotes · New cases · Contacts & notes
-//                         that day's entries, then an add line: the same
-//                         fields as the card's add form (card-items.js),
-//                         with a client box at the end — any client, or
-//                         "+ Add … as new client"
-//   Open cases            one block per client with an open case: its
-//                         cases with their next steps, and an update —
-//                         required unless the client already has an
-//                         entry that day ("Same as last" from the arrow;
-//                         a nudge after 3 identical updates)
+//   1. Prospecting    how many new people (not yet in the app) were
+//                     contacted, by channel
+//   2. Open case updates
+//                     the cards of every client with an open case — the
+//                     required part, so it comes first — in two groups:
+//                     No activity (needs an update: anything from the
+//                     card's "+" — a note with "Same as last", a call, a
+//                     meeting…) and Had activity (anything logged on the
+//                     review day or since). Next waits until No activity
+//                     is empty. Cases move on through the case chips as
+//                     usual; a nudge shows after 3 identical updates.
+//   3. Activities     the cards of everyone else worked with that day,
+//                     plus "+ Another client" for anyone else, or someone
+//                     new
 //
-// Every line saves the moment it's added or deleted, onto the client's
-// timeline, dated the review day. Done checks the open-case clients all
-// have an update, then marks the day reviewed — as "no activity" if
-// nothing at all was logged. A required Review (data.js enforceReview)
-// can't be closed until it's done.
+// The cards sit inside data-entry-date, so anything added or changed on
+// them is recorded against the review day (card-items.js entryDateFor),
+// and they stay in step with the same cards in their tabs (updateClient
+// re-renders every copy). Done checks every open-case client is updated,
+// then marks the day reviewed — as "no activity" if nothing at all was
+// logged. A required Review (data.js enforceReview) can't be closed
+// until it's done.
 
 function _injectReviewCSS() {
   if (document.getElementById('review-styles')) return;
@@ -38,7 +42,7 @@ function _injectReviewCSS() {
     }
     .rv-overlay.open { display: flex; }
     .rv-modal {
-      width: 1040px;
+      width: 1100px;
       max-width: 100%;
       background: #ffffff;
       border-radius: 12px;
@@ -50,62 +54,58 @@ function _injectReviewCSS() {
       align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
-      padding: 20px 24px 14px;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      padding: 20px 24px 6px;
     }
     .rv-title { font-size: 18px; font-weight: 700; }
     .rv-sub { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
     .rv-close { background: none; border: none; font-size: 24px; line-height: 1; color: var(--ink-dim); cursor: pointer; }
     .rv-close:hover { color: var(--ink); }
     .rv-overlay.required .rv-close { display: none; }
-    .rv-body { padding: 8px 24px 16px; }
-    .rv-footer {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 16px;
-      padding: 14px 24px 20px;
-      border-top: 1px solid rgba(0, 0, 0, 0.08);
-    }
-    .rv-error { flex: 1; font-size: 13px; color: var(--red); }
-    .rv-done {
-      background: var(--gold);
-      color: var(--navy);
+
+    .rv-steps { display: flex; gap: 6px; padding: 6px 24px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+    .rv-step {
+      background: none;
       border: none;
-      border-radius: 6px;
-      padding: 10px 22px;
-      font-size: 14px;
-      font-weight: 700;
+      border-bottom: 2px solid transparent;
+      padding: 6px 10px 8px;
+      font-size: 13px;
+      font-weight: 600;
       font-family: inherit;
+      color: var(--ink-dim);
       cursor: pointer;
     }
-    .rv-done:disabled { opacity: 0.6; cursor: default; }
-
-    .rv-sec { padding: 14px 0 6px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
-    .rv-sec:last-child { border-bottom: none; }
-    .rv-sec-title {
+    .rv-step:hover { color: var(--ink); }
+    .rv-step.active { color: var(--ink); border-bottom-color: var(--gold); }
+    .rv-step-n { color: var(--ink-dim); font-weight: 400; margin-right: 4px; }
+    .rv-step-badge {
+      display: inline-block;
+      min-width: 18px;
+      margin-left: 6px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--red);
+      color: #ffffff;
       font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--ink-dim);
-      margin-bottom: 8px;
+      line-height: 18px;
+      text-align: center;
     }
-    .rv-sec-title .rv-required { color: var(--red); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
+    /* The cards are the app's own client cards (client-card.js), on the
+       same light background they sit on in their tabs. */
+    .rv-body { padding: 16px 24px; background: #e8e8e6; }
+    .rv-subhead { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); padding: 4px 0 8px; }
+    .rv-cards + .rv-subhead { padding-top: 14px; }
+    .rv-nudge { font-size: 12px; font-weight: 600; color: #8a6d0a; margin: 0 0 4px 4px; }
+    .rv-empty { font-size: 13px; color: var(--ink-dim); padding: 6px 0; }
+
+    .rv-sec { padding: 8px 0 12px; }
     .rv-prospects { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
-    .rv-prospects .item-number input { background: #f7f7f5; }
+    .rv-prospects .item-number input { background: #ffffff; }
     .rv-total { font-size: 13px; color: var(--ink-dim); margin-left: auto; }
     .rv-total b { color: var(--ink); }
 
-    .rv-line { display: flex; align-items: baseline; gap: 14px; padding: 6px 0; font-size: 13px; }
-    .rv-line .tl-text { flex: 1; }
-    .rv-client { flex-shrink: 0; font-weight: 600; color: var(--ink); }
-    .rv-line:hover .tl-del { visibility: visible; }
-    .rv-form { padding: 6px 0 10px; border-bottom: none; margin-bottom: 0; }
-
-    /* The client box at the end of an add line. */
-    .rv-picker { position: relative; width: 220px; flex-shrink: 0; }
+    .rv-another { padding: 8px 0 4px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-dim); }
+    .rv-picker { position: relative; width: 300px; }
     .rv-picker input {
       box-sizing: border-box;
       width: 100%;
@@ -119,8 +119,6 @@ function _injectReviewCSS() {
       color: var(--ink);
     }
     .rv-picker input:focus { outline: none; border-color: var(--gold); }
-    .rv-picker input.picked { border-color: #1f7a52; font-weight: 600; }
-    .rv-picker input.field-error { border-color: var(--red); }
     .rv-picker-list {
       display: none;
       position: absolute;
@@ -156,18 +154,28 @@ function _injectReviewCSS() {
     .rv-pick-tab { color: var(--ink-dim); font-size: 12px; }
     .rv-pick.new { color: #8a6d0a; font-weight: 600; }
 
-    .rv-client-block { padding: 10px 0; border-top: 1px solid rgba(0, 0, 0, 0.05); }
-    .rv-client-block:first-of-type { border-top: none; }
-    .rv-client-name { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
-    .rv-case { display: flex; align-items: center; gap: 14px; padding: 4px 0; font-size: 13px; }
-    .rv-case .cb-type { flex: 0 0 180px; font-weight: 600; }
-    .rv-case .cb-actions { margin-left: auto; }
-    .rv-update { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
-    .rv-update .status-input { max-width: 560px; }
-    .rv-updated { font-size: 13px; color: #1f7a52; margin-top: 4px; }
-    .rv-nudge { font-size: 12px; color: #8a6d0a; margin-top: 4px; }
-    .rv-missing .status-input input { border-color: var(--red); }
-    .rv-empty { font-size: 13px; color: var(--ink-dim); padding: 4px 0; }
+    .rv-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 14px 24px 20px;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .rv-error { flex: 1; font-size: 13px; color: var(--red); }
+    .rv-back, .rv-next, .rv-done {
+      border-radius: 6px;
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .rv-back { background: none; border: 1px solid rgba(0, 0, 0, 0.15); color: var(--ink); }
+    .rv-next { background: var(--navy); border: 1px solid var(--navy); color: var(--text); }
+    .rv-done { background: var(--gold); border: 1px solid var(--gold); color: var(--navy); font-weight: 700; }
+    .rv-done:disabled { opacity: 0.6; cursor: default; }
+    .rv-back[hidden], .rv-next[hidden], .rv-done[hidden] { display: none; }
 
     /* The toolbar button, once the review day is done. */
     .cc-trigger.checked-out { color: var(--green); border-color: var(--green); }
@@ -176,27 +184,12 @@ function _injectReviewCSS() {
 }
 _injectReviewCSS();
 
-// The activity sections, in funnel order. kinds: which timeline entries
-// it lists (a new case lists its "opened" entry).
-const REVIEW_SECTIONS = [
-  { title: 'Meetings', add: 'meeting', kinds: ['meeting'] },
-  { title: 'FNAs', add: 'fna', kinds: ['fna'] },
-  { title: 'Quotes', add: 'quote', kinds: ['quote'] },
-  { title: 'New cases', add: 'case', kinds: ['case'] },
-  { title: 'Contacts & notes', add: 'contact', kinds: ['contact', 'note'] },
-];
-
 // The day in words: "Friday 25 Sep".
 function _reviewDayLabel(iso) {
   const d = new Date(`${iso}T00:00:00`);
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
-}
-
-// A client's last update (latest contact or note), for "Same as last".
-function _lastUpdate(data) {
-  return (data.timeline || []).find(e => e.type === 'contact' || e.type === 'note') || null;
 }
 
 // Same update for the last 3 days running → suggest a follow-up.
@@ -207,6 +200,12 @@ function _needsNudge(data) {
   const three = lastByDay.slice(0, 3);
   return three.length === 3 && three.every(e => e.text.trim().toLowerCase() === three[0].text.trim().toLowerCase());
 }
+
+const REVIEW_STEPS = [
+  { key: 'prospecting', label: 'Prospecting' },
+  { key: 'cases', label: 'Open case updates' },
+  { key: 'activities', label: 'Activities' },
+];
 
 class Review {
   constructor() {
@@ -221,22 +220,35 @@ class Review {
           </div>
           <button type="button" class="rv-close" data-rv="close" aria-label="Close">&times;</button>
         </div>
+        <div class="rv-steps"></div>
         <div class="rv-body"></div>
         <div class="rv-footer">
           <span class="rv-error"></span>
+          <button type="button" class="rv-back" data-rv="back">Back</button>
+          <button type="button" class="rv-next" data-rv="next">Next</button>
           <button type="button" class="rv-done" data-rv="done">Done</button>
         </div>
       </div>
     `;
     document.body.appendChild(this.overlay);
+    this.stepsEl = this.overlay.querySelector('.rv-steps');
     this.body = this.overlay.querySelector('.rv-body');
     this.errorEl = this.overlay.querySelector('.rv-error');
     this.doneBtn = this.overlay.querySelector('.rv-done');
 
     this.overlay.addEventListener('click', e => this._onClick(e));
-    this.overlay.addEventListener('input', e => this._onInput(e));
-    this.overlay.addEventListener('change', e => this._onChange(e));
-    this.overlay.addEventListener('keydown', e => this._onKeyDown(e));
+    this.overlay.addEventListener('input', e => {
+      if (e.target.matches('.rv-picker-input')) this._fillPicker(e.target);
+    });
+    this.overlay.addEventListener('change', e => {
+      if (e.target.matches('[data-channel]')) this._saveProspects();
+    });
+    this.overlay.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.matches('.rv-picker-input')) return;
+      e.preventDefault();
+      const first = e.target.parentElement.querySelector('.rv-pick[data-pick-id], .rv-pick[data-pick-new]');
+      if (first) this._pick(first);
+    });
     // Picking on mousedown, before the box loses focus and its list closes.
     this.overlay.addEventListener('mousedown', e => {
       const pick = e.target.closest('.rv-pick[data-pick-id], .rv-pick[data-pick-new]');
@@ -249,7 +261,15 @@ class Review {
       if (picker && !picker.contains(e.relatedTarget)) picker.querySelector('.rv-picker-list').classList.remove('open');
     });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && this.isOpen()) this.close();
+      if (e.key === 'Escape' && this.isOpen() && !document.querySelector('.cd-overlay')) this.close();
+    });
+    // A card changed (an entry added, a case moved on…). The card itself
+    // re-renders in place; the Review only redraws when that moves a
+    // client between its lists (e.g. from "Needs an update" to "Updated").
+    document.addEventListener('clients:changed', () => {
+      if (!this.isOpen() || this._listing() === this.lastListing) return;
+      this.render();
+      if (!this._needingUpdate().length) this.errorEl.textContent = '';
     });
   }
 
@@ -261,8 +281,8 @@ class Review {
   async open(day, { required = false } = {}) {
     this.day = day;
     this.required = required;
-    this.showErrors = false;
-    this.contactKind = 'contact';
+    this.step = 0;
+    this.extraClients = []; // added via "+ Another client"
     this.overlay.classList.toggle('required', required);
     this.overlay.querySelector('.rv-title').textContent = `Review — ${_reviewDayLabel(day)}`;
     this.overlay.querySelector('.rv-sub').textContent = required
@@ -283,49 +303,102 @@ class Review {
   close() {
     if (this.required) return;
     this.overlay.classList.remove('open');
+    this.body.innerHTML = ''; // drop the card copies
   }
 
-  // ---------- what's in the day ----------
+  // ---------- who's listed ----------
 
-  _clients() {
-    return getClientRecords().map(r => ({ ...r, data: getClientData(r.id) }));
-  }
-
-  // That day's entries of these kinds, across every client.
-  _entries(kinds) {
-    return this._clients().flatMap(c => (c.data.timeline || [])
-      .filter(e => e.date === this.day && kinds.includes(e.type) && (e.type !== 'case' || e.details.event === 'opened'))
-      .map(e => ({ entry: e, client: c })));
+  _hasEntryOnDay(data) {
+    return (data.timeline || []).some(e => e.date === this.day);
   }
 
   _openCaseClients() {
-    return this._clients()
-      .filter(c => (c.data.cases || []).some(isOpenCase))
+    return getClientRecords()
+      .filter(r => (getClientData(r.id).cases || []).some(isOpenCase))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  _updatedOnDay(c) {
-    return (c.data.timeline || []).some(e => e.date === this.day);
+  // Anything logged on the review day or since counts as an update — a
+  // client already worked today doesn't need another for the review day.
+  _hadActivity(data) {
+    return (data.timeline || []).some(e => e.date >= this.day);
+  }
+
+  _needingUpdate() {
+    return this._openCaseClients().filter(r => !this._hadActivity(getClientData(r.id)));
+  }
+
+  // Everyone else worked with that day (no open case), then anyone added
+  // by hand.
+  _activityClients() {
+    const worked = getClientRecords()
+      .filter(r => {
+        const d = getClientData(r.id);
+        return !(d.cases || []).some(isOpenCase) && this._hasEntryOnDay(d);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(r => r.id);
+    const ids = [...worked, ...this.extraClients.filter(id => !worked.includes(id))];
+    return ids.map(id => getClientRecords().find(r => r.id === id)).filter(Boolean);
+  }
+
+  // What the current step lists, in order — redraw only when this changes.
+  _listing() {
+    const key = REVIEW_STEPS[this.step]?.key;
+    if (key === 'cases') {
+      const needing = this._needingUpdate().map(r => r.id);
+      return `cases|${needing.join()}|${this._openCaseClients().map(r => r.id).join()}`;
+    }
+    if (key === 'activities') return `activities|${this._activityClients().map(r => r.id).join()}`;
+    return 'prospecting';
   }
 
   // ---------- rendering ----------
 
   render() {
     const top = this.overlay.scrollTop;
-    this.body.innerHTML = [
-      this._prospectsHTML(),
-      ...REVIEW_SECTIONS.map(sec => this._sectionHTML(sec)),
-      this._openCasesHTML(),
-    ].join('');
-    this.body.querySelectorAll('.rv-form[data-kind="case"]').forEach(_syncCaseFields);
+    const waiting = this._needingUpdate().length;
+    this.stepsEl.innerHTML = REVIEW_STEPS.map((s, i) => `
+      <button type="button" class="rv-step${i === this.step ? ' active' : ''}" data-rv="goto" data-step="${i}">
+        <span class="rv-step-n">${i + 1}.</span>${s.label}${s.key === 'cases' && waiting ? `<span class="rv-step-badge">${waiting}</span>` : ''}
+      </button>
+    `).join('');
+    const key = REVIEW_STEPS[this.step].key;
+    this.body.innerHTML = key === 'prospecting' ? this._prospectsHTML()
+      : key === 'cases' ? this._casesHTML()
+      : this._activitiesHTML();
+    this.lastListing = this._listing();
+    const last = this.step === REVIEW_STEPS.length - 1;
+    this.overlay.querySelector('.rv-back').hidden = this.step === 0;
+    this.overlay.querySelector('.rv-next').hidden = last;
+    this.doneBtn.hidden = !last;
     this.overlay.scrollTop = top;
+  }
+
+  _goTo(step) {
+    const casesStep = REVIEW_STEPS.findIndex(s => s.key === 'cases');
+    if (step > casesStep && this.step <= casesStep && this._needingUpdate().length) {
+      if (this.step !== casesStep) { this.step = casesStep; this.render(); }
+      this._showMissing();
+      return;
+    }
+    this.step = step;
+    this.errorEl.textContent = '';
+    this.render();
+    this.overlay.scrollTop = 0;
+  }
+
+  _cardsHTML(records, before) {
+    return `<div class="rv-cards" data-entry-date="${this.day}">${records.map(r => {
+      const data = getClientData(r.id);
+      return `${before ? before(data) : ''}${clientCardHTML(data)}`;
+    }).join('')}</div>`;
   }
 
   _prospectsHTML() {
     const total = PROSPECT_CHANNELS.reduce((t, ch) => t + (Number(this.prospects[ch.key]) || 0), 0);
     return `
       <div class="rv-sec">
-        <div class="rv-sec-title">Prospects contacted <span class="rv-sub">— people not yet in the app</span></div>
         <div class="rv-prospects">
           ${PROSPECT_CHANNELS.map(ch => `
             <label class="item-number">${ch.label}
@@ -338,121 +411,43 @@ class Review {
     `;
   }
 
-  _lineHTML({ entry, client }) {
-    const kind = TIMELINE_KINDS[entry.type] || { label: entry.type };
-    const del = entry.type === 'case'
-      ? `<button type="button" class="tl-del" data-action="delete-case" data-client="${client.id}" data-case="${entry.caseId}" title="Delete this case">&times;</button>`
-      : `<button type="button" class="tl-del" data-action="delete-entry" data-client="${client.id}" data-id="${entry.id}" title="Delete">&times;</button>`;
-    return `
-      <div class="rv-line">
-        <span class="tl-kind">${kind.label}</span>
-        <span class="tl-text">${_escHtml(timelineEntryText(client.data, entry))}</span>
-        <span class="rv-client">${_escHtml(client.name)}</span>
-        ${del}
-      </div>
-    `;
-  }
-
-  _pickerHTML() {
-    return `
-      <div class="rv-picker">
-        <input type="text" class="rv-picker-input" placeholder="Client&hellip;" autocomplete="off">
-        <div class="rv-picker-list"></div>
-      </div>
-    `;
-  }
-
-  _addLineHTML(kind) {
-    // Contacts & notes share one line, with a Contact / Note switch.
-    const lead = REVIEW_SECTIONS.find(s => s.add === kind)?.kinds.length > 1
-      ? `<select class="rv-kind-switch" data-rv-kind>
-           <option value="contact"${this.contactKind === 'contact' ? ' selected' : ''}>Contact</option>
-           <option value="note"${this.contactKind === 'note' ? ' selected' : ''}>Note</option>
-         </select>`
-      : `<span class="tl-kind">${TIMELINE_KINDS[kind].label}</span>`;
-    const fieldsKind = kind === 'contact' ? this.contactKind : kind;
-    return `
-      <div class="item-add-form open rv-form" data-kind="${fieldsKind}">
-        ${lead}
-        ${_addFormFieldsHTML(fieldsKind)}
-        ${this._pickerHTML()}
-        <button type="button" class="item-save" data-rv="save-line">Save</button>
-        <div class="item-form-error"></div>
-      </div>
-    `;
-  }
-
-  _sectionHTML(sec) {
-    const lines = this._entries(sec.kinds);
-    return `
-      <div class="rv-sec">
-        <div class="rv-sec-title">${sec.title}</div>
-        ${lines.map(l => this._lineHTML(l)).join('')}
-        ${this._addLineHTML(sec.add)}
-      </div>
-    `;
-  }
-
-  _openCasesHTML() {
+  _casesHTML() {
     const clients = this._openCaseClients();
-    const blocks = clients.map(c => {
-      const cases = (c.data.cases || []).filter(isOpenCase).map(k => {
-        const stageBtn = (stage, label, primary) =>
-          `<button type="button" class="cb-btn${primary ? ' primary' : ''}" data-rv="stage" data-client="${c.id}" data-case="${k.id}" data-stage="${stage}">${label}</button>`;
-        return `
-          <div class="rv-case">
-            <span class="cb-type">${_escHtml(k.type)}</span>
-            <span class="cb-stage">${CASE_STAGE_LABELS[k.stage]}</span>
-            <span class="cb-check">&#10003; ${caseChecklistDone(k)}/${CASE_CHECKLIST.length}</span>
-            <span class="cb-pcr">PCR ${formatNumber(casePcr(k))}</span>
-            <span class="cb-actions">
-              ${k.stage === 'opened' ? stageBtn('submitted', 'Mark submitted', true) : ''}
-              ${k.stage === 'submitted' ? stageBtn('accepted', 'Mark accepted', true) : ''}
-              ${stageBtn('not-taken-up', 'Not taken up')}
-            </span>
-          </div>
-        `;
-      }).join('');
-      const updated = this._updatedOnDay(c);
-      const last = _lastUpdate(c.data);
-      const todays = (c.data.timeline || []).find(e => e.date === this.day);
-      const update = updated
-        ? `<div class="rv-updated">&#10003; Updated — ${_escHtml(timelineEntryText(c.data, todays))}</div>`
-        : `
-          ${_needsNudge(c.data) ? '<div class="rv-nudge">Same update for 3 days — follow up?</div>' : ''}
-          <div class="rv-update${this.showErrors ? ' rv-missing' : ''}">
-            ${statusInputHTML({ last: last?.text || '', attrs: `data-rv-update="${c.id}"`, placeholder: 'Update…' })}
-            <button type="button" class="item-save" data-rv="save-update" data-client="${c.id}">Save update</button>
-          </div>
-        `;
-      return `
-        <div class="rv-client-block">
-          <div class="rv-client-name">${_escHtml(c.name)}</div>
-          ${cases}
-          ${update}
-        </div>
-      `;
-    }).join('');
+    if (!clients.length) return '<div class="rv-empty">No open cases.</div>';
+    // Two groups: No activity (still needs an update — Next waits on it
+    // being empty) and Had activity.
+    const needing = this._needingUpdate();
+    const needingIds = new Set(needing.map(r => r.id));
+    const updated = clients.filter(r => !needingIds.has(r.id));
+    const nudge = data => (_needsNudge(data) ? '<div class="rv-nudge">Same update for 3 days — follow up?</div>' : '');
     return `
-      <div class="rv-sec">
-        <div class="rv-sec-title">Open cases <span class="rv-required">— every client needs an update</span></div>
-        ${blocks || '<div class="rv-empty">No open cases.</div>'}
+      ${needing.length ? `<div class="rv-subhead">No activity (${needing.length})</div>${this._cardsHTML(needing, nudge)}` : ''}
+      ${updated.length ? `<div class="rv-subhead">Had activity (${updated.length})</div>${this._cardsHTML(updated)}` : ''}
+    `;
+  }
+
+  _activitiesHTML() {
+    const clients = this._activityClients();
+    return `
+      ${this._cardsHTML(clients)}
+      <div class="rv-another">
+        + Another client
+        <div class="rv-picker">
+          <input type="text" class="rv-picker-input" placeholder="Search, or type a new name&hellip;" autocomplete="off">
+          <div class="rv-picker-list"></div>
+        </div>
       </div>
     `;
   }
 
-  // ---------- the client box ----------
+  // ---------- "+ Another client" ----------
 
   _fillPicker(input) {
     const list = input.parentElement.querySelector('.rv-picker-list');
-    input.classList.remove('picked');
-    delete input.dataset.clientId;
-    delete input.dataset.newName;
     const q = input.value.trim();
     if (!q) { list.classList.remove('open'); return; }
     const matches = _searchClients(q);
-    const words = q.split(/\s+/);
-    const canAdd = words.length >= 2 && !matches.some(m => m.name.toLowerCase() === q.toLowerCase());
+    const canAdd = q.split(/\s+/).length >= 2 && !matches.some(m => m.name.toLowerCase() === q.toLowerCase());
     list.innerHTML = matches.map(m => `
       <button type="button" class="rv-pick" data-pick-id="${m.id}">
         <span>${_escHtml(m.name)}</span><span class="rv-pick-tab">${_escHtml(m.tabLabel)}</span>
@@ -462,89 +457,35 @@ class Review {
     list.classList.add('open');
   }
 
-  _pick(btn) {
-    const input = btn.closest('.rv-picker').querySelector('input');
-    if (btn.dataset.pickId) {
-      input.dataset.clientId = btn.dataset.pickId;
-      input.value = getClientRecords().find(r => r.id === btn.dataset.pickId)?.name || '';
-    } else {
-      input.dataset.newName = btn.dataset.pickNew;
-      input.value = btn.dataset.pickNew;
+  // Picking a client (or adding a new one) adds their card, opened.
+  async _pick(btn) {
+    let id = btn.dataset.pickId;
+    try {
+      if (!id) {
+        const [firstName, ...rest] = btn.dataset.pickNew.trim().split(/\s+/);
+        const card = await dbCreateClient({ firstName, lastName: rest.join(' ') });
+        appendClientCard('prospects-cards', card);
+        id = card.id;
+      }
+    } catch (err) {
+      showSaveError(err);
+      return;
     }
-    input.classList.add('picked');
-    input.classList.remove('field-error');
-    btn.closest('.rv-picker-list').classList.remove('open');
-  }
-
-  // The picked client's id — creating them first if they're new.
-  async _pickedClientId(input) {
-    if (input.dataset.clientId) return input.dataset.clientId;
-    const [firstName, ...rest] = input.dataset.newName.trim().split(/\s+/);
-    const card = await dbCreateClient({ firstName, lastName: rest.join(' ') });
-    appendClientCard('prospects-cards', card);
-    return card.id;
+    // An open-case client lives under Case updates.
+    if ((getClientData(id).cases || []).some(isOpenCase)) {
+      this._goTo(REVIEW_STEPS.findIndex(s => s.key === 'cases'));
+    } else {
+      if (!this.extraClients.includes(id)) this.extraClients.push(id);
+      this.render();
+    }
+    const row = this.body.querySelector(`.list-row[data-card-id="${id}"]`);
+    if (row) {
+      _openCard(row);
+      row.scrollIntoView({ block: 'center' });
+    }
   }
 
   // ---------- saving ----------
-
-  async _saveLine(form) {
-    const kind = form.dataset.kind;
-    const v = _formValues(form);
-    const errorEl = form.querySelector('.item-form-error');
-    const picker = form.querySelector('.rv-picker-input');
-    let message = _validateAddForm(form, v);
-    if (!message && !picker.dataset.clientId && !picker.dataset.newName) {
-      picker.classList.add('field-error');
-      message = 'Pick the client.';
-    }
-    errorEl.textContent = message;
-    if (message) return;
-
-    const btn = form.querySelector('[data-rv="save-line"]');
-    btn.disabled = true;
-    try {
-      const clientId = await this._pickedClientId(picker);
-      if (kind === 'case') {
-        if (clientTab(clientId) !== 'business') {
-          const d = getClientData(clientId);
-          const move = await showChoiceDialog({
-            title: 'Move to Business?',
-            message: `Opening this case will move ${d.firstName} ${d.lastName} to the Business tab.`,
-            choices: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'move', primary: true }],
-          });
-          if (!move) { btn.disabled = false; return; }
-        }
-        const r = await dbOpenCase(clientId, v, this.day);
-        _addToCard(clientId, { activity: r.activity, caseItem: r.case });
-        await syncTabAfterCaseChange(clientId).catch(showSaveError);
-      } else {
-        const row = await dbAddActivity(clientId, kind, this.day, _detailsFor(kind, v));
-        _addToCard(clientId, { activity: activityItem(row) });
-      }
-      await refreshDashboard();
-      this.render();
-    } catch (err) {
-      console.error(err);
-      errorEl.textContent = `Couldn't save — ${err.message || err}`;
-      btn.disabled = false;
-    }
-  }
-
-  async _saveUpdate(btn) {
-    const clientId = btn.dataset.client;
-    const input = this.body.querySelector(`[data-rv-update="${clientId}"]`);
-    const text = input.value.trim();
-    if (!text) { input.classList.add('field-error'); input.focus(); return; }
-    btn.disabled = true;
-    try {
-      const row = await dbAddActivity(clientId, 'note', this.day, { text });
-      _addToCard(clientId, { activity: activityItem(row) });
-      this.render();
-    } catch (err) {
-      btn.disabled = false;
-      showSaveError(err);
-    }
-  }
 
   async _saveProspects() {
     const counts = {};
@@ -552,8 +493,7 @@ class Review {
       counts[i.dataset.channel] = Math.max(0, parseInt(i.value, 10) || 0);
     });
     this.prospects = counts;
-    const total = Object.values(counts).reduce((t, n) => t + n, 0);
-    this.body.querySelector('.rv-total b').textContent = total;
+    this.body.querySelector('.rv-total b').textContent = Object.values(counts).reduce((t, n) => t + n, 0);
     try {
       await dbReplaceProspectCounts(this.day, counts);
       await refreshDashboard();
@@ -562,16 +502,20 @@ class Review {
     }
   }
 
+  // Names who still needs an update, on the Open case updates step.
+  _showMissing() {
+    const missing = this._needingUpdate();
+    this.errorEl.textContent = `Still needs an update: ${missing.map(r => r.name).join(', ')}.`;
+  }
+
   async _done() {
-    const missing = this._openCaseClients().filter(c => !this._updatedOnDay(c));
-    if (missing.length) {
-      this.showErrors = true;
+    if (this._needingUpdate().length) {
+      this.step = REVIEW_STEPS.findIndex(s => s.key === 'cases');
       this.render();
-      this.errorEl.textContent = `Still needs an update: ${missing.map(c => c.name).join(', ')}.`;
-      this.body.querySelector('.rv-missing')?.scrollIntoView({ block: 'center' });
+      this._showMissing();
       return;
     }
-    const logged = this._clients().some(c => this._updatedOnDay(c));
+    const logged = getClientRecords().some(r => this._hasEntryOnDay(getClientData(r.id)));
     const prospects = Object.values(this.prospects).some(n => Number(n) > 0);
     this.doneBtn.disabled = true;
     this.errorEl.textContent = '';
@@ -590,58 +534,15 @@ class Review {
 
   // ---------- events ----------
 
-  async _onClick(e) {
-    const btn = e.target.closest('[data-rv], [data-action]');
+  _onClick(e) {
+    const btn = e.target.closest('[data-rv]');
     if (!btn) return;
-    const act = btn.dataset.rv || btn.dataset.action;
+    const act = btn.dataset.rv;
     if (act === 'close') this.close();
+    else if (act === 'goto') this._goTo(Number(btn.dataset.step));
+    else if (act === 'back') this._goTo(this.step - 1);
+    else if (act === 'next') this._goTo(this.step + 1);
     else if (act === 'done') this._done();
-    else if (act === 'save-line') this._saveLine(btn.closest('.rv-form'));
-    else if (act === 'save-update') this._saveUpdate(btn);
-    else if (act === 'stage') {
-      btn.disabled = true;
-      try {
-        await changeCaseStage(btn.dataset.client, btn.dataset.case, btn.dataset.stage, this.day);
-      } catch (err) {
-        showSaveError(err);
-      }
-      this.render();
-    } else if (act === 'delete-entry') {
-      await _deleteEntry(btn);
-      this.render();
-    } else if (act === 'delete-case') {
-      await _deleteCase(btn);
-      this.render();
-    }
-  }
-
-  _onInput(e) {
-    const t = e.target;
-    if (t.matches('.rv-picker-input')) this._fillPicker(t);
-    if (t.matches('[data-rv-update]')) t.classList.remove('field-error');
-  }
-
-  _onChange(e) {
-    const t = e.target;
-    if (t.matches('[data-channel]')) this._saveProspects();
-    if (t.matches('[data-rv-kind]')) {
-      this.contactKind = t.value;
-      this.render();
-    }
-  }
-
-  _onKeyDown(e) {
-    if (e.key !== 'Enter') return;
-    if (e.target.matches('.rv-picker-input')) {
-      e.preventDefault();
-      const first = e.target.parentElement.querySelector('.rv-pick[data-pick-id], .rv-pick[data-pick-new]');
-      if (first) this._pick(first);
-      return;
-    }
-    const form = e.target.closest('.rv-form');
-    if (form && !e.target.matches('.rv-picker-input')) { e.preventDefault(); this._saveLine(form); }
-    const update = e.target.closest('.rv-update');
-    if (update) { e.preventDefault(); this._saveUpdate(update.querySelector('[data-rv="save-update"]')); }
   }
 }
 

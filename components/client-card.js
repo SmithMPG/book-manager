@@ -106,7 +106,7 @@ function _injectClientCardCSS() {
 
     .add-menu {
       position: fixed;
-      z-index: 250;
+      z-index: 420; /* above the Review (300) */
       background: #ffffff;
       border: 1px solid rgba(0, 0, 0, 0.12);
       border-radius: 8px;
@@ -289,25 +289,26 @@ function getClientRecords() {
   });
 }
 
-// Apply `mutate` to a client's data and re-render just that card in place,
-// keeping it open on the same view if it was.
+// Apply `mutate` to a client's data and re-render their card in place —
+// every copy of it (it can be in its tab and in the Review at once),
+// keeping each open if it was.
 function updateClient(id, mutate) {
   const data = CLIENT_STORE.get(id);
   if (!data) return;
   mutate(data);
+  document.querySelectorAll(`.list-row[data-card-id="${id}"]`).forEach(row => {
+    const wrapper = row.parentElement;
+    const wasOpen = wrapper.querySelector('.row-detail').classList.contains('open');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = clientCardHTML(data).trim();
+    const fresh = tmp.firstElementChild;
+    wrapper.replaceWith(fresh);
+    if (wasOpen) {
+      fresh.querySelector('.row-detail').classList.add('open');
+      fresh.querySelector('.list-row').classList.add('active');
+    }
+  });
   _notifyClientsChanged();
-  const row = document.querySelector(`.list-row[data-card-id="${id}"]`);
-  if (!row) return;
-  const wrapper = row.parentElement;
-  const wasOpen = wrapper.querySelector('.row-detail').classList.contains('open');
-  const tmp = document.createElement('div');
-  tmp.innerHTML = clientCardHTML(data).trim();
-  const fresh = tmp.firstElementChild;
-  wrapper.replaceWith(fresh);
-  if (wasOpen) {
-    fresh.querySelector('.row-detail').classList.add('open');
-    fresh.querySelector('.list-row').classList.add('active');
-  }
 }
 
 // Opens a card (closing any other). Returns its detail element.

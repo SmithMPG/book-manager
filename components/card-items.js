@@ -7,7 +7,8 @@
 //               Mark accepted, or Not taken up — and Delete case.
 //   Add form    opened from the row's "+" menu: the event on the left
 //               (Contact, Note, Meeting, FNA, Quote, Case), its own
-//               fields on the right. Dated today.
+//               fields on the right. Dated today — or, for a card shown
+//               inside the Review, the day being reviewed (entryDateFor).
 //   Timeline    everything that's happened with the client, newest
 //               first — one line each: date (Today / Yesterday) · kind ·
 //               details — ending with "Client added". When a day has
@@ -385,6 +386,19 @@ function _casePanelHTML(data, c) {
   `;
 }
 
+// The day an entry or stage change made from this element is recorded
+// against: today, unless the card sits inside something that says
+// otherwise with data-entry-date (the Review, for the day it reviews).
+function entryDateFor(el) {
+  return el?.closest('[data-entry-date]')?.dataset.entryDate || _todayIso();
+}
+
+// A client's last update — their latest contact or note — for "Same as
+// last" in a note box.
+function lastUpdateOf(data) {
+  return (data?.timeline || []).find(e => e.type === 'contact' || e.type === 'note') || null;
+}
+
 // A panel per open case, only the focused one shown.
 function _casesBoxHTML(data) {
   const open = (data.cases || []).filter(isOpenCase);
@@ -472,7 +486,8 @@ function openAddEntry(detail, kind) {
 
 // ---------- adding an entry ----------
 
-function _addFormFieldsHTML(kind) {
+// last: the client's last update, offered as "Same as last" in a note.
+function _addFormFieldsHTML(kind, last = '') {
   if (kind === 'contact') {
     const opts = CONTACT_METHODS.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
     return `
@@ -481,7 +496,7 @@ function _addFormFieldsHTML(kind) {
     `;
   }
   if (kind === 'note') {
-    return '<input type="text" class="item-text" data-field="text" placeholder="Note&hellip;" autocomplete="off">';
+    return statusInputHTML({ last, attrs: 'data-field="text"', placeholder: 'Note — or Same as last from the arrow…' });
   }
   if (kind === 'meeting') {
     const opts = MEETING_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
@@ -512,10 +527,11 @@ function _addFormFieldsHTML(kind) {
 
 function _openAddForm(form, kind) {
   form.dataset.kind = kind;
+  const last = lastUpdateOf(getClientData(form.dataset.client))?.text || '';
   form.innerHTML = `
-    <span class="tl-date">Today</span>
+    <span class="tl-date">${_dayLabel(entryDateFor(form))}</span>
     <span class="tl-kind">${TIMELINE_KINDS[kind].label}</span>
-    ${_addFormFieldsHTML(kind)}
+    ${_addFormFieldsHTML(kind, last)}
     <span class="item-form-actions">
       <button type="button" class="item-cancel" data-action="cancel-add">Cancel</button>
       <button type="button" class="item-save" data-action="save-add">Save ${TIMELINE_KINDS[kind].label.toLowerCase()}</button>
@@ -618,7 +634,7 @@ async function _saveAddForm(form) {
 
   saveBtn.disabled = true;
   saveBtn.textContent = 'Saving…';
-  const date = _todayIso();
+  const date = entryDateFor(form);
   try {
     if (kind === 'case') {
       const r = await dbOpenCase(clientId, v, date);
@@ -711,7 +727,7 @@ async function _setStage(btn) {
   const { client: clientId, case: caseId, stage } = btn.dataset;
   btn.disabled = true;
   try {
-    await changeCaseStage(clientId, caseId, stage, _todayIso());
+    await changeCaseStage(clientId, caseId, stage, entryDateFor(btn));
   } catch (err) {
     showSaveError(err);
   } finally {
