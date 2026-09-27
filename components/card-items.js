@@ -9,10 +9,13 @@
 //               (Contact, Note, Meeting, FNA, Quote, Case), its own
 //               fields on the right. Dated today.
 //   Timeline    everything that's happened with the client, newest
-//               first, grouped by day, ending with "Client added".
-//               Everything / Key moments (no contacts or notes) for a
-//               quick read. Delete mode removes entries one at a time;
-//               a case goes (with its entries) from its "Opened" entry.
+//               first — one line each: date (Today / Yesterday) · kind ·
+//               details — ending with "Client added". When a day has
+//               more than one line (and always for "Client added"),
+//               hovering the date shows the time. The
+//               add form uses the same columns. Hovering a
+//               line shows its ×; a case goes (with its entries) from its
+//               "Opened" line.
 //
 // Saves go through data.js; the card is then updated in place and the
 // dashboard numbers refreshed.
@@ -76,8 +79,8 @@ function _injectCardItemsCSS() {
     .cb-link:hover { color: var(--ink); }
     .cb-link.danger { margin-left: auto; }
     .cb-link.danger:hover { color: var(--red); }
-    /* The add form: the event on the left, its fields on the right. */
-    .item-kind { flex-shrink: 0; width: 76px; font-weight: 700; color: var(--ink); }
+    /* The add form lines up with the timeline: date, kind, then fields. */
+    .item-add-form .tl-kind { font-weight: 700; }
     .item-number {
       display: inline-flex;
       align-items: center;
@@ -102,7 +105,7 @@ function _injectCardItemsCSS() {
     .item-add-form {
       display: none;
       align-items: center;
-      gap: 10px;
+      gap: 14px;
       flex-wrap: wrap;
       padding: 0 0 14px;
       margin-bottom: 4px;
@@ -219,68 +222,50 @@ function _injectCardItemsCSS() {
     .item-add-form input.item-text:focus { outline: none; border-color: var(--gold); }
 
     /* ---- timeline ---- */
-    .tl-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
-    .tl-modes { display: inline-flex; background: #ececea; border-radius: 999px; padding: 3px; gap: 2px; }
-    .tl-mode {
-      border: none;
-      background: transparent;
-      padding: 4px 12px;
-      border-radius: 999px;
+    .tl-entry { display: flex; align-items: baseline; gap: 14px; padding: 7px 0; font-size: 13px; }
+    .tl-entry + .tl-entry { border-top: 1px solid rgba(0, 0, 0, 0.05); }
+    .tl-date { flex-shrink: 0; width: 96px; color: var(--ink-dim); }
+    /* The time, on hover — drawn here rather than a native title tooltip,
+       which takes seconds to appear. */
+    .tl-date[data-time] { position: relative; text-decoration: underline dotted rgba(0, 0, 0, 0.25); text-underline-offset: 3px; }
+    .tl-date[data-time]:hover::after {
+      content: attr(data-time);
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 4px);
+      background: var(--navy);
+      color: var(--text);
       font-size: 11px;
       font-weight: 600;
-      font-family: inherit;
-      color: var(--ink-dim);
-      cursor: pointer;
+      padding: 3px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 5;
     }
-    .tl-mode.active { background: #ffffff; color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-    .tl-delete {
-      margin-left: auto;
-      background: none;
-      border: none;
-      padding: 4px;
-      font-size: 13px;
-      font-family: inherit;
-      color: var(--ink-dim);
-      cursor: pointer;
-    }
-    .tl-delete:hover, .tl.deleting .tl-delete { color: var(--red); }
-
-    .tl-day { margin-top: 10px; }
-    .tl-day-label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--ink-dim);
-      padding: 4px 0;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-    }
-    .tl-entry { display: flex; align-items: baseline; gap: 14px; padding: 7px 0; font-size: 13px; }
-    .tl-time { flex-shrink: 0; width: 40px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-    .tl-kind { flex-shrink: 0; width: 76px; font-weight: 600; color: var(--ink); }
+    .tl-kind { flex-shrink: 0; width: 92px; font-weight: 600; color: var(--ink); }
     .tl-entry.key .tl-kind { color: #8a6d0a; }
     .tl-text { flex: 1; min-width: 0; color: var(--ink); line-height: 1.45; }
     .tl-del {
-      display: none;
+      visibility: hidden;
       flex-shrink: 0;
       background: none;
       border: none;
-      padding: 0;
+      padding: 0 2px;
       font-size: 16px;
       line-height: 1;
-      color: var(--red);
+      color: var(--ink-dim);
       cursor: pointer;
     }
-    .tl.deleting .tl-del { display: inline-block; }
-    .tl-created { padding: 12px 0 2px; font-size: 12px; color: var(--ink-dim); }
-    .tl-empty { padding: 10px 0; font-size: 13px; color: var(--ink-dim); }
+    .tl-entry:hover .tl-del { visibility: visible; }
+    .tl-del:hover { color: var(--red); }
   `;
   document.head.appendChild(s);
 }
 _injectCardItemsCSS();
 
-// Every kind of timeline entry. key: shown under "Key moments" (contacts
-// and notes are the everyday entries, so they're left out). Referrals and
+// Every kind of timeline entry. key: the milestones (not the everyday
+// contacts and notes), whose label is highlighted. Referrals and
 // wills leads are recorded on meetings; the separate kinds remain for
 // ones logged by the checkout.
 const TIMELINE_KINDS = {
@@ -297,8 +282,6 @@ const TIMELINE_KINDS = {
 const ADD_KINDS = ['contact', 'note', 'meeting', 'fna', 'quote', 'case'];
 
 // Per-client view state that survives the card re-rendering.
-const _keyMomentsOnly = new Set();   // client ids showing Key moments
-const _deletingTimelines = new Set(); // client ids in Delete mode
 const _focusedCase = new Map();       // client id → the case whose checklist is showing
 
 function caseIsFocused(clientId, caseId) {
@@ -319,13 +302,27 @@ function _findCase(data, caseId) {
 }
 
 // What an entry says: e.g. "Phone · No answer", "Fact Finder · Joint
-// call", "RA Builder · Submitted".
+// call", or a case line (below).
 function timelineEntryText(data, entry) {
-  if (entry.type === 'case') {
-    const c = _findCase(data, entry.caseId);
-    return `${c ? c.type : 'Case'} · ${CASE_STAGE_LABELS[entry.details.event] || ''}`;
-  }
+  if (entry.type === 'case') return _caseEntryText(_findCase(data, entry.caseId), entry.details.event);
   return entry.text;
+}
+
+// A case line: its type and stage, the amounts as they were captured
+// (opened line only — the later lines are about the stage), then its PCR
+// and expected upfront commission:
+// "Investment Builder · Opened · R500 000 lump sum · R2 000 pm · 3%
+//  upfront advice fee · PCR 500 000 · Commission R15 000"
+function _caseEntryText(c, event) {
+  if (!c) return `Case · ${CASE_STAGE_LABELS[event] || ''}`;
+  const parts = [c.type, CASE_STAGE_LABELS[event] || ''];
+  if (event === 'opened') {
+    if (c.lumpSum) parts.push(`${formatRand(c.lumpSum)} lump sum`);
+    if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
+    if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% upfront advice fee`);
+  }
+  parts.push(`PCR ${formatNumber(casePcr(c))}`, `Commission ${formatRand(caseUpfrontCommission(c))}`);
+  return parts.join(' · ');
 }
 
 // One line for the collapsed card row: the latest entry.
@@ -337,15 +334,13 @@ function latestTimelineSummary(data) {
     : [TIMELINE_KINDS[e.type]?.label, text].filter(Boolean).join(' · ');
 }
 
-const _DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 function _dayLabel(iso) {
   const today = _todayIso();
   const y = new Date();
   y.setDate(y.getDate() - 1);
   if (iso === today) return 'Today';
   if (iso === isoDate(y)) return 'Yesterday';
-  return `${_DAY_NAMES[new Date(`${iso}T00:00:00`).getDay()]} ${_formatStatusDate(iso)}`;
+  return _formatStatusDate(iso);
 }
 
 // The time it was logged — only when that's the day it happened (an
@@ -354,8 +349,7 @@ function _entryTime(entry) {
   if (!entry.createdAt) return '';
   const d = new Date(entry.createdAt);
   if (isoDate(d) !== entry.date) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return _timeOf(entry.createdAt);
 }
 
 // ---------- cases box ----------
@@ -408,68 +402,58 @@ function _casesBoxHTML(data) {
 
 // ---------- timeline ----------
 
-function _timelineHTML(data) {
-  const keyOnly = _keyMomentsOnly.has(data.id);
-  const shown = e => !keyOnly || !!TIMELINE_KINDS[e.type]?.key;
-  const byDay = [];
-  (data.timeline || []).forEach(e => {
-    const last = byDay[byDay.length - 1];
-    if (last && last.date === e.date) last.entries.push(e);
-    else byDay.push({ date: e.date, entries: [e] });
-  });
-  const days = byDay.map(day => `
-    <div class="tl-day"${day.entries.some(shown) ? '' : ' hidden'}>
-      <div class="tl-day-label">${_dayLabel(day.date)}</div>
-      ${day.entries.map(e => {
-        const kind = TIMELINE_KINDS[e.type] || { label: e.type };
-        const del = e.type !== 'case'
-          ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
-          : e.details.event === 'opened'
-            ? `<button type="button" class="tl-del" data-action="delete-case" data-client="${data.id}" data-case="${e.caseId}" title="Delete this case">&times;</button>`
-            : '';
-        return `
-          <div class="tl-entry${kind.key ? ' key' : ''}" data-type="${e.type}" data-key="${kind.key ? 1 : 0}"${shown(e) ? '' : ' hidden'}>
-            <span class="tl-time">${_entryTime(e)}</span>
-            <span class="tl-kind">${kind.label}</span>
-            <span class="tl-text">${_escHtml(timelineEntryText(data, e))}</span>
-            ${del}
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `).join('');
-  const created = data.createdAt ? `<div class="tl-created">Client added · ${_formatStatusDate(isoDate(new Date(data.createdAt)))}</div>` : '';
-  const anyShown = (data.timeline || []).some(shown);
-  const hasDeletable = (data.timeline || []).length > 0;
+// The time it was logged, as HH:MM.
+function _timeOf(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// time: shown as the date's tooltip, only when given.
+function _timelineLineHTML({ date, time, kind, key, text, del }) {
   return `
-    <div class="tl${keyOnly ? ' key-only' : ''}${_deletingTimelines.has(data.id) && hasDeletable ? ' deleting' : ''}" data-client="${data.id}">
-      <div class="tl-head">
-        <div class="tl-modes">
-          <button type="button" class="tl-mode${keyOnly ? '' : ' active'}" data-action="tl-mode" data-key-only="0">Everything</button>
-          <button type="button" class="tl-mode${keyOnly ? ' active' : ''}" data-action="tl-mode" data-key-only="1">Key moments</button>
-        </div>
-        ${hasDeletable ? `<button type="button" class="tl-delete" data-action="toggle-delete">${_deletingTimelines.has(data.id) ? 'Done' : 'Delete'}</button>` : ''}
-      </div>
-      ${days}
-      <div class="tl-empty"${anyShown || !(data.timeline || []).length ? ' hidden' : ''}>Nothing to show.</div>
-      ${created}
+    <div class="tl-entry${key ? ' key' : ''}">
+      <span class="tl-date"${time ? ` data-time="${time}"` : ''}>${date}</span>
+      <span class="tl-kind">${kind}</span>
+      <span class="tl-text">${text}</span>
+      ${del || ''}
     </div>
   `;
 }
 
-// Everything / Key moments: hides contacts and notes, and any day left
-// with nothing showing.
-function applyTimelineFilter(detail) {
-  const tl = detail.querySelector('.tl');
-  if (!tl) return;
-  const keyOnly = tl.classList.contains('key-only');
-  tl.querySelectorAll('.tl-entry').forEach(e => { e.hidden = keyOnly && e.dataset.key !== '1'; });
-  let any = false;
-  tl.querySelectorAll('.tl-day').forEach(d => {
-    d.hidden = !d.querySelector('.tl-entry:not([hidden])');
-    any = any || !d.hidden;
+function _timelineHTML(data) {
+  const createdDay = data.createdAt ? isoDate(new Date(data.createdAt)) : null;
+  // Days with more than one line get the time on hover.
+  const perDay = {};
+  (data.timeline || []).forEach(e => { perDay[e.date] = (perDay[e.date] || 0) + 1; });
+  if (createdDay) perDay[createdDay] = (perDay[createdDay] || 0) + 1;
+  const busy = day => perDay[day] > 1;
+
+  const lines = (data.timeline || []).map(e => {
+    const kind = TIMELINE_KINDS[e.type] || { label: e.type };
+    const del = e.type !== 'case'
+      ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
+      : e.details.event === 'opened'
+        ? `<button type="button" class="tl-del" data-action="delete-case" data-client="${data.id}" data-case="${e.caseId}" title="Delete this case">&times;</button>`
+        : '';
+    return _timelineLineHTML({
+      date: _dayLabel(e.date),
+      time: busy(e.date) ? _entryTime(e) : '',
+      kind: kind.label,
+      key: kind.key,
+      text: _escHtml(timelineEntryText(data, e)),
+      del,
+    });
   });
-  tl.querySelector('.tl-empty').hidden = any || !tl.querySelector('.tl-day');
+  if (createdDay) {
+    lines.push(_timelineLineHTML({
+      date: _dayLabel(createdDay),
+      time: _timeOf(data.createdAt),
+      kind: 'Client added',
+      text: '',
+    }));
+  }
+  return `<div class="tl">${lines.join('')}</div>`;
 }
 
 // Everything inside an open card.
@@ -529,7 +513,8 @@ function _addFormFieldsHTML(kind) {
 function _openAddForm(form, kind) {
   form.dataset.kind = kind;
   form.innerHTML = `
-    <span class="item-kind">${TIMELINE_KINDS[kind].label}</span>
+    <span class="tl-date">Today</span>
+    <span class="tl-kind">${TIMELINE_KINDS[kind].label}</span>
     ${_addFormFieldsHTML(kind)}
     <span class="item-form-actions">
       <button type="button" class="item-cancel" data-action="cancel-add">Cancel</button>
@@ -677,7 +662,9 @@ async function _toggleChecklistItem(box) {
 
 // Submitting with checklist items unticked is allowed, after a warning
 // that names them. Accepted and Not taken up can't be undone, so both ask.
-async function _confirmStage(c, stage) {
+// Accepting a client's last open case says they'll move to Clients —
+// the only place an accepted client goes — rather than asking where.
+async function _confirmStage(c, stage, lastOpen, d) {
   if (stage === 'submitted') {
     const missing = CASE_CHECKLIST.filter(item => !c.checklist?.[item.key]).map(item => item.label);
     if (!missing.length) return true;
@@ -685,6 +672,13 @@ async function _confirmStage(c, stage) {
       title: 'Checklist not complete',
       message: `${missing.length} item${missing.length === 1 ? " isn't" : "s aren't"} ticked: ${missing.join(', ')}. Submit anyway?`,
       choices: [{ label: 'Cancel', value: null }, { label: 'Submit anyway', value: true, primary: true }],
+    });
+  }
+  if (stage === 'accepted' && lastOpen) {
+    return !!await showChoiceDialog({
+      title: 'Accept this case?',
+      message: `Accepting ${d.firstName} ${d.lastName}'s ${c.type} closes their last open case, so they'll move to the Clients tab. This can't be undone.`,
+      choices: [{ label: 'Cancel', value: null }, { label: 'Accept & move to Clients', value: true, primary: true }],
     });
   }
   const label = CASE_STAGE_LABELS[stage].toLowerCase();
@@ -697,13 +691,17 @@ async function _confirmStage(c, stage) {
 
 async function _setStage(btn) {
   const { client: clientId, case: caseId, stage } = btn.dataset;
-  const c = _findCase(getClientData(clientId) || {}, caseId);
-  if (!c || !await _confirmStage(c, stage)) return;
+  const d = getClientData(clientId) || {};
+  const c = _findCase(d, caseId);
+  if (!c) return;
+  const lastOpen = !(d.cases || []).some(k => k.id !== caseId && isOpenCase(k));
+  if (!await _confirmStage(c, stage, lastOpen, d)) return;
   btn.disabled = true;
   try {
     const r = await dbSetCaseStage(caseId, stage, _todayIso());
     _addToCard(clientId, { activity: r.activity, caseItem: r.case });
-    await syncTabAfterCaseChange(clientId).catch(showSaveError);
+    if (stage === 'accepted' && lastOpen) await moveClientToTab(clientId, 'clients').catch(showSaveError);
+    else await syncTabAfterCaseChange(clientId).catch(showSaveError);
     await refreshDashboard();
   } catch (err) {
     btn.disabled = false;
@@ -770,8 +768,6 @@ async function _deleteEntry(btn) {
   if (!confirm("Delete this entry? This can't be undone.")) return;
   btn.disabled = true;
   try {
-    // One at a time: the timeline leaves delete mode once something's gone.
-    _deletingTimelines.delete(clientId);
     await dbDeleteActivity(id);
     updateClient(clientId, d => { d.timeline = d.timeline.filter(e => e.id !== id); });
     await refreshDashboard();
@@ -799,19 +795,6 @@ function initCardItems(root) {
       _setStage(btn);
     } else if (action === 'delete-case') {
       _deleteCase(btn);
-    } else if (action === 'tl-mode') {
-      const keyOnly = btn.dataset.keyOnly === '1';
-      if (keyOnly) _keyMomentsOnly.add(clientId); else _keyMomentsOnly.delete(clientId);
-      const tl = btn.closest('.tl');
-      tl.classList.toggle('key-only', keyOnly);
-      tl.querySelectorAll('.tl-mode').forEach(m => m.classList.toggle('active', m === btn));
-      applyTimelineFilter(detail);
-    } else if (action === 'toggle-delete') {
-      const tl = btn.closest('.tl');
-      const on = !_deletingTimelines.has(clientId);
-      if (on) _deletingTimelines.add(clientId); else _deletingTimelines.delete(clientId);
-      tl.classList.toggle('deleting', on);
-      btn.textContent = on ? 'Done' : 'Delete';
     } else if (action === 'delete-entry') {
       _deleteEntry(btn);
     }

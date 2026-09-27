@@ -1,8 +1,15 @@
-// Current user + FA/Admin mode. auth.js calls setCurrentUser() with the
-// signed-in person's `users` row once they're past the login gate.
+// Current user + mode. auth.js calls setCurrentUser() with the signed-in
+// person's `users` row once they're past the login gate.
 //
-// Admins (users.is_admin) get a toggle in the top bar to switch between
-// working as an FA (their own book) and admin mode (the whole team).
+// Three roles: FAs (no toggle); admins (users.is_admin) toggle between
+//   My book  ('fa')    working as an FA, on their own clients
+//   Admin    ('admin') the whole team (Home view only)
+// and the super admin (users.is_super_admin) also gets
+//   Test     ('test')  the shared Test Book — exactly like My book, but
+//                      on a test user's clients that never show on the
+//                      leaderboard or in team figures (see data.js).
+// The database enforces the same: only the super admin can write to the
+// Test Book (can_act_as in supabase/schema.sql).
 // FAs never see it, and can't give themselves admin: is_admin isn't a
 // column they're granted update on (supabase/schema.sql).
 //
@@ -33,6 +40,17 @@ function _injectAppModeCSS() {
     body[data-app-mode="admin"] .search-wrap,
     body[data-app-mode="admin"] #checkout-trigger { display: none !important; }
 
+    .test-mode-strip {
+      display: none;
+      background: #f4e3a1;
+      color: #6b5208;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      padding: 5px 12px;
+    }
+    body[data-app-mode="test"] .test-mode-strip { display: block; }
+
     .mode-toggle {
       display: inline-flex;
       background: var(--navy-lighter);
@@ -52,6 +70,7 @@ function _injectAppModeCSS() {
       white-space: nowrap;
     }
     .mode-toggle button:hover { color: var(--text); }
+    .mode-toggle button.hidden { display: none; }
     .mode-toggle button.active { background: var(--gold); color: var(--navy); font-weight: 600; }
   `;
   document.head.appendChild(s);
@@ -63,7 +82,10 @@ function _storedMode() {
 }
 
 function getAppMode() {
-  return currentUser?.is_admin && _storedMode() === 'admin' ? 'admin' : 'fa';
+  const stored = _storedMode();
+  if (stored === 'test' && currentUser?.is_super_admin) return 'test';
+  if (stored === 'admin' && currentUser?.is_admin) return 'admin';
+  return 'fa';
 }
 
 function _applyAppMode() {
@@ -98,6 +120,7 @@ function setCurrentUser(user) {
   }
 
   document.getElementById('mode-toggle')?.classList.toggle('hidden', !user?.is_admin);
+  document.querySelector('#mode-toggle [data-mode="test"]')?.classList.toggle('hidden', !user?.is_super_admin);
   _applyAppMode();
   if (changed) document.dispatchEvent(new CustomEvent('currentuser:changed'));
 }

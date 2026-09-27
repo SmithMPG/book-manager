@@ -58,6 +58,7 @@ create table users (
   phone       text,
   pcr_target  int,
   is_admin    boolean not null default false, -- sees everyone's data, not just their own
+  is_super_admin boolean not null default false, -- an admin who can also use the Test Book
   is_active   boolean not null default true,  -- false = "left", data retained
   branch      text,                           -- open-ended, not a fixed list — real
                                                 -- branches/offices over time (e.g.
@@ -198,6 +199,17 @@ create or replace function is_admin() returns boolean as $$
   select coalesce((select is_admin from users where id = auth.uid()), false);
 $$ language sql security definer stable;
 
+-- Who may write a row for FA p_fa: that FA themselves, or the super
+-- admin writing to the Test Book: a users row in branch 'Test group', owned by
+-- a login nobody signs in with (test@bookmanager.co.za). The Test Book is
+-- left out of the leaderboard, so admins can try things there (the
+-- app's Test mode) without touching real figures.
+create or replace function can_act_as(p_fa uuid) returns boolean as $$
+  select p_fa = auth.uid()
+      or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
+          and exists (select 1 from public.users where id = p_fa and branch = 'Test group'));
+$$ language sql security definer stable set search_path = '';
+
 create policy "users read own or all if admin" on users
   for select using (id = auth.uid() or is_admin());
 create policy "users update own" on users
@@ -209,9 +221,9 @@ begin
   foreach t in array array['clients','cases','activities']
   loop
     execute format('create policy "%1$s read own or all if admin" on %1$s for select using (fa_id = auth.uid() or is_admin());', t);
-    execute format('create policy "%1$s insert own" on %1$s for insert with check (fa_id = auth.uid());', t);
-    execute format('create policy "%1$s update own" on %1$s for update using (fa_id = auth.uid());', t);
-    execute format('create policy "%1$s delete own" on %1$s for delete using (fa_id = auth.uid());', t);
+    execute format('create policy "%1$s insert own" on %1$s for insert with check (can_act_as(fa_id));', t);
+    execute format('create policy "%1$s update own" on %1$s for update using (can_act_as(fa_id));', t);
+    execute format('create policy "%1$s delete own" on %1$s for delete using (can_act_as(fa_id));', t);
   end loop;
 end $$;
 
@@ -246,10 +258,12 @@ grant update (phone, password_set) on users to authenticated;
 -- to date, or the days an admin picks on the month bar). PCR is worked
 -- out in the app (casePcr in constants.js) from the per-case-type sums,
 -- so its rules live in one place. checkedOut: did they check out for
--- p_checkout_date (null when not asked)?
+-- p_checkout_date (null when not asked)? The Test Book is left out,
+-- except when p_include names it (test mode needs its own figures).
 -- ---------------------------------------------------------------------
 drop function if exists public.leaderboard(date, date);
-create or replace function public.leaderboard(p_dates date[], p_checkout_date date)
+drop function if exists public.leaderboard(date[], date);
+create or replace function public.leaderboard(p_dates date[], p_checkout_date date, p_include uuid default null)
 returns jsonb
 language sql stable security definer set search_path = ''
 as $$
@@ -295,18 +309,19 @@ as $$
           where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date)
       end as "checkedOut"
     from public.users u
-    where u.is_active and coalesce(u.branch, '') <> 'Test group'
+    where u.is_active and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
   ) t;
 $$;
 
-revoke execute on function public.leaderboard(date[], date) from public, anon;
-grant execute on function public.leaderboard(date[], date) to authenticated;
+revoke execute on function public.leaderboard(date[], date, uuid) from public, anon;
+grant execute on function public.leaderboard(date[], date, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- Opening a case, and moving it to its next stage. Each writes the case
 -- and its `case` timeline entry in one statement, so they can't
--- disagree. Both run as the calling user (security invoker): RLS still
--- limits them to their own clients and cases. p_date is the FA's local
+-- disagree. Both run as the calling user (security invoker), for the
+-- case's own FA — only if can_act_as allows it (their own book, or an
+-- admin in the Test Book). p_date is the FA's local
 -- today (or the day being reviewed). Both return {case, activity}.
 -- Stage changes allowed: opened → submitted | not-taken-up,
 -- submitted → accepted | not-taken-up.
@@ -317,13 +332,17 @@ create or replace function public.open_case(
 returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
-declare c public.cases; a public.activities;
+declare c public.cases; a public.activities; v_fa uuid;
 begin
+  select fa_id into v_fa from public.clients where id = p_client_id;
+  if v_fa is null or not public.can_act_as(v_fa) then
+    raise exception 'Client not found.';
+  end if;
   insert into public.cases (client_id, fa_id, case_type, stage, opened_at, lump_sum, monthly, advice_fee_percent)
-  values (p_client_id, auth.uid(), p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
+  values (p_client_id, v_fa, p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (auth.uid(), p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
+  values (v_fa, p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
@@ -335,8 +354,8 @@ language plpgsql security invoker set search_path = ''
 as $$
 declare c public.cases; a public.activities;
 begin
-  select * into c from public.cases where id = p_case_id and fa_id = auth.uid() for update;
-  if not found then
+  select * into c from public.cases where id = p_case_id for update;
+  if not found or not public.can_act_as(c.fa_id) then
     raise exception 'Case not found.';
   end if;
   if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
@@ -351,7 +370,7 @@ begin
   where id = p_case_id
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (auth.uid(), c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
+  values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;

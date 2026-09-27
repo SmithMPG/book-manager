@@ -1,36 +1,49 @@
--- Stage 1 of the client timeline — run ONCE in the SQL editor, then
--- delete this file (schema.sql already describes the result).
+-- Test mode — run ONCE in the SQL editor, then delete this file
+-- (schema.sql already describes the result).
 --
--- Clears every case (test data only — nothing is converted), moves cases
--- to stages + a checklist, adds contact / note / case timeline entries,
--- and replaces add_case_status with open_case and set_case_stage.
+-- Only the super admin (users.is_super_admin — Matthew) gets Test mode;
+-- admins get My book / Admin, FAs no toggle.
+--
+-- Before running: in Authentication -> Users, Add user -> Create new
+-- user: test@bookmanager.co.za, any password, Auto Confirm ticked.
+-- Nobody signs in with it; it just owns the Test Book.
 
--- 1. Cases: start clean, stages instead of status logs.
-delete from cases;
-drop function if exists public.add_case_status(uuid, text, text, date);
-alter table cases drop column case_statuses;
-alter table cases drop constraint cases_status_check;
-alter table cases rename column status to stage;
-alter table cases alter column stage set default 'opened';
-alter table cases add constraint cases_stage_check
-  check (stage in ('opened', 'submitted', 'accepted', 'not-taken-up'));
-alter table cases rename column initiated_date to opened_at;
-alter table cases add column submitted_at date;
-alter table cases add column checklist jsonb not null default '{}'::jsonb;
-alter index cases_status_idx rename to cases_stage_idx;
+-- 1. The Test Book: a users row in 'Test group' (left out of the
+--    leaderboard and team figures).
+insert into users (id, email, name, surname, is_admin, branch, pcr_target, password_set)
+select id, 'test@bookmanager.co.za', 'Test', 'Book', false, 'Test group', 400000, true
+from auth.users where email = 'test@bookmanager.co.za'
+on conflict (id) do update set branch = 'Test group', name = 'Test', surname = 'Book';
 
--- 2. Timeline entry types.
-alter table activities drop constraint activities_type_check;
-alter table activities add constraint activities_type_check
-  check (type in ('contact', 'note', 'meeting', 'fna', 'quote', 'wills_lead', 'referral', 'case',
-                  'prospect_contact', 'checkout'));
-alter table activities add constraint activities_case_entry_has_case
-  check (type <> 'case' or case_id is not null);
+-- 2. The super admin, who alone may write to the Test Book (besides
+--    everyone writing their own).
+alter table users add column is_super_admin boolean not null default false;
+update users set is_super_admin = true, is_admin = true where email = 'matthew.smith@liblink.co.za';
 
--- 3. Leaderboard: cases submitted / accepted come from the stages;
---    referrals and wills leads also from meetings.
+create or replace function can_act_as(p_fa uuid) returns boolean as $$
+  select p_fa = auth.uid()
+      or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
+          and exists (select 1 from public.users where id = p_fa and branch = 'Test group'));
+$$ language sql security definer stable set search_path = '';
+
+do $$
+declare t text;
+begin
+  foreach t in array array['clients','cases','activities']
+  loop
+    execute format('drop policy "%1$s insert own" on %1$s;', t);
+    execute format('drop policy "%1$s update own" on %1$s;', t);
+    execute format('drop policy "%1$s delete own" on %1$s;', t);
+    execute format('create policy "%1$s insert own" on %1$s for insert with check (can_act_as(fa_id));', t);
+    execute format('create policy "%1$s update own" on %1$s for update using (can_act_as(fa_id));', t);
+    execute format('create policy "%1$s delete own" on %1$s for delete using (can_act_as(fa_id));', t);
+  end loop;
+end $$;
+
+-- 3. Leaderboard: can include the Test Book's figures when asked.
 drop function if exists public.leaderboard(date, date);
-create or replace function public.leaderboard(p_dates date[], p_checkout_date date)
+drop function if exists public.leaderboard(date[], date);
+create or replace function public.leaderboard(p_dates date[], p_checkout_date date, p_include uuid default null)
 returns jsonb
 language sql stable security definer set search_path = ''
 as $$
@@ -76,27 +89,31 @@ as $$
           where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date)
       end as "checkedOut"
     from public.users u
-    where u.is_active and coalesce(u.branch, '') <> 'Test group'
+    where u.is_active and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
   ) t;
 $$;
 
-revoke execute on function public.leaderboard(date[], date) from public, anon;
-grant execute on function public.leaderboard(date[], date) to authenticated;
+revoke execute on function public.leaderboard(date[], date, uuid) from public, anon;
+grant execute on function public.leaderboard(date[], date, uuid) to authenticated;
 
--- 4. Opening a case and changing its stage.
+-- 4. Opening a case / changing its stage: for the case's own FA.
 create or replace function public.open_case(
   p_client_id uuid, p_case_type text, p_lump_sum numeric, p_monthly numeric,
   p_advice_fee_percent numeric, p_date date)
 returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
-declare c public.cases; a public.activities;
+declare c public.cases; a public.activities; v_fa uuid;
 begin
+  select fa_id into v_fa from public.clients where id = p_client_id;
+  if v_fa is null or not public.can_act_as(v_fa) then
+    raise exception 'Client not found.';
+  end if;
   insert into public.cases (client_id, fa_id, case_type, stage, opened_at, lump_sum, monthly, advice_fee_percent)
-  values (p_client_id, auth.uid(), p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
+  values (p_client_id, v_fa, p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (auth.uid(), p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
+  values (v_fa, p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
@@ -108,8 +125,8 @@ language plpgsql security invoker set search_path = ''
 as $$
 declare c public.cases; a public.activities;
 begin
-  select * into c from public.cases where id = p_case_id and fa_id = auth.uid() for update;
-  if not found then
+  select * into c from public.cases where id = p_case_id for update;
+  if not found or not public.can_act_as(c.fa_id) then
     raise exception 'Case not found.';
   end if;
   if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
@@ -124,13 +141,13 @@ begin
   where id = p_case_id
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (auth.uid(), c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
+  values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
 $$;
 
-revoke execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) from public, anon;
-grant execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) to authenticated;
-revoke execute on function public.set_case_stage(uuid, text, date) from public, anon;
-grant execute on function public.set_case_stage(uuid, text, date) to authenticated;
+
+-- Checks: one row, Test Book, branch 'Test group'; and you as super admin.
+--   select name, surname, branch from users where branch = 'Test group';
+--   select name, is_admin, is_super_admin from users where is_admin;

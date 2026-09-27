@@ -153,7 +153,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 - **Clicking the row** opens the timeline. **Clicking a case chip** opens the client with that case's checklist and next steps at the top (again to hide it).
 - **+** opens a menu — Contact, Note, Meeting, FNA, Quote, Case — and opens the card with that entry ready to fill in: **the event on the left, its own fields on the right**, dated today.
 - **Case fields depend on the type:** Risk and Educator take the monthly premium; everything else takes lump sum, monthly premium and upfront advice fee.
-- **Timeline:** newest first, grouped by day, ending with "Client added". *Everything / Key moments* (Key moments hides contacts and notes). Delete mode removes entries one at a time; a case (with its entries) is deleted from its "Opened" entry.
+- **Timeline:** newest first, grouped by day, ending with "Client added". Delete mode removes entries one at a time; a case (with its entries) is deleted from its "Opened" entry.
 
 ### Cases
 - **Stages:** Opened → Submitted → Accepted or Not taken up. A case is **open** while Opened or Submitted. (Reopening is left out for now.)
@@ -165,7 +165,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
   - **Accepted** — only once Submitted.
   - **Not taken up** — any time while open; the client can back out before submission.
 - Every stage change adds a Case entry to the timeline.
-- Tab rules are unchanged: an open case puts the client in Business; closing the last one asks where they go.
+- Tab rules: an open case puts the client in Business. Accepting the last open case moves them to **Clients** — the confirmation offers only *Cancel* or *Accept & move to Clients*. Closing the last one any other way (not taken up, deleted) asks where they go.
 - **Numbers:** "Cases submitted" (funnel, leaderboard) counts the **Submitted** date. PCR counts on **Accepted**. Commission and PCR's in the Pot count every **open** case of a Business client.
 
 ### Daily update (client level)
@@ -204,6 +204,13 @@ Built as if the app had always worked this way — the old case status logs and 
 
 - **activities** is the timeline. Types: `contact`, `note`, `meeting`, `fna`, `quote`, `wills_lead`, `referral`, `case` (with `case_id` and the event), plus the per-FA day records `prospect_contact` (counts) and `review` (renamed from `checkout`; carries "no activity"). Ordered by `date`, then `created_at`.
 - **cases** keeps the money (type, lump sum, monthly, upfront advice fee) and gains `stage` (opened / submitted / accepted / not-taken-up), `submitted_at`, `accepted_at` and a `checklist` (which of the 7 items are ticked). `case_statuses` and `add_case_status` go.
+
+## Roles and Test mode
+- **FA** — their own book; no toggle.
+- **Admin** (Ameeth) — toggle **My book · Admin**.
+- **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin · Test**.
+
+Test works exactly like My book, but on the shared **Test Book** — a test user in the 'Test group' branch, owned by a login nobody signs in with. It never appears on the leaderboard or in team figures, the Review is never forced there, and a strip under the top bar says you're in it. Only the super admin can write to the Test Book, enforced in the database — `can_act_as` in schema.sql.
 
 ## Deferred to v2+
 - Needs-follow-up list (clients with stalled activity, surfaced to the FA as a to-do)

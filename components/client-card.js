@@ -1,7 +1,7 @@
 // Client card: one consistent card, used in every tab (Prospects,
 // Business, Clients, Not Moved Forward). Collapsed row: the client's
-// name, their latest timeline entry, a chip per open case (type · stage ·
-// checklist progress), and a "+" at the end. Clicking the row opens the
+// name, their latest timeline entry, a chip per open case (its type),
+// and a "+" at the end. Clicking the row opens the
 // client's timeline; clicking a case chip opens it with that case's
 // checklist at the top; "+" picks something to add (Contact, Note,
 // Meeting, FNA, Quote, Case) and opens the card ready to fill it in.
@@ -81,11 +81,8 @@ function _injectClientCardCSS() {
       cursor: pointer;
     }
     .case-chip:hover { border-color: var(--gold); }
-    .case-chip .case-chip-dim { color: var(--ink-dim); }
     .case-chip.focused { background: var(--gold); border-color: var(--gold); color: var(--navy); }
-    .case-chip.focused .case-chip-dim { color: var(--navy); }
     .list-row.active .case-chip:not(.focused) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.25); color: var(--text); }
-    .list-row.active .case-chip:not(.focused) .case-chip-dim { color: var(--text-dim); }
 
     .row-add {
       width: 26px;
@@ -194,13 +191,13 @@ function _cardLastStatusHTML(data) {
   return `<div class="card-last-status" title="${_escHtml(last)}">${_escHtml(last)}</div>`;
 }
 
-// One chip per open case: "Risk · Opened · 2/7".
+// One chip per open case, showing its type.
 function _caseChipsHTML(data) {
   const open = (data.cases || []).filter(isOpenCase);
   if (!open.length) return '';
   return `<div class="case-chips">${open.map(c => `
     <button type="button" class="case-chip${caseIsFocused(data.id, c.id) ? ' focused' : ''}" data-case-chip="${c.id}" title="Show this case's checklist">
-      ${_escHtml(c.type)} <span class="case-chip-dim">· ${CASE_STAGE_LABELS[c.stage]} · ${caseChecklistDone(c)}/${CASE_CHECKLIST.length}</span>
+      ${_escHtml(c.type)}
     </button>
   `).join('')}</div>`;
 }
