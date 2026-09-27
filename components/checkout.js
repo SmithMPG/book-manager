@@ -13,10 +13,11 @@
 //   4. Quotes — client, and whether it was for Risk, Investment, or both.
 //   5. Cases — client, case type, and the lump sum / monthly payment.
 //   6. Wills leads — client only.
-//   7. A status update for every open case, every day, even when nothing
-//      changed — type one, or pick "Same as last", "Accepted" or "Not
-//      taken up" (the last two close the case) from the box's arrow
-//      (status-input.js). It's added to that case's log.
+//   7. A client update for every client with an open case, every day,
+//      even when nothing changed — type one, or "Same as last" from the
+//      box's arrow (status-input.js). It's added to the client's timeline
+//      as a note. (Stage 1 of the timeline: the whole checkout becomes
+//      the Review in stage 2 — see SPEC.md.)
 //
 // Each item page (2-6) always ends in one empty, ready-to-fill row; picking
 // a client for it turns it into a real entry and a fresh empty row takes
@@ -436,7 +437,7 @@ const CHECKOUT_MONTHLY_ONLY_CASE_TYPES = ['Risk', 'Educator'];
 const CHECKOUT_STEPS = [
   { key: 'prospects', title: 'Prospects' },
   ...CHECKOUT_SECTIONS,
-  { key: 'status', title: 'Status updates' },
+  { key: 'status', title: 'Client updates' },
 ];
 
 function _checkoutIso(date) {
@@ -535,9 +536,8 @@ class Checkout {
     this.newClients = [];
     this.createdIds = {};
     this.activitiesSaved = false;
-    this.casesSaved = false;
-    this.statusesSaved = new Set();
-    this.statuses = {};
+    this.casesSaved = new Set(); // indexes of case rows already opened
+    this.statuses = {};         // client id → today's update
     this.step = 0;
     this.maxStep = 0;
     this.showErrors = false;
@@ -563,11 +563,12 @@ class Checkout {
     CHECKOUT_SECTIONS.forEach(sec => { locked[sec.key] = []; });
     getClientRecords().forEach(c => {
       const data = getClientData(c.id);
-      (data.meetings || []).filter(x => x.date === iso).forEach(x => locked.meetings.push({ name: c.name, text: x.text }));
-      (data.fnas || []).filter(x => x.date === iso).forEach(x => locked.fnas.push({ name: c.name, text: x.text }));
-      (data.quotes || []).filter(x => x.date === iso).forEach(x => locked.quotes.push({ name: c.name, text: x.text }));
-      (data.casesInProgress || []).filter(x => x.date === iso).forEach(x => locked.cases.push({ name: c.name, text: `${x.type}${_caseAmountsSuffix(x)}` }));
-      (data.willsLeads || []).filter(x => x.date === iso).forEach(x => locked.willsLeads.push({ name: c.name, text: x.text }));
+      const that = type => (data.timeline || []).filter(x => x.type === type && x.date === iso);
+      that('meeting').forEach(x => locked.meetings.push({ name: c.name, text: x.text }));
+      that('fna').forEach(() => locked.fnas.push({ name: c.name, text: 'FNA' }));
+      that('quote').forEach(x => locked.quotes.push({ name: c.name, text: x.text }));
+      (data.cases || []).filter(x => x.openedAt === iso).forEach(x => locked.cases.push({ name: c.name, text: `${x.type}${_caseAmountsSuffix(x)}` }));
+      that('wills_lead').forEach(() => locked.willsLeads.push({ name: c.name, text: 'Wills lead' }));
     });
     return locked;
   }
@@ -768,15 +769,17 @@ class Checkout {
     `;
   }
 
-  // Every open case across the FA's clients, with its client's name and
-  // current status. statuses below is keyed by case id.
-  _openCases() {
-    return getClientRecords().flatMap(c => (getClientData(c.id).casesInProgress || []).map(k => ({
-      id: k.id,
-      clientId: c.id,
-      label: `${c.name} · ${k.type}`,
-      last: (k.statuses || [])[0] || null,
-    })));
+  // Every client with an open case, with their open cases' types and
+  // their last update (latest contact or note). statuses is keyed by
+  // client id.
+  _updateClients() {
+    return getClientRecords().flatMap(c => {
+      const d = getClientData(c.id);
+      const open = (d.cases || []).filter(isOpenCase);
+      if (!open.length) return [];
+      const last = (d.timeline || []).find(e => e.type === 'note' || e.type === 'contact') || null;
+      return [{ id: c.id, label: `${c.name} · ${open.map(k => k.type).join(', ')}`, last }];
+    });
   }
 
   _recapHTML() {
@@ -789,7 +792,7 @@ class Checkout {
   }
 
   _statusesHTML() {
-    const cases = this._openCases();
+    const cases = this._updateClients();
     const blocks = cases.length ? cases.map(k => {
       const missing = this.showErrors && !(this.statuses[k.id] || '').trim();
       return `
@@ -797,11 +800,12 @@ class Checkout {
           <div class="co-status-head">
             <span class="co-status-name">${_escHtml(k.label)}</span>
           </div>
-          ${k.last ? `<div class="co-status-last">Current status, ${_formatStatusTime(k.last.at)}: ${_escHtml(k.last.text)}</div>` : ''}
+          ${k.last ? `<div class="co-status-last">Last update, ${_formatStatusDate(k.last.date)}: ${_escHtml(k.last.text)}</div>` : ''}
           ${statusInputHTML({
             value: this.statuses[k.id] || '',
             last: k.last?.text || '',
-            attrs: `data-case="${k.id}"`,
+            attrs: `data-client="${k.id}"`,
+            placeholder: "Today's update…",
             className: `co-status-input${missing ? ' error' : ''}`,
           })}
         </div>
@@ -811,8 +815,8 @@ class Checkout {
     return `
       <div class="co-page-head">
         <div>
-          <div class="co-page-title">Status updates</div>
-          <div class="co-page-hint">Every open case needs a new status today, even if nothing has changed.</div>
+          <div class="co-page-title">Client updates</div>
+          <div class="co-page-hint">Every client with an open case needs an update, even if nothing has changed.</div>
         </div>
       </div>
       ${this._recapHTML()}
@@ -932,7 +936,7 @@ class Checkout {
       this.channels[t.dataset.channel] = t.value;
       this.body.querySelector('.co-total-value').textContent = this._prospectsTotal();
     } else if (t.matches('.co-status-input')) {
-      this.statuses[t.dataset.case] = t.value;
+      this.statuses[t.dataset.client] = t.value;
       t.classList.remove('error');
     } else if (t.matches('.co-picker-input')) {
       this._fillDropdown(t);
@@ -1023,7 +1027,7 @@ class Checkout {
     const step = CHECKOUT_STEPS[i];
     if (step.key === 'prospects') return true;
     if (step.key === 'status') {
-      return this._openCases().every(k => (this.statuses[k.id] || '').trim());
+      return this._updateClients().every(k => (this.statuses[k.id] || '').trim());
     }
     return this.rows[step.key].filter(row => row.client).every(row => {
       if (step.key === 'meetings') return !!row.meetingType;
@@ -1106,39 +1110,33 @@ class Checkout {
       if (count > 0) activities.push({ client_id: null, type: 'prospect_contact', date: iso, details: { channel: c.key, count } });
     });
 
+    // Client updates are notes on each client's timeline.
+    this._updateClients().forEach(k => {
+      const text = (this.statuses[k.id] || '').trim();
+      if (text) activities.push({ client_id: k.id, type: 'note', date: iso, details: { text } });
+    });
+
     const cases = filled('cases').map(r => ({
-      client_id: idOf(r),
-      case_type: r.caseType,
-      initiated_date: iso,
-      lump_sum: r.lumpSum ? Number(r.lumpSum) : null,
+      clientId: idOf(r),
+      caseType: r.caseType,
+      lumpSum: r.lumpSum ? Number(r.lumpSum) : null,
       monthly: r.monthly ? Number(r.monthly) : null,
-      advice_fee_percent: r.adviceFeePercent ? Number(r.adviceFeePercent) : null,
+      adviceFeePercent: r.adviceFeePercent ? Number(r.adviceFeePercent) : null,
     }));
-
-    const statuses = this._openCases()
-      .map(k => ({ caseId: k.id, clientId: k.clientId, text: (this.statuses[k.id] || '').trim() }))
-      .filter(st => st.text);
     // Clients whose tab may need to change once this is saved: anyone
-    // with a new case, or whose case this closes.
-    this.clientsToSync = new Set([
-      ...cases.map(c => c.client_id),
-      ...statuses.filter(st => caseEndingFor(st.text)).map(st => st.clientId),
-    ]);
+    // with a new case.
+    this.clientsToSync = new Set(cases.map(c => c.clientId));
 
-    // Items and cases in one insert each, so neither is ever half-written;
-    // the flags stop a retry from saving either twice.
+    // Every activity in one insert, so it's never half-written; the flags
+    // stop a retry from saving anything twice.
     if (!this.activitiesSaved) {
       await dbInsertActivities(activities);
       this.activitiesSaved = true;
     }
-    if (!this.casesSaved) {
-      await dbInsertCases(cases);
-      this.casesSaved = true;
-    }
-    for (const st of statuses) {
-      if (this.statusesSaved.has(st.caseId)) continue;
-      await dbAddCaseStatus(st.caseId, st.text);
-      this.statusesSaved.add(st.caseId);
+    for (const [i, c] of cases.entries()) {
+      if (this.casesSaved.has(i)) continue;
+      await dbOpenCase(c.clientId, c, iso);
+      this.casesSaved.add(i);
     }
     await dbMarkCheckedOut(iso);
   }

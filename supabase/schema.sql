@@ -15,8 +15,10 @@
 --             client records — call 50, 3 book a meeting, nothing to
 --             attach the other 47 to) and checkout (a day being reviewed
 --             isn't about any one client).
---             case_id is unused for now (statuses live on cases —
---             see case_statuses below).
+--             case_id is set only on `case` entries (a case being
+--             opened, submitted, accepted or not taken up), linking
+--             the timeline entry to that case. Every other entry
+--             belongs to the client alone.
 --             fa_id here is who actually did the work, and it never
 --             changes — if a client is handed to a new FA, their history
 --             stays attributed to whoever really did it. Compare cases,
@@ -27,9 +29,8 @@
 --             fa_id here means CURRENT servicing FA — unlike activities,
 --             this DOES change on a handover (see the trigger below),
 --             since the case and its commission genuinely transfer to
---             whoever now services the client. Its own status history
---             lives on the row too (case_statuses) — there are no
---             client-level statuses.
+--             whoever now services the client. What happens to a case
+--             is on the client's timeline (activities of type `case`).
 --
 -- No separate checkouts table, and no compliance/admin dashboard yet —
 -- deferred until the admin dashboard actually gets built. A checkout
@@ -92,45 +93,54 @@ create index clients_fa_id_idx on clients(fa_id);
 
 -- ---------------------------------------------------------------------
 -- cases: the app's 22-product case-type list (see CASE_TYPES in
--- components/client-cases.js). Its status history (case_statuses,
--- newest first — the first entry is the current status) carries the
--- day-to-day updates, several a day if need be. The "Accepted" and "Not
--- taken up" presets end the case; any other status on a closed case
--- reopens it. add_case_status() (below) writes an entry and
--- sets `status` / `accepted_at` to match, in one statement.
+-- components/client-cases.js). A case moves through stages:
+--   opened → submitted → accepted, or not taken up (from opened or
+--   submitted). Open = opened or submitted.
+-- Each stage change is also a `case` entry on the client's timeline;
+-- open_case() and set_case_stage() (below) do both in one statement.
+-- checklist: which of the standard submission items (CASE_CHECKLIST in
+-- constants.js) are ticked, e.g. {"id": true, "bankProof": true}.
 -- ---------------------------------------------------------------------
 create table cases (
   id                  uuid primary key default gen_random_uuid(),
   client_id           uuid not null references clients(id) on delete cascade,
   fa_id               uuid not null references users(id) on delete cascade, -- current servicing FA; moves on handover
   case_type           text not null,
-  status              text not null default 'in-progress'
-                        check (status in ('in-progress', 'accepted', 'not-taken-up')),
-  initiated_date      date not null,
+  stage               text not null default 'opened'
+                        check (stage in ('opened', 'submitted', 'accepted', 'not-taken-up')),
+  opened_at           date not null,
+  submitted_at        date,
   accepted_at         date,
   lump_sum            numeric,
   monthly             numeric,
   advice_fee_percent  numeric,
-  case_statuses       jsonb not null default '[]'::jsonb, -- [{at, text, ending}], newest first
+  checklist           jsonb not null default '{}'::jsonb,
   created_at          timestamptz not null default now()
 );
 create index cases_fa_id_idx on cases(fa_id);
 create index cases_client_id_idx on cases(client_id);
-create index cases_status_idx on cases(status);
+create index cases_stage_idx on cases(stage);
 
 -- ---------------------------------------------------------------------
--- activities: meetings / fnas / quotes / wills_leads / referrals /
--- prospect_contacts / checkout confirmations, one table, `type` +
--- `details` for whatever's type-specific:
---   meeting          {meetingType: factFinder|relational|closing, joint: bool}
+-- activities: each client's timeline — contacts, notes, meetings,
+-- FNAs, quotes, wills leads, referrals and case events — plus the FA's
+-- own per-day records (prospects contacted, checkout). One table, `type`
+-- + `details` for whatever's type-specific. A timeline reads newest
+-- first by `date`, then `created_at`.
+--   contact          {method: phone|email|message|linkedin|inPerson,
+--                    outcome: text — a standard outcome or the FA's own}
+--   note             {text}
+--   meeting          {meetingType: factFinder|relational|closing, joint: bool,
+--                    referrals: int, willsLead: bool}
 --   fna              {}
 --   quote            {risk: bool, investment: bool}
 --   wills_lead       {}
 --   prospect_contact {channel: phoned|emailed|messaged|linkedin|other,
 --                    count: int} — one row per channel per checkout;
 --                    client_id left null (see header note)
---   referral         {} — logged alongside each +1 to clients.referrals,
---                    so referrals can be counted per month
+--   referral         {} — the client gave a referral
+--   case             {event: opened|submitted|accepted|not-taken-up} —
+--                    case_id set; written by open_case / set_case_stage
 --   checkout         {} — client_id left null; this date has been
 --                    reviewed and confirmed by this FA. At most one per
 --                    (fa_id, date) — see the unique index below.
@@ -139,14 +149,17 @@ create table activities (
   id          uuid primary key default gen_random_uuid(),
   fa_id       uuid not null references users(id) on delete cascade, -- who actually did it; never changes on handover
   client_id   uuid references clients(id) on delete cascade,        -- null only for prospect_contact / checkout
-  case_id     uuid references cases(id) on delete cascade,          -- set only for a case-scoped status
+  case_id     uuid references cases(id) on delete cascade,          -- set only on `case` entries
   type        text not null
-                check (type in ('meeting', 'fna', 'quote', 'wills_lead', 'prospect_contact', 'checkout', 'referral')),
+                check (type in ('contact', 'note', 'meeting', 'fna', 'quote', 'wills_lead', 'referral', 'case',
+                                'prospect_contact', 'checkout')),
   date        date not null,
   details     jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
   constraint activities_client_required
-    check (type in ('prospect_contact', 'checkout') or client_id is not null)
+    check (type in ('prospect_contact', 'checkout') or client_id is not null),
+  constraint activities_case_entry_has_case
+    check (type <> 'case' or case_id is not null)
 );
 create index activities_fa_id_idx on activities(fa_id);
 create index activities_client_id_idx on activities(client_id);
@@ -247,10 +260,15 @@ as $$
       u.name || ' ' || u.surname as name,
       coalesce((select sum(coalesce((a.details->>'count')::int, 1)) from public.activities a
         where a.fa_id = u.id and a.type = 'prospect_contact' and a.date = any(p_dates)), 0) as prospects,
+      -- Referrals and wills leads are recorded on meetings ({referrals: n,
+      -- willsLead: bool}); separate referral / wills_lead entries (from
+      -- the checkout) count too.
+      (select coalesce(sum(case when a.type = 'meeting' then coalesce((a.details->>'referrals')::int, 0) else 1 end), 0)
+        from public.activities a
+        where a.fa_id = u.id and a.type in ('meeting', 'referral') and a.date = any(p_dates)) as referrals,
       (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'referral' and a.date = any(p_dates)) as referrals,
-      (select count(*) from public.activities a
-        where a.fa_id = u.id and a.type = 'wills_lead' and a.date = any(p_dates)) as "willsLeads",
+        where a.fa_id = u.id and a.date = any(p_dates)
+          and (a.type = 'wills_lead' or (a.type = 'meeting' and (a.details->>'willsLead')::boolean))) as "willsLeads",
       (select count(*) from public.activities a
         where a.fa_id = u.id and a.type = 'fna' and a.date = any(p_dates)) as fnas,
       (select count(*) from public.activities a
@@ -266,9 +284,9 @@ as $$
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly)), '[]'::jsonb)
         from (
           select c.case_type,
-            count(*) filter (where c.initiated_date = any(p_dates)) as submitted,
-            coalesce(sum(c.lump_sum) filter (where c.status = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.status = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_monthly
+            count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_monthly
           from public.cases c where c.fa_id = u.id
           group by c.case_type
         ) x) as cases,
@@ -285,39 +303,61 @@ revoke execute on function public.leaderboard(date[], date) from public, anon;
 grant execute on function public.leaderboard(date[], date) to authenticated;
 
 -- ---------------------------------------------------------------------
--- Adding a case status: one statement, so the log entry and the case's
--- open/closed state can never disagree. Entries are {at, text, ending}:
--- ending is 'accepted' | 'not-taken-up' (the two statuses that close a
--- case) or null — any other status on a closed case reopens it. Runs as
--- the calling user (security invoker), so RLS still limits it to their
--- own cases. p_date is the FA's local today, used as the accepted date.
+-- Opening a case, and moving it to its next stage. Each writes the case
+-- and its `case` timeline entry in one statement, so they can't
+-- disagree. Both run as the calling user (security invoker): RLS still
+-- limits them to their own clients and cases. p_date is the FA's local
+-- today (or the day being reviewed). Both return {case, activity}.
+-- Stage changes allowed: opened → submitted | not-taken-up,
+-- submitted → accepted | not-taken-up.
 -- ---------------------------------------------------------------------
-create or replace function public.add_case_status(p_case_id uuid, p_text text, p_ending text, p_date date)
-returns public.cases
+create or replace function public.open_case(
+  p_client_id uuid, p_case_type text, p_lump_sum numeric, p_monthly numeric,
+  p_advice_fee_percent numeric, p_date date)
+returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
-declare result public.cases;
+declare c public.cases; a public.activities;
 begin
-  if p_ending is not null and p_ending not in ('accepted', 'not-taken-up') then
-    raise exception 'Unknown ending status: %', p_ending;
-  end if;
-  if coalesce(trim(p_text), '') = '' then
-    raise exception 'A status needs some text.';
-  end if;
-
-  update public.cases set
-    case_statuses = jsonb_build_array(jsonb_build_object('at', now(), 'text', trim(p_text), 'ending', p_ending)) || case_statuses,
-    status        = coalesce(p_ending, 'in-progress'),
-    accepted_at   = case when p_ending = 'accepted' then p_date else null end
-  where id = p_case_id
-  returning * into result;
-
-  if not found then
-    raise exception 'Case not found.';
-  end if;
-  return result;
+  insert into public.cases (client_id, fa_id, case_type, stage, opened_at, lump_sum, monthly, advice_fee_percent)
+  values (p_client_id, auth.uid(), p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
+  returning * into c;
+  insert into public.activities (fa_id, client_id, case_id, type, date, details)
+  values (auth.uid(), p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
+  returning * into a;
+  return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
 $$;
 
-revoke execute on function public.add_case_status(uuid, text, text, date) from public, anon;
-grant execute on function public.add_case_status(uuid, text, text, date) to authenticated;
+create or replace function public.set_case_stage(p_case_id uuid, p_stage text, p_date date)
+returns jsonb
+language plpgsql security invoker set search_path = ''
+as $$
+declare c public.cases; a public.activities;
+begin
+  select * into c from public.cases where id = p_case_id and fa_id = auth.uid() for update;
+  if not found then
+    raise exception 'Case not found.';
+  end if;
+  if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
+       or (c.stage = 'submitted' and p_stage in ('accepted', 'not-taken-up'))) then
+    raise exception 'A case that is % can''t be marked %.', c.stage, p_stage;
+  end if;
+
+  update public.cases set
+    stage        = p_stage,
+    submitted_at = case when p_stage = 'submitted' then p_date else submitted_at end,
+    accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end
+  where id = p_case_id
+  returning * into c;
+  insert into public.activities (fa_id, client_id, case_id, type, date, details)
+  values (auth.uid(), c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
+  returning * into a;
+  return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
+end;
+$$;
+
+revoke execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) from public, anon;
+grant execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) to authenticated;
+revoke execute on function public.set_case_stage(uuid, text, date) from public, anon;
+grant execute on function public.set_case_stage(uuid, text, date) to authenticated;

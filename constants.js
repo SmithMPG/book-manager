@@ -103,17 +103,47 @@ function caseIsRisk(caseType) {
   return caseCommissionRule(caseType) === 'risk';
 }
 
-// Case statuses (card and checkout) are free text, plus the standard
-// ones in the status box's arrow (status-input.js). The ending statuses
-// close the case; a status matching one of them exactly is an ending,
-// anything else (on a closed case) reopens it. See
-// add_case_status in supabase/schema.sql.
-const CASE_ENDING_STATUSES = { Accepted: 'accepted', 'Not taken up': 'not-taken-up' };
-const CASE_FIRST_STATUS = 'Case opened';
+// Case stages: opened → submitted → accepted, or not taken up (from
+// opened or submitted). A case is open while opened or submitted. See
+// open_case / set_case_stage in supabase/schema.sql.
+const CASE_STAGE_LABELS = {
+  opened: 'Opened',
+  submitted: 'Submitted',
+  accepted: 'Accepted',
+  'not-taken-up': 'Not taken up',
+};
 
-function caseEndingFor(text) {
-  return CASE_ENDING_STATUSES[(text || '').trim()] || null;
+function isOpenCase(c) {
+  return c.stage === 'opened' || c.stage === 'submitted';
 }
+
+// What has to be in place to submit a case — the same for every
+// product. Stored on the case as {key: true} for each ticked item.
+const CASE_CHECKLIST = [
+  { key: 'id', label: 'ID' },
+  { key: 'residenceProof', label: 'Proof of residence' },
+  { key: 'bankProof', label: 'Proof of bank account' },
+  { key: 'faisLetter', label: 'Signed FAIS intro letter' },
+  { key: 'applicationForm', label: 'Signed application form' },
+  { key: 'quote', label: 'Signed quote' },
+  { key: 'riskProfile', label: 'Signed risk profile analyser' },
+];
+
+function caseChecklistDone(c) {
+  return CASE_CHECKLIST.filter(item => c.checklist?.[item.key]).length;
+}
+
+// Timeline contact entries: how the client was contacted (a fixed list)
+// and what came of it — one of the standard outcomes, or the FA's own
+// words.
+const CONTACT_METHODS = [
+  { key: 'phone', label: 'Phone' },
+  { key: 'email', label: 'Email' },
+  { key: 'message', label: 'WhatsApp / SMS' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'inPerson', label: 'In person' },
+];
+const CONTACT_OUTCOMES = ['Spoke to client', 'No answer', 'Left message', 'Sent'];
 
 // Team PCR target (admin view's PCR meter): every FA's Validation target
 // x TEAM_PCR_TARGET_MULTIPLIER, added up. High Flyer is still 3x this,

@@ -7,7 +7,7 @@
 // themselves come from caseStats() below, over a list of cases:
 //
 // Commission in the Pot: upfront commission (see constants.js) for every
-// case still in progress on a client in the Business tab — the pipeline
+// open case (opened or submitted) on a client in the Business tab — the pipeline
 // that hasn't landed yet. A snapshot of what's open now, so it doesn't
 // follow the dates picked on the month bar.
 //
@@ -20,11 +20,11 @@
 //
 // Wills leads / referrals: counted over those same days (leaderboard()).
 
-// cases: [{status, tab, type, lumpSum, monthly, adviceFeePercent,
+// cases: [{stage, tab, type, lumpSum, monthly, adviceFeePercent,
 // acceptedAt}]; days: Set of ISO dates.
 function caseStats(cases, days) {
-  const open = cases.filter(c => c.status === 'in-progress' && c.tab === 'business');
-  const accepted = cases.filter(c => c.status === 'accepted' && days.has(c.acceptedAt));
+  const open = cases.filter(c => isOpenCase(c) && c.tab === 'business');
+  const accepted = cases.filter(c => c.stage === 'accepted' && days.has(c.acceptedAt));
   const sum = (list, fn) => list.reduce((t, c) => t + fn(c), 0);
   return {
     commissionInPot: sum(open, caseUpfrontCommission),

@@ -1,9 +1,11 @@
 // Client card: one consistent card, used in every tab (Prospects,
-// Business, Clients, Not Moved Forward). Collapsed row is the client's name,
-// the newest status across their cases, then counts (Referrals, a
-// divider, then the funnel: Meetings, FNAs, Quotes, Cases). Clicking the
-// row opens their Cases; clicking a count opens that list instead. Items
-// are added and deleted in place (card-items.js).
+// Business, Clients, Not Moved Forward). Collapsed row: the client's
+// name, their latest timeline entry, a chip per open case (type · stage ·
+// checklist progress), and a "+" at the end. Clicking the row opens the
+// client's timeline; clicking a case chip opens it with that case's
+// checklist at the top; "+" picks something to add (Contact, Note,
+// Meeting, FNA, Quote, Case) and opens the card ready to fill it in.
+// What's inside the open card lives in card-items.js.
 
 function _injectClientCardCSS() {
   if (document.getElementById('client-card-styles')) return;
@@ -63,78 +65,81 @@ function _injectClientCardCSS() {
       white-space: nowrap;
     }
 
-    .card-metrics {
+    .case-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 55%; }
+    .case-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--ink);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .case-chip:hover { border-color: var(--gold); }
+    .case-chip .case-chip-dim { color: var(--ink-dim); }
+    .case-chip.focused { background: var(--gold); border-color: var(--gold); color: var(--navy); }
+    .case-chip.focused .case-chip-dim { color: var(--navy); }
+    .list-row.active .case-chip:not(.focused) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.25); color: var(--text); }
+    .list-row.active .case-chip:not(.focused) .case-chip-dim { color: var(--text-dim); }
+
+    .row-add {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: 1px dashed rgba(0, 0, 0, 0.25);
+      background: transparent;
+      color: var(--ink-dim);
+      font-size: 16px;
+      line-height: 1;
+      font-family: inherit;
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 28px;
+      justify-content: center;
     }
-    .card-metric {
+    .row-add:hover { border-style: solid; border-color: var(--gold); color: #8a6d0a; background: rgba(212, 175, 55, 0.1); }
+    .list-row.active .row-add { border-color: rgba(255, 255, 255, 0.35); color: var(--text-dim); }
+    .list-row.active .row-add:hover { border-color: var(--gold); color: var(--gold-soft); background: rgba(255, 255, 255, 0.1); }
+
+    .add-menu {
+      position: fixed;
+      z-index: 250;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+      width: 170px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      min-width: 62px;
-      line-height: 1.2;
+      gap: 1px;
     }
-    .card-metric-value {
-      font-size: 17px;
-      font-weight: 700;
+    .add-menu button {
+      background: none;
+      border: none;
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
       color: var(--ink);
-    }
-    .card-metric-label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--ink-dim);
-    }
-    /* Separates Referrals from the sales funnel (Meetings > FNAs > Quotes > Cases). */
-    .card-metrics-divider {
-      width: 1px;
-      height: 30px;
-      background: rgba(0, 0, 0, 0.18);
-    }
-    .list-row.active .card-metrics-divider { background: rgba(255, 255, 255, 0.25); }
-
-    .card-metric[data-view] {
-      cursor: pointer;
-      padding: 4px 6px;
-      margin: -4px -6px;
       border-radius: 6px;
-      transition: background 0.12s ease;
+      cursor: pointer;
     }
-    .card-metric[data-view]:hover { background: rgba(0, 0, 0, 0.06); }
-    .list-row.active .card-metric[data-view]:hover { background: rgba(255, 255, 255, 0.1); }
-    .list-row.active .card-metric.selected { background: rgba(255, 255, 255, 0.14); }
-    .list-row.active .card-metric.selected .card-metric-label { color: var(--gold-soft); }
-    .list-row.active .card-metric-value { color: var(--gold-soft); }
-    .list-row.active .card-metric-label { color: var(--text-dim); }
+    .add-menu button:hover { background: #f2f2f0; }
 
-    .detail-view { display: none; }
-    .detail-view.active { display: block; }
-
-    .detail-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      max-height: 360px;
-      overflow-y: auto;
-    }
-    .detail-item {
-      display: flex;
-      gap: 20px;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-    }
-    .detail-item:first-child { padding-top: 0; }
-    .detail-item:last-child { border-bottom: none; padding-bottom: 0; }
+    /* The date on an add-entry form (card-items.js). */
     .detail-date {
       width: 96px;
       flex-shrink: 0;
       font-weight: 600;
       color: var(--ink);
     }
-    .detail-text { color: var(--ink-dim); line-height: 1.45; }
-    .detail-empty { color: var(--ink-dim); }
 
   `;
   document.head.appendChild(s);
@@ -181,60 +186,37 @@ function _caseAmountsSuffix(c) {
   return parts.length ? ` · ${parts.join(' / ')}` : '';
 }
 
-// The newest status across all the client's cases, shown on the
-// collapsed row. Always rendered so it soaks up the free space between
-// name and metrics, even for a client with no cases yet.
+// The latest timeline entry, shown on the collapsed row. Always rendered
+// so it soaks up the free space between name and metrics, even for a
+// client with nothing on their timeline yet.
 function _cardLastStatusHTML(data) {
-  const last = [...(data.casesInProgress || []), ...(data.acceptedCases || []), ...(data.notTakenUpCases || [])]
-    .map(c => (c.statuses || [])[0])
-    .filter(Boolean)
-    .sort((a, b) => b.at.localeCompare(a.at))[0];
-  if (!last) return '<div class="card-last-status"></div>';
-  return `
-    <div class="card-last-status" title="${_escHtml(last.text)}">${_escHtml(last.text)}</div>
-  `;
+  const last = latestTimelineSummary(data);
+  return `<div class="card-last-status" title="${_escHtml(last)}">${_escHtml(last)}</div>`;
 }
 
-// Funnel metrics pass a `view` so clicking them opens their list;
-// Referrals is just a count and isn't clickable.
-function _cardMetric(label, value, view) {
-  const attrs = view ? ` data-view="${view}" title="Show ${label}"` : '';
-  return `
-    <div class="card-metric"${attrs}>
-      <span class="card-metric-value">${value}</span>
-      <span class="card-metric-label">${label}</span>
-    </div>
-  `;
+// One chip per open case: "Risk · Opened · 2/7".
+function _caseChipsHTML(data) {
+  const open = (data.cases || []).filter(isOpenCase);
+  if (!open.length) return '';
+  return `<div class="case-chips">${open.map(c => `
+    <button type="button" class="case-chip${caseIsFocused(data.id, c.id) ? ' focused' : ''}" data-case-chip="${c.id}" title="Show this case's checklist">
+      ${_escHtml(c.type)} <span class="case-chip-dim">· ${CASE_STAGE_LABELS[c.stage]} · ${caseChecklistDone(c)}/${CASE_CHECKLIST.length}</span>
+    </button>
+  `).join('')}</div>`;
 }
 
-// Each metric count is the length of its list, so the two can't disagree.
 // Only the row itself is draggable, so text in the open card's inputs can
 // still be selected.
 function clientCardHTML(data) {
-  const caseCount = (data.casesInProgress || []).length + (data.acceptedCases || []).length
-    + (data.notTakenUpCases || []).length;
-  const section = view => {
-    const { className, html } = cardSectionHTML(data, view);
-    return `<div class="detail-view${className}" data-view="${view}">${html}</div>`;
-  };
-
   return `
     <div class="card-wrapper">
-      <div class="list-row" data-card-id="${data.id}" data-view="cases" draggable="true">
+      <div class="list-row" data-card-id="${data.id}" draggable="true">
         <div class="name"><b>${_escHtml(data.firstName)}</b><span>${_escHtml(data.lastName)}</span></div>
         ${_cardLastStatusHTML(data)}
-        <div class="card-metrics">
-          ${_cardMetric('Referrals', (data.referrals || []).length)}
-          <span class="card-metrics-divider"></span>
-          ${_cardMetric('Meetings', (data.meetings || []).length, 'meetings')}
-          ${_cardMetric('FNAs', (data.fnas || []).length, 'fnas')}
-          ${_cardMetric('Quotes', (data.quotes || []).length, 'quotes')}
-          ${_cardMetric('Cases', caseCount, 'cases')}
-        </div>
+        ${_caseChipsHTML(data)}
+        <button type="button" class="row-add" data-row-add title="Add to ${_escHtml(data.firstName)}'s timeline">+</button>
       </div>
-      <div class="row-detail" id="row-${data.id}">
-        ${['meetings', 'fnas', 'quotes', 'cases'].map(section).join('')}
-      </div>
+      <div class="row-detail" id="row-${data.id}">${clientDetailHTML(data)}</div>
     </div>
   `;
 }
@@ -314,62 +296,99 @@ function updateClient(id, mutate) {
   if (!row) return;
   const wrapper = row.parentElement;
   const wasOpen = wrapper.querySelector('.row-detail').classList.contains('open');
-  const view = row.dataset.view;
   const tmp = document.createElement('div');
   tmp.innerHTML = clientCardHTML(data).trim();
   const fresh = tmp.firstElementChild;
   wrapper.replaceWith(fresh);
   if (wasOpen) {
-    const freshRow = fresh.querySelector('.list-row');
-    const freshDetail = fresh.querySelector('.row-detail');
-    _setCardView(freshRow, freshDetail, view);
-    freshDetail.classList.add('open');
-    freshRow.classList.add('active');
+    fresh.querySelector('.row-detail').classList.add('open');
+    fresh.querySelector('.list-row').classList.add('active');
   }
 }
 
-function _setCardView(row, detail, view) {
-  row.dataset.view = view;
-  detail.querySelectorAll('.detail-view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
-  row.querySelectorAll('.card-metric[data-view]').forEach(m => m.classList.toggle('selected', m.dataset.view === view));
+// Opens a card (closing any other). Returns its detail element.
+function _openCard(row) {
+  const detail = row.parentElement.querySelector('.row-detail');
+  document.querySelectorAll('.row-detail').forEach(r => {
+    if (r === detail) return;
+    r.classList.remove('open');
+    r.previousElementSibling?.classList.remove('active');
+  });
+  detail.classList.add('open');
+  row.classList.add('active');
+  return detail;
 }
 
-// Opens one client's card (on its Cases, closing any other) and scrolls
+function _closeCard(row) {
+  row.parentElement.querySelector('.row-detail').classList.remove('open');
+  row.classList.remove('active');
+}
+
+// Opens one client's card (closing any other) and scrolls
 // to it, with a brief highlight — used by search.
 function openClientCard(id) {
   const row = document.querySelector(`.list-row[data-card-id="${id}"]`);
   const detail = row?.parentElement.querySelector('.row-detail');
   if (!row || !detail) return;
-  document.querySelectorAll('.row-detail').forEach(r => {
-    r.classList.remove('open');
-    r.previousElementSibling?.classList.remove('active');
-  });
-  _setCardView(row, detail, 'cases');
-  detail.classList.add('open');
-  row.classList.add('active');
+  _openCard(row);
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-// Clicking the row opens the client's Cases; clicking a funnel metric
-// opens that metric's list instead. Clicking the same thing again
-// closes the card. Only one card is open at a time.
+// "+" on a row: the kinds of entry that can be added (card-items.js).
+function _closeAddMenu() {
+  document.getElementById('add-menu')?.remove();
+  document.removeEventListener('click', _outsideAddMenuClick, true);
+}
+
+function _outsideAddMenuClick(e) {
+  if (e.target.closest('.add-menu') || e.target.closest('[data-row-add]')) return;
+  _closeAddMenu();
+}
+
+function _openAddMenu(anchor, row) {
+  _closeAddMenu();
+  const menu = document.createElement('div');
+  menu.className = 'add-menu';
+  menu.id = 'add-menu';
+  menu.innerHTML = ADD_KINDS.map(k => `<button type="button" data-kind="${k}">${TIMELINE_KINDS[k].label}</button>`).join('');
+  document.body.appendChild(menu);
+  const a = anchor.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  let top = a.bottom + 6;
+  if (top + m.height > window.innerHeight - 12) top = a.top - m.height - 6;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${Math.max(12, Math.min(a.right - m.width, window.innerWidth - m.width - 12))}px`;
+  menu.addEventListener('click', e => {
+    const btn = e.target.closest('[data-kind]');
+    if (!btn) return;
+    _closeAddMenu();
+    openAddEntry(_openCard(row), btn.dataset.kind);
+  });
+  // Deferred so the click that opened it doesn't close it straight away.
+  setTimeout(() => document.addEventListener('click', _outsideAddMenuClick, true), 0);
+}
+
+// Row: open / close the client. Case chip: open the client showing that
+// case's checklist (again to hide it). "+": the add menu.
 function initClientCards(root) {
   root.addEventListener('click', e => {
     const row = e.target.closest('.list-row');
     if (!row) return;
-    const detail = row.parentElement.querySelector('.row-detail');
-    if (!detail) return;
-    const metric = e.target.closest('.card-metric[data-view]');
-    const view = metric ? metric.dataset.view : 'cases';
-    const isOpen = detail.classList.contains('open');
-    const sameView = row.dataset.view === view;
-    document.querySelectorAll('.row-detail').forEach(r => {
-      r.classList.remove('open');
-      r.previousElementSibling?.classList.remove('active');
-    });
-    if (isOpen && sameView) return;
-    _setCardView(row, detail, view);
-    detail.classList.add('open');
-    row.classList.add('active');
+    const addBtn = e.target.closest('[data-row-add]');
+    if (addBtn) {
+      e.stopPropagation();
+      _openAddMenu(addBtn, row);
+      return;
+    }
+    const chip = e.target.closest('[data-case-chip]');
+    if (chip) {
+      const clientId = row.dataset.cardId;
+      const caseId = chip.dataset.caseChip;
+      const detail = _openCard(row);
+      focusCase(detail, clientId, caseIsFocused(clientId, caseId) ? null : caseId);
+      return;
+    }
+    if (row.parentElement.querySelector('.row-detail').classList.contains('open')) _closeCard(row);
+    else _openCard(row);
   });
 }

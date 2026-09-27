@@ -278,7 +278,7 @@
           const clientId = card.querySelector(".list-row").dataset.cardId;
           // A client with an open case belongs in Business; they can be
           // dragged there, but not out anywhere else until it's closed.
-          if (tab.dataset.tab !== "business" && (getClientData(clientId)?.casesInProgress || []).length) {
+          if (tab.dataset.tab !== "business" && (getClientData(clientId)?.cases || []).some(isOpenCase)) {
             showChoiceDialog({
               title: "Open cases",
               message: "This client has open cases, please close the cases before moving them.",

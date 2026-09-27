@@ -1,11 +1,8 @@
-// Status input: one text box for a case status, used on the case card
-// and in the checkout. Typing your own words is the default; the arrow
-// on the right opens the standard statuses:
-//   Same as last   copies the case's current status
-//   Accepted       } close the case (CASE_ENDING_STATUSES, constants.js)
-//   Not taken up   }
-// Picking one fills the box (it isn't saved yet) and fires an 'input'
-// event, so whatever's listening to the box sees the change.
+// Status input: one text box where typing your own words is the default,
+// and the arrow on the right offers a short standard list — e.g. a
+// contact's outcomes (No answer, Left message…), or "Same as last" for a
+// client update. Picking one fills the box (it isn't saved yet) and
+// fires an 'input' event, so whatever's listening sees the change.
 //
 // The menu is attached to <body> with fixed positioning, not inside the
 // box, so a scrolling container around it (a long case list, the
@@ -88,13 +85,16 @@ _injectStatusInputCSS();
 
 const _STATUS_ARROW_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-// attrs: extra attributes for the <input> (e.g. data-case="…"); last: the
-// case's current status text, for "Same as last".
-function statusInputHTML({ value = '', last = '', attrs = '', className = '' } = {}) {
+// options: the standard list for the arrow; last: text for a "Same as
+// last" item at the top (omitted when not given); attrs: extra
+// attributes for the <input> (e.g. data-client="…").
+function statusInputHTML({ value = '', last = null, options = [], attrs = '', className = '', placeholder = 'Type a status…' } = {}) {
+  const hasMenu = last !== null || options.length;
   return `
-    <div class="status-input" data-last="${_escHtml(last)}">
-      <input type="text" class="${className}" ${attrs} value="${_escHtml(value)}" placeholder="Type a status&hellip;" autocomplete="off">
-      <button type="button" class="status-input-arrow" title="Standard statuses" tabindex="-1">${_STATUS_ARROW_SVG}</button>
+    <div class="status-input" data-last="${last === null ? '' : _escHtml(last)}" data-has-last="${last !== null}"
+      data-options="${_escHtml(JSON.stringify(options))}">
+      <input type="text" class="${className}" ${attrs} value="${_escHtml(value)}" placeholder="${_escHtml(placeholder)}" autocomplete="off">
+      ${hasMenu ? `<button type="button" class="status-input-arrow" title="Standard options" tabindex="-1">${_STATUS_ARROW_SVG}</button>` : ''}
     </div>
   `;
 }
@@ -110,13 +110,16 @@ function _closeStatusMenus() {
 function _openStatusMenu(wrap) {
   _closeStatusMenus();
   const last = wrap.dataset.last;
+  const options = JSON.parse(wrap.dataset.options || '[]');
   const menu = document.createElement('div');
   menu.className = 'status-input-menu';
-  menu.innerHTML = `
-    <button type="button" data-status="${_escHtml(last)}"${last ? '' : ' disabled'}>Same as last</button>
-    <hr>
-    ${Object.keys(CASE_ENDING_STATUSES).map(t => `<button type="button" data-status="${_escHtml(t)}">${_escHtml(t)}</button>`).join('')}
-  `;
+  const sameAsLast = wrap.dataset.hasLast === 'true'
+    ? `<button type="button" data-status="${_escHtml(last)}"${last ? '' : ' disabled'}>Same as last</button>` : '';
+  menu.innerHTML = [
+    sameAsLast,
+    sameAsLast && options.length ? '<hr>' : '',
+    ...options.map(t => `<button type="button" data-status="${_escHtml(t)}">${_escHtml(t)}</button>`),
+  ].join('');
   document.body.appendChild(menu);
   _statusMenuWrap = wrap;
 

@@ -7,36 +7,59 @@
 // an admin every FA's clients, but there's no admin view to show them in
 // yet (see app-mode.js).
 //
-// Card data shape (what client-card.js renders) is built from three
-// tables: clients (one row per card), activities (meetings, FNAs,
-// quotes, wills leads, referrals — each a dated line on the card), and
-// cases (in progress / accepted / not taken up, each with its own
-// status history). Every item keeps its database id so it can be
-// updated or deleted later.
+// Card data shape (what client-card.js renders), from three tables:
+//   clients    one row per card
+//   timeline   the client's activities — contacts, notes, meetings,
+//              FNAs, quotes, wills leads, referrals and case events —
+//              newest first (by date, then when it was logged)
+//   cases      the client's cases: stage, amounts, checklist
+// Every item keeps its database id so it can be updated or deleted.
 
 const _MEETING_TYPE_LABELS = { factFinder: 'Fact Finder', relational: 'Relational', closing: 'Closing' };
 
+// "Fact Finder · Joint call · 2 referrals · Wills lead"
 function meetingText(details) {
-  const label = _MEETING_TYPE_LABELS[details.meetingType] || 'Meeting';
-  return `${label}${details.joint ? ' · Joint call' : ''}`;
+  const parts = [_MEETING_TYPE_LABELS[details.meetingType] || 'Meeting'];
+  if (details.joint) parts.push('Joint call');
+  const n = Number(details.referrals) || 0;
+  if (n) parts.push(`${n} referral${n === 1 ? '' : 's'}`);
+  if (details.willsLead) parts.push('Wills lead');
+  return parts.join(' · ');
 }
 
 function quoteText(details) {
   return details.risk && details.investment ? 'Risk & Investment' : details.risk ? 'Risk' : 'Investment';
 }
 
-// The card list line for one activity row. FNAs (and referrals, which
-// the card only counts) are just their date, so no text.
-function activityItem(a) {
-  const text = a.type === 'meeting' ? meetingText(a.details)
-    : a.type === 'quote' ? quoteText(a.details)
-    : a.type === 'wills_lead' ? 'Wills lead'
-    : '';
-  return { id: a.id, date: a.date, text };
+const _CONTACT_METHOD_LABELS = Object.fromEntries(CONTACT_METHODS.map(m => [m.key, m.label]));
+
+function contactText(details) {
+  return [_CONTACT_METHOD_LABELS[details.method] || 'Contact', details.outcome].filter(Boolean).join(' · ');
 }
 
-// Which card list each activity type lives in.
-const ACTIVITY_TYPE_FOR_VIEW = { meetings: 'meeting', fnas: 'fna', quotes: 'quote' };
+// One timeline entry. Case entries' wording needs the case itself, so the
+// card words those (card-items.js timelineEntryText).
+function activityItem(a) {
+  const text = a.type === 'contact' ? contactText(a.details)
+    : a.type === 'note' ? (a.details.text || '')
+    : a.type === 'meeting' ? meetingText(a.details)
+    : a.type === 'quote' ? quoteText(a.details)
+    : '';
+  return {
+    id: a.id,
+    type: a.type,
+    date: a.date,
+    createdAt: a.created_at,
+    caseId: a.case_id,
+    details: a.details || {},
+    text,
+  };
+}
+
+// Newest first: by the day it happened, then by when it was logged.
+function byTimelineOrder(a, b) {
+  return b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '');
+}
 
 function _dbOk({ data, error }) {
   if (error) throw error;
@@ -63,41 +86,30 @@ function _faId() {
 
 // ---------- reads ----------
 
-// statuses: [{at, text, ending}], newest first — statuses[0] is current.
 function caseItem(c) {
   return {
     id: c.id,
-    status: c.status,
-    statuses: c.case_statuses || [],
     type: c.case_type,
-    date: c.status === 'accepted' ? c.accepted_at : c.initiated_date,
-    initiatedDate: c.initiated_date,
+    stage: c.stage,
+    openedAt: c.opened_at,
+    submittedAt: c.submitted_at,
     acceptedAt: c.accepted_at,
     lumpSum: c.lump_sum,
     monthly: c.monthly,
     adviceFeePercent: c.advice_fee_percent,
+    checklist: c.checklist || {},
   };
 }
 
 function _cardFromRows(client, activities, cases) {
-  const byDate = (a, b) => b.date.localeCompare(a.date);
-  const of = type => activities.filter(a => a.type === type).map(activityItem).sort(byDate);
   return {
     id: client.id,
     tab: client.tab,
     firstName: client.first_name,
     lastName: client.last_name,
-    email: client.email || '',
-    phone: client.phone || '',
-    details: { fullName: `${client.first_name} ${client.last_name}`.trim() },
-    referrals: of('referral'),
-    meetings: of('meeting'),
-    fnas: of('fna'),
-    quotes: of('quote'),
-    willsLeads: of('wills_lead'),
-    casesInProgress: cases.filter(c => c.status === 'in-progress').map(caseItem).sort(byDate),
-    acceptedCases: cases.filter(c => c.status === 'accepted').map(caseItem).sort(byDate),
-    notTakenUpCases: cases.filter(c => c.status === 'not-taken-up').map(caseItem).sort(byDate),
+    createdAt: client.created_at,
+    timeline: activities.map(activityItem).sort(byTimelineOrder),
+    cases: cases.map(caseItem).sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
   };
 }
 
@@ -105,9 +117,9 @@ async function _loadMyCards() {
   const faId = _faId();
   const [clients, activities, cases] = await Promise.all([
     _fetchAll(() => supabaseClient.from('clients').select('*').eq('fa_id', faId).order('created_at')),
-    _fetchAll(() => supabaseClient.from('activities').select('id, client_id, type, date, details')
+    _fetchAll(() => supabaseClient.from('activities').select('id, client_id, case_id, type, date, details, created_at')
       .eq('fa_id', faId).not('client_id', 'is', null).order('date')),
-    _fetchAll(() => supabaseClient.from('cases').select('*').eq('fa_id', faId).order('initiated_date')),
+    _fetchAll(() => supabaseClient.from('cases').select('*').eq('fa_id', faId).order('opened_at')),
   ]);
   const group = (rows, key) => rows.reduce((m, r) => ((m[r[key]] ||= []).push(r), m), {});
   const actsBy = group(activities, 'client_id');
@@ -131,19 +143,13 @@ async function _loadLeaderboard(days, checkoutDay) {
 // their client's name and tab, and every active FA's target.
 async function _loadTeamCases() {
   const rows = await _fetchAll(() => supabaseClient.from('cases')
-    .select('id, fa_id, case_type, status, lump_sum, monthly, advice_fee_percent, accepted_at, case_statuses, clients(first_name, last_name, tab)')
-    .order('initiated_date'));
+    .select('*, clients(first_name, last_name, tab)')
+    .order('opened_at'));
   return rows.map(c => ({
+    ...caseItem(c),
     faId: c.fa_id,
     clientName: c.clients ? `${c.clients.first_name} ${c.clients.last_name}` : '',
     tab: c.clients?.tab || '',
-    status: c.status,
-    type: c.case_type,
-    lumpSum: c.lump_sum,
-    monthly: c.monthly,
-    adviceFeePercent: c.advice_fee_percent,
-    acceptedAt: c.accepted_at,
-    latest: (c.case_statuses || [])[0]?.text || '',
   }));
 }
 
@@ -186,11 +192,33 @@ async function dbDeleteActivity(id) {
   _dbOk(await supabaseClient.from('activities').delete().eq('id', id));
 }
 
-// One case from a card's inline add; returns the saved row.
-async function dbAddCase(row) {
-  return _dbOk(await supabaseClient.from('cases').insert(_newCaseRow(row, _faId())).select().single());
+// Opens a case: the case and its "opened" timeline entry, together.
+// fields: {caseType, lumpSum, monthly, adviceFeePercent}. Returns
+// {case, activity} as card items.
+async function dbOpenCase(clientId, fields, date) {
+  const r = _dbOk(await supabaseClient.rpc('open_case', {
+    p_client_id: clientId,
+    p_case_type: fields.caseType,
+    p_lump_sum: fields.lumpSum ?? null,
+    p_monthly: fields.monthly ?? null,
+    p_advice_fee_percent: fields.adviceFeePercent ?? null,
+    p_date: date,
+  }));
+  return { case: caseItem(r.case), activity: activityItem(r.activity) };
 }
 
+// Moves a case to its next stage ('submitted', 'accepted' or
+// 'not-taken-up') and adds that to the timeline. Returns {case, activity}.
+async function dbSetCaseStage(caseId, stage, date) {
+  const r = _dbOk(await supabaseClient.rpc('set_case_stage', { p_case_id: caseId, p_stage: stage, p_date: date }));
+  return { case: caseItem(r.case), activity: activityItem(r.activity) };
+}
+
+async function dbSetCaseChecklist(caseId, checklist) {
+  _dbOk(await supabaseClient.from('cases').update({ checklist }).eq('id', caseId));
+}
+
+// Deleting a case also deletes its timeline entries (they cascade).
 async function dbDeleteCase(id) {
   _dbOk(await supabaseClient.from('cases').delete().eq('id', id));
 }
@@ -200,34 +228,6 @@ async function dbInsertActivities(rows) {
   if (!rows.length) return;
   const faId = _faId();
   _dbOk(await supabaseClient.from('activities').insert(rows.map(r => ({ ...r, fa_id: faId }))));
-}
-
-// Every new case starts its log with "Case opened", timestamped now.
-function _newCaseRow(r, faId) {
-  return {
-    ...r,
-    fa_id: faId,
-    status: 'in-progress',
-    case_statuses: [{ at: new Date().toISOString(), text: CASE_FIRST_STATUS, ending: null }],
-  };
-}
-
-// rows: [{client_id, case_type, initiated_date, lump_sum, monthly, advice_fee_percent}]
-async function dbInsertCases(rows) {
-  if (!rows.length) return;
-  const faId = _faId();
-  _dbOk(await supabaseClient.from('cases').insert(rows.map(r => _newCaseRow(r, faId))));
-}
-
-// Adds a status to a case; "Accepted" / "Not taken up" close it, any
-// other status reopens a closed one. Returns the updated case row.
-async function dbAddCaseStatus(caseId, text) {
-  return _dbOk(await supabaseClient.rpc('add_case_status', {
-    p_case_id: caseId,
-    p_text: text,
-    p_ending: caseEndingFor(text),
-    p_date: _todayIso(),
-  }));
 }
 
 // At most one per FA per day (unique index); a repeat checkout of the
@@ -316,8 +316,7 @@ function _teamRep(reps) {
 function _myCases() {
   return getClientRecords().flatMap(r => {
     const d = getClientData(r.id);
-    return [...(d.casesInProgress || []), ...(d.acceptedCases || []), ...(d.notTakenUpCases || [])]
-      .map(c => ({ ...c, tab: r.tab }));
+    return (d.cases || []).map(c => ({ ...c, tab: r.tab }));
   });
 }
 
@@ -372,7 +371,7 @@ function onDashboardPeriodChange() {
 }
 
 function _businessCasesHTML(rep) {
-  const open = (_dash?.teamCases || []).filter(c => c.faId === rep.id && c.status === 'in-progress' && c.tab === 'business');
+  const open = (_dash?.teamCases || []).filter(c => c.faId === rep.id && isOpenCase(c) && c.tab === 'business');
   if (!open.length) return '<div class="lb-detail-empty">No open cases in Business.</div>';
   return `
     <div class="lb-detail-title">Business tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
@@ -380,7 +379,7 @@ function _businessCasesHTML(rep) {
       <div class="lb-detail-row">
         <span class="lb-detail-client">${_escHtml(c.clientName)}</span>
         <span class="lb-detail-type">${_escHtml(c.type)}</span>
-        <span class="lb-detail-status" title="${_escHtml(c.latest)}">${_escHtml(c.latest)}</span>
+        <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${CASE_CHECKLIST.length}</span>
         <span class="lb-detail-pcr">PCR ${formatNumber(casePcr(c))}</span>
       </div>
     `).join('')}
