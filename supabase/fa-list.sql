@@ -46,7 +46,6 @@ from (values
   ('marcel.myburg@liblink.co.za',         'Marcel',        'Myburg',      false, 'Bryanston', true, 299800),
   ('sisamkele.nofotyela@liblink.co.za',   'Sisamkele',     'Nofotyela',   false, 'Bryanston', true, 299800),
   ('keoagile.molotsi@liblink.co.za',      'Keoagile',      'Molotsi',     false, 'Bryanston', true, 299800),
-  ('remiero.padayachee@liblink.co.za',    'Remiero',       'Padayachee',  false, 'Bryanston', true, 299800),
   ('joshua-ethan.levinge@liblink.co.za',  'Joshua',        'Levinge',     false, 'Bryanston', true, null)
 ) as t(email, name, surname, is_admin, branch, academy, pcr_target)
 join auth.users a on lower(a.email) = t.email
