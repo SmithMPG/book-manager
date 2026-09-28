@@ -60,11 +60,11 @@ create table users (
   is_admin    boolean not null default false, -- sees everyone's data, not just their own
   is_super_admin boolean not null default false, -- an admin who can also use the Test Book
   is_active   boolean not null default true,  -- false = "left", data retained
-  branch      text,                           -- open-ended, not a fixed list — real
-                                                -- branches/offices over time (e.g.
-                                                -- "Bryanston Academy"), plus "Test
-                                                -- group" for QA-only data. Drives the
-                                                -- leaderboard's group filter.
+  branch      text,                           -- open-ended, not a fixed list — the
+                                                -- office (e.g. "Bryanston"), plus
+                                                -- "Test group" for the Test Book,
+                                                -- which the leaderboard leaves out.
+  academy     boolean not null default false, -- part of the Academy (yes / no)
   password_set boolean not null default false, -- flips true once they finish the
                                                 -- set-password screen after their
                                                 -- invite — see components/auth.js.

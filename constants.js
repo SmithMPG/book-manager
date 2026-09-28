@@ -166,12 +166,7 @@ const CONTACT_METHODS = [
 ];
 const CONTACT_OUTCOMES = ['Spoke to client', 'No answer', 'Left message', 'Sent'];
 
-// Team PCR target (admin view's PCR meter): every FA's Validation target
-// x TEAM_PCR_TARGET_MULTIPLIER, added up. High Flyer is still 3x this,
-// as for an individual (pcr-meter.js). FAs without a target (e.g. the
-// manager) add nothing.
-const TEAM_PCR_TARGET_MULTIPLIER = 2;
-
-function teamPcrTarget(validationTargets) {
-  return validationTargets.reduce((sum, t) => sum + (Number(t) || 0), 0) * TEAM_PCR_TARGET_MULTIPLIER;
-}
+// Team PCR target (admin view's PCR meter): a fixed Validation target for
+// the whole team. High Flyer is still 3x this, as for an individual
+// (pcr-meter.js).
+const TEAM_PCR_TARGET = 10000000;

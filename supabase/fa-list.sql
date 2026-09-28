@@ -23,33 +23,37 @@
 -- Don't delete and recreate their login: deleting it also deletes their
 -- users row and all their clients/cases/activities.
 
+-- branch: the office. academy: part of the Academy (yes / no). Added
+-- here the first time this runs; harmless after that.
+alter table users add column if not exists academy boolean not null default false;
+
 -- pcr_target is the monthly Validation target in PCR; High Flyer is
 -- always 3x that (pcr-meter.js). Null = no target (Ameeth, as the
 -- manager; Joshua until his is confirmed).
-insert into users (id, email, name, surname, is_admin, branch, pcr_target, password_set)
-select a.id, t.email, t.name, t.surname, t.is_admin, t.branch, t.pcr_target, false
+insert into users (id, email, name, surname, is_admin, branch, academy, pcr_target, password_set)
+select a.id, t.email, t.name, t.surname, t.is_admin, t.branch, t.academy, t.pcr_target, false
 from (values
-  ('ameeth.maharaj@liblink.co.za',        'Ameeth',        'Maharaj',     true,  'Bryanston Academy',   null),
-  ('christabell.swart@liblink.co.za',     'Christabell',   'Swart',       false, 'Bryanston Academy', 623000),
-  ('bongiwe.nzimande@liblink.co.za',      'Bongiwe',       'Nzimande',    false, 'Bryanston Academy', 623000),
-  ('darlington.monaheng@liblink.co.za',   'Darlington',    'Monaheng',    false, 'Bryanston Academy', 623000),
-  ('matthew.smith@liblink.co.za',         'Matthew',       'Smith',       true,  'Bryanston Academy', 412000),
-  ('lehlogonolo.mabusela@liblink.co.za',  'Lehlogonolo',   'Mabusela',    false, 'Bryanston Academy', 432800),
-  ('tebatso.moyo@liblink.co.za',          'Tebatso',       'Moyo',        false, 'Bryanston Academy', 399800),
-  ('zilungile.mbali@liblink.co.za',       'Zilungile',     'Mbali',       false, 'Bryanston Academy', 399800),
-  ('keoagile.koitsioe@liblink.co.za',     'Keoagile',      'Koitsioe',    false, 'Bryanston Academy', 332800),
-  ('nosipho.mchunu@liblink.co.za',        'Nosipho',       'Mchunu',      false, 'Bryanston Academy', 299800),
-  ('marcel.myburg@liblink.co.za',         'Marcel',        'Myburg',      false, 'Bryanston Academy', 299800),
-  ('sisamkele.nofotyela@liblink.co.za',   'Sisamkele',     'Nofotyela',   false, 'Bryanston Academy', 299800),
-  ('keoagile.molotsi@liblink.co.za',      'Keoagile',      'Molotsi',     false, 'Bryanston Academy', 299800),
-  ('remiero.padayachee@liblink.co.za',    'Remiero',       'Padayachee',  false, 'Bryanston Academy', 299800),
-  ('joshua-ethan.levinge@liblink.co.za',  'Joshua',        'Levinge',     false, 'Bryanston Academy',   null)
-) as t(email, name, surname, is_admin, branch, pcr_target)
+  ('ameeth.maharaj@liblink.co.za',        'Ameeth',        'Maharaj',     true,  'Bryanston', true, null),
+  ('christabell.swart@liblink.co.za',     'Christabell',   'Swart',       false, 'Bryanston', true, 623000),
+  ('bongiwe.nzimande@liblink.co.za',      'Bongiwe',       'Nzimande',    false, 'Bryanston', true, 623000),
+  ('darlington.monaheng@liblink.co.za',   'Darlington',    'Monaheng',    false, 'Bryanston', true, 623000),
+  ('matthew.smith@liblink.co.za',         'Matthew',       'Smith',       true,  'Bryanston', true, 412000),
+  ('lehlogonolo.mabusela@liblink.co.za',  'Lehlogonolo',   'Mabusela',    false, 'Bryanston', true, 432800),
+  ('tebatso.moyo@liblink.co.za',          'Tebatso',       'Moyo',        false, 'Bryanston', true, 399800),
+  ('zilungile.mbali@liblink.co.za',       'Zilungile',     'Mbali',       false, 'Bryanston', true, 399800),
+  ('keoagile.koitsioe@liblink.co.za',     'Keoagile',      'Koitsioe',    false, 'Bryanston', true, 332800),
+  ('nosipho.mchunu@liblink.co.za',        'Nosipho',       'Mchunu',      false, 'Bryanston', true, 299800),
+  ('marcel.myburg@liblink.co.za',         'Marcel',        'Myburg',      false, 'Bryanston', true, 299800),
+  ('sisamkele.nofotyela@liblink.co.za',   'Sisamkele',     'Nofotyela',   false, 'Bryanston', true, 299800),
+  ('keoagile.molotsi@liblink.co.za',      'Keoagile',      'Molotsi',     false, 'Bryanston', true, 299800),
+  ('remiero.padayachee@liblink.co.za',    'Remiero',       'Padayachee',  false, 'Bryanston', true, 299800),
+  ('joshua-ethan.levinge@liblink.co.za',  'Joshua',        'Levinge',     false, 'Bryanston', true, null)
+) as t(email, name, surname, is_admin, branch, academy, pcr_target)
 join auth.users a on lower(a.email) = t.email
 on conflict (id) do update set
   name = excluded.name, surname = excluded.surname,
   is_admin = excluded.is_admin, branch = excluded.branch,
-  pcr_target = excluded.pcr_target;
+  academy = excluded.academy, pcr_target = excluded.pcr_target;
 
 -- Check who's in (everyone on the list above should appear):
---   select name, surname, email, is_admin, password_set from users order by surname;
+--   select name, surname, branch, academy, is_admin, pcr_target, password_set from users order by surname;

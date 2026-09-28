@@ -372,7 +372,7 @@ function _myCases() {
 //
 // Home only (no tabs), with the whole team's figures: the funnel and
 // monthly stats add up every FA's, and the PCR meter measures the team
-// against teamPcrTarget() (constants.js). Month to date by default; days
+// against TEAM_PCR_TARGET (constants.js). Month to date by default; days
 // picked on the month bar narrow everything to just those days, and the
 // PCR meter's label names them. Clicking a name on the leaderboard opens
 // that FA's Business-tab cases under their row and switches the hero to
@@ -452,7 +452,7 @@ function _renderDashboard() {
   } else {
     rep = _teamRep(d.reps);
     cases = d.teamCases;
-    target = teamPcrTarget(d.targets.map(t => t.pcr_target)) || null;
+    target = TEAM_PCR_TARGET;
   }
 
   _widgets.funnel?.update({
