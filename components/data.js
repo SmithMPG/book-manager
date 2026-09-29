@@ -371,9 +371,10 @@ function _myCases() {
 // ---------- admin view ----------
 //
 // Home only (no tabs), with the whole team's figures: the funnel and
-// monthly stats add up every FA's, and the PCR meter measures the team
-// against TEAM_PCR_TARGET (constants.js). Month to date by default; days
-// picked on the month bar narrow everything to just those days, and the
+// monthly stats add up every FA's, and the PCR meter is the team's PCR's
+// in the Pot (every open case) against TEAM_PCR_TARGET (constants.js), a
+// single ring. Month to date by default; days picked on the month bar
+// narrow everything else to just those days (the pot is a snapshot), and the
 // PCR meter's label names them. Clicking a name on the leaderboard opens
 // that FA's Business-tab cases under their row and switches the hero to
 // their figures; clicking it again goes back to the team.
@@ -462,7 +463,14 @@ function _renderDashboard() {
     quotes: rep.quotes,
     casesSubmitted: rep.cases,
   });
-  _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target });
+  // An FA's meter (their own, or one picked on the leaderboard): accepted
+  // PCR against Validation and High Flyer (3x). The team meter: PCR's in
+  // the Pot — every open case on a Business client, across the team —
+  // against the one team target (TEAM_PCR_TARGET).
+  const teamView = d.admin && !_adminFocusId;
+  _widgets.pcrMeter?.update(teamView
+    ? { currentCount: caseStats(cases, d.days).pcrInPot, validationTarget: target, highFlyerTarget: null, stageNote: 'in the Pot', showValue: true }
+    : { currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
   _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(getMonthBarPeriod() || _currentPeriod()));
   _widgets.monthlyStats?.update({
     ...caseStats(cases, d.days),

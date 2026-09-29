@@ -1,9 +1,16 @@
-// PCR meter: a broken-ring gauge. The ring runs 0 -> High Flyer target,
-// with a rounded notch one third of the way round marking the
-// Validation target (High Flyer is always 3x Validation). The center
-// percentage is measured against Validation until that's cleared, then
-// resets to measure against High Flyer (which can run past 100%). Once
-// the High Flyer target is reached the whole ring turns gold.
+// PCR meter: a ring gauge, given one target or two.
+//
+// Two (validationTarget + highFlyerTarget — an FA's own meter): the ring
+// runs 0 -> High Flyer, with a rounded notch marking Validation. The
+// center percentage is measured against Validation until that's
+// cleared, then against High Flyer (which can run past 100%). Once High
+// Flyer is reached the whole ring turns gold.
+//
+// One (validationTarget only — the admin team meter): a single green
+// ring, 0 -> the target, gold once it's reached. showValue puts the PCR
+// itself in the middle (e.g. "2 500 000") instead of a percentage.
+//
+// No target at all: just the PCR total, "No target set".
 
 function _injectPcrMeterCSS() {
   if (document.getElementById("pcr-meter-styles")) return;
@@ -42,6 +49,9 @@ function _injectPcrMeterCSS() {
       font-family: inherit;
     }
     .pcr-percent.gold { fill: var(--gold); }
+    /* showValue: the exact figure ("1 700 000"), smaller than a
+       percentage so it fits inside the ring. */
+    .pcr-percent.pcr-value { font-size: 26px; }
 
     .pcr-stage {
       fill: var(--ink-dim);
@@ -102,9 +112,11 @@ class PcrMeter {
     this.container = container;
     this.config = Object.assign(
       {
-        validationTarget: null, // users.pcr_target, set by data.js; null = no target
-        highFlyerMultiplier: 3,
-        currentCount: 0, // set from real accepted cases by data.js refreshDashboard
+        validationTarget: null, // null = no target
+        highFlyerTarget: null, // null = a single-target meter
+        currentCount: 0, // set by data.js refreshDashboard
+        stageNote: null, // replaces "to Validation" etc. under the percentage
+        showValue: false, // the PCR itself in the middle, not a percentage
         periodLabel: "", // e.g. "September 2026" — the live period, not whatever the month bar is navigated to
       },
       config,
@@ -123,12 +135,15 @@ class PcrMeter {
   }
 
   render() {
-    const { validationTarget, highFlyerMultiplier, currentCount, periodLabel } = this.config;
+    const { validationTarget, highFlyerTarget, currentCount, periodLabel, stageNote } = this.config;
     if (!validationTarget) {
       this._renderNoTarget();
       return;
     }
-    const highFlyerTarget = validationTarget * highFlyerMultiplier;
+    if (!highFlyerTarget) {
+      this._renderSingle();
+      return;
+    }
 
     const size = 280;
     const viewBoxHeight = periodLabel ? size + 46 : size;
@@ -143,7 +158,7 @@ class PcrMeter {
     const start = 180 + gap / 2;
     const end = 180 - gap / 2 + 360;
     const sweep = end - start;
-    const notchAngle = start + sweep / 3;
+    const notchAngle = start + sweep * Math.min(validationTarget / highFlyerTarget, 1);
 
     const complete = currentCount >= highFlyerTarget;
     const fraction = Math.min(currentCount / highFlyerTarget, 1);
@@ -172,7 +187,7 @@ class PcrMeter {
     const tickEnd = tickPos(segBEnd);
 
     const headingY = cy + r * 0.92;
-    const stageLabel = complete ? "High Flyer!" : inValidationStage ? "to Validation" : "to High Flyer";
+    const stageLabel = stageNote || (complete ? "High Flyer!" : inValidationStage ? "to Validation" : "to High Flyer");
 
     const periodLabelHtml = periodLabel ? `<text x="${cx}" y="${headingY + 52}" class="pcr-period" text-anchor="middle">${periodLabel}</text>` : "";
 
@@ -195,6 +210,45 @@ class PcrMeter {
     `;
   }
 }
+
+// One target: a single ring, 0 -> target, green until it's reached, then
+// gold.
+PcrMeter.prototype._renderSingle = function () {
+  const { validationTarget: target, currentCount, periodLabel, stageNote, showValue } = this.config;
+  const size = 280;
+  const viewBoxHeight = periodLabel ? size + 46 : size;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 100;
+  const strokeWidth = 20;
+  const gap = 60;
+  const start = 180 + gap / 2;
+  const end = 180 - gap / 2 + 360;
+  const complete = currentCount >= target;
+  const fillEnd = start + (end - start) * Math.min(currentCount / target, 1);
+  const arcPath = (a1, a2, cls) =>
+    (a2 - a1 > 0.05 ? `<path class="${cls}" d="${pcrDescribeArc(cx, cy, r, a1, a2)}" stroke-width="${strokeWidth}" />` : "");
+  const tickRadius = r + strokeWidth / 2 + 16;
+  const tickStart = pcrPolarToCartesian(cx, cy, tickRadius, start);
+  const tickEnd = pcrPolarToCartesian(cx, cy, tickRadius, end);
+  const headingY = cy + r * 0.92;
+  const stageLabel = stageNote || (complete ? "Target reached!" : "of target");
+  const periodLabelHtml = periodLabel ? `<text x="${cx}" y="${headingY + 52}" class="pcr-period" text-anchor="middle">${periodLabel}</text>` : "";
+  this.container.innerHTML = `
+    <div class="pcr-meter">
+      <svg viewBox="0 0 ${size} ${viewBoxHeight}" class="pcr-meter-svg">
+        ${arcPath(start, end, "pcr-track")}
+        ${arcPath(start, fillEnd, `pcr-fill pcr-fill-${complete ? "gold" : "green"}`)}
+        <text x="${tickStart.x}" y="${tickStart.y}" class="pcr-tick" text-anchor="middle">0</text>
+        <text x="${tickEnd.x}" y="${tickEnd.y}" class="pcr-tick" text-anchor="middle">${pcrFormatCompact(target)}</text>
+        <text x="${cx}" y="${showValue ? cy - 8 : cy - 4}" class="pcr-percent${showValue ? " pcr-value" : ""}${complete ? " gold" : ""}" text-anchor="middle">${showValue ? formatNumber(currentCount) : `${Math.round((currentCount / target) * 100)}%`}</text>
+        <text x="${cx}" y="${cy + 20}" class="pcr-stage" text-anchor="middle">${stageLabel}</text>
+        <text x="${cx}" y="${headingY}" class="pcr-heading" text-anchor="middle">PCR&#8217;s</text>
+        ${periodLabelHtml}
+      </svg>
+    </div>
+  `;
+};
 
 // No Validation target (e.g. the manager): no gauge to fill, just this
 // month's PCR total.

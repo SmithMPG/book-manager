@@ -104,8 +104,38 @@ function _injectReviewCSS() {
     .rv-total { font-size: 13px; color: var(--ink-dim); margin-left: auto; }
     .rv-total b { color: var(--ink); }
 
-    .rv-another { padding: 8px 0 4px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-dim); }
+    .rv-another { padding: 8px 0 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--ink-dim); }
     .rv-picker { position: relative; width: 300px; }
+    .rv-or { color: var(--ink-dim); }
+    .rv-new-btn {
+      background: #ffffff;
+      border: 1px dashed rgba(0, 0, 0, 0.25);
+      border-radius: 8px;
+      height: 38px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .rv-new-btn:hover { border-style: solid; border-color: var(--gold); }
+    .rv-new-client { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .rv-new-client input {
+      box-sizing: border-box;
+      width: 170px;
+      height: 38px;
+      padding: 0 12px;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--ink);
+    }
+    .rv-new-client input:focus { outline: none; border-color: var(--gold); }
+    .rv-new-client input.field-error { border-color: var(--red); }
+    .rv-new-error { font-size: 12px; color: var(--red); }
     .rv-picker input {
       box-sizing: border-box;
       width: 100%;
@@ -244,6 +274,11 @@ class Review {
       if (e.target.matches('[data-channel]')) this._saveProspects();
     });
     this.overlay.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target.closest('.rv-new-client')) {
+        e.preventDefault();
+        this._addNewClient(e.target.closest('.rv-new-client').querySelector('[data-rv="add-new-client"]'));
+        return;
+      }
       if (e.key !== 'Enter' || !e.target.matches('.rv-picker-input')) return;
       e.preventDefault();
       const first = e.target.parentElement.querySelector('.rv-pick[data-pick-id], .rv-pick[data-pick-new]');
@@ -283,6 +318,7 @@ class Review {
     this.required = required;
     this.step = 0;
     this.extraClients = []; // added via "+ Another client"
+    this.newClientOpen = false; // the "+ New client" form is showing
     this.overlay.classList.toggle('required', required);
     this.overlay.querySelector('.rv-title').textContent = `Review — ${_reviewDayLabel(day)}`;
     this.overlay.querySelector('.rv-sub').textContent = required
@@ -433,9 +469,19 @@ class Review {
       <div class="rv-another">
         + Another client
         <div class="rv-picker">
-          <input type="text" class="rv-picker-input" placeholder="Search, or type a new name&hellip;" autocomplete="off">
+          <input type="text" class="rv-picker-input" placeholder="Search your clients&hellip;" autocomplete="off">
           <div class="rv-picker-list"></div>
         </div>
+        <span class="rv-or">or</span>
+        ${this.newClientOpen ? `
+          <div class="rv-new-client">
+            <input type="text" class="rv-new-first" placeholder="First name" autocomplete="off">
+            <input type="text" class="rv-new-last" placeholder="Surname" autocomplete="off">
+            <button type="button" class="item-save" data-rv="add-new-client">Add</button>
+            <button type="button" class="item-cancel" data-rv="cancel-new-client">Cancel</button>
+            <span class="rv-new-error"></span>
+          </div>` : `
+          <button type="button" class="rv-new-btn" data-rv="new-client">+ New client</button>`}
       </div>
     `;
   }
@@ -471,6 +517,12 @@ class Review {
       showSaveError(err);
       return;
     }
+    this._showClient(id);
+  }
+
+  // Puts a client in the list (Activities, or Case updates if they have
+  // an open case) and opens their card, ready for their "+".
+  _showClient(id) {
     // An open-case client lives under Case updates.
     if ((getClientData(id).cases || []).some(isOpenCase)) {
       this._goTo(REVIEW_STEPS.findIndex(s => s.key === 'cases'));
@@ -482,6 +534,32 @@ class Review {
     if (row) {
       _openCard(row);
       row.scrollIntoView({ block: 'center' });
+    }
+  }
+
+  // "+ New client": someone who isn't in the app yet. They land in
+  // Prospects, and their card opens here for today's activity.
+  async _addNewClient(btn) {
+    const box = btn.closest('.rv-new-client');
+    const first = box.querySelector('.rv-new-first');
+    const last = box.querySelector('.rv-new-last');
+    const firstName = first.value.trim();
+    const lastName = last.value.trim();
+    first.classList.toggle('field-error', !firstName);
+    last.classList.toggle('field-error', !lastName);
+    if (!firstName || !lastName) {
+      box.querySelector('.rv-new-error').textContent = 'First name and surname are both needed.';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const card = await dbCreateClient({ firstName, lastName });
+      appendClientCard('prospects-cards', card);
+      this.newClientOpen = false;
+      this._showClient(card.id);
+    } catch (err) {
+      btn.disabled = false;
+      box.querySelector('.rv-new-error').textContent = `Couldn't save — ${err.message || err}`;
     }
   }
 
@@ -543,6 +621,14 @@ class Review {
     else if (act === 'back') this._goTo(this.step - 1);
     else if (act === 'next') this._goTo(this.step + 1);
     else if (act === 'done') this._done();
+    else if (act === 'new-client') {
+      this.newClientOpen = true;
+      this.render();
+      this.body.querySelector('.rv-new-first')?.focus();
+    } else if (act === 'cancel-new-client') {
+      this.newClientOpen = false;
+      this.render();
+    } else if (act === 'add-new-client') this._addNewClient(btn);
   }
 }
 
