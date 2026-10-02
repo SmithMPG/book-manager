@@ -3,8 +3,9 @@
 //
 //   Case panel  shown when one of the row's case chips is clicked: that
 //               case's checklist (the standard submission items,
-//               CASE_CHECKLIST) and its next steps — Mark submitted →
-//               Mark accepted, or Not taken up — and Delete case.
+//               CASE_CHECKLIST) and its next steps — Mark submitted,
+//               or Not taken up — and Delete case. Only the FA's
+//               manager accepts a case, from their FA list (team.js).
 //   Add form    opened from the row's "+" menu: the event on the left
 //               (Contact, Note, Meeting, FNA, Quote, Case), its own
 //               fields on the right. Dated today — or, for a card shown
@@ -80,6 +81,7 @@ function _injectCardItemsCSS() {
     .cb-link:hover { color: var(--ink); }
     .cb-link.danger { margin-left: auto; }
     .cb-link.danger:hover { color: var(--red); }
+    .cb-waiting { font-size: 12px; color: var(--ink-dim); font-style: italic; }
     /* The add form lines up with the timeline: date, kind, then fields. */
     .item-add-form .tl-kind { font-weight: 700; }
     .item-number {
@@ -379,7 +381,7 @@ function _casePanelHTML(data, c) {
     <div class="cb-checklist">${checks}</div>
     <div class="cb-actions">
       ${c.stage === 'opened' ? stageBtn('submitted', 'Mark submitted', true) : ''}
-      ${c.stage === 'submitted' ? stageBtn('accepted', 'Mark accepted', true) : ''}
+      ${c.stage === 'submitted' ? '<span class="cb-waiting">Waiting for your manager to accept</span>' : ''}
       ${stageBtn('not-taken-up', 'Not taken up')}
       <button type="button" class="cb-link danger" data-action="delete-case" data-client="${data.id}" data-case="${c.id}">Delete case</button>
     </div>
@@ -677,10 +679,9 @@ async function _toggleChecklistItem(box) {
 }
 
 // Submitting with checklist items unticked is allowed, after a warning
-// that names them. Accepted and Not taken up can't be undone, so both ask.
-// Accepting a client's last open case says they'll move to Clients —
-// the only place an accepted client goes — rather than asking where.
-async function _confirmStage(c, stage, lastOpen, d) {
+// that names them. Not taken up can't be undone, so it asks. (Accepting
+// is the manager's, from their FA list — team.js.)
+async function _confirmStage(c, stage) {
   if (stage === 'submitted') {
     const missing = CASE_CHECKLIST.filter(item => !c.checklist?.[item.key]).map(item => item.label);
     if (!missing.length) return true;
@@ -688,13 +689,6 @@ async function _confirmStage(c, stage, lastOpen, d) {
       title: 'Checklist not complete',
       message: `${missing.length} item${missing.length === 1 ? " isn't" : "s aren't"} ticked: ${missing.join(', ')}. Submit anyway?`,
       choices: [{ label: 'Cancel', value: null }, { label: 'Submit anyway', value: true, primary: true }],
-    });
-  }
-  if (stage === 'accepted' && lastOpen) {
-    return !!await showChoiceDialog({
-      title: 'Accept this case?',
-      message: `Accepting ${d.firstName} ${d.lastName}'s ${c.type} closes their last open case, so they'll move to the Clients tab. This can't be undone.`,
-      choices: [{ label: 'Cancel', value: null }, { label: 'Accept & move to Clients', value: true, primary: true }],
     });
   }
   const label = CASE_STAGE_LABELS[stage].toLowerCase();
@@ -713,12 +707,10 @@ async function changeCaseStage(clientId, caseId, stage, date) {
   const d = getClientData(clientId) || {};
   const c = _findCase(d, caseId);
   if (!c) return false;
-  const lastOpen = !(d.cases || []).some(k => k.id !== caseId && isOpenCase(k));
-  if (!await _confirmStage(c, stage, lastOpen, d)) return false;
+  if (!await _confirmStage(c, stage)) return false;
   const r = await dbSetCaseStage(caseId, stage, date);
   _addToCard(clientId, { activity: r.activity, caseItem: r.case });
-  if (stage === 'accepted' && lastOpen) await moveClientToTab(clientId, 'clients').catch(showSaveError);
-  else await syncTabAfterCaseChange(clientId).catch(showSaveError);
+  await syncTabAfterCaseChange(clientId).catch(showSaveError);
   await refreshDashboard();
   return true;
 }

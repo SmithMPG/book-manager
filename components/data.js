@@ -247,6 +247,52 @@ async function dbDeleteCase(id) {
   _dbOk(await supabaseClient.from('cases').delete().eq('id', id));
 }
 
+// ---------- FA list (admins: team.js) ----------
+
+// The FAs on the signed-in admin's list (users.manager_id), active and
+// resigned.
+async function dbLoadMyFas() {
+  return _dbOk(await supabaseClient.from('users')
+    .select('id, name, surname, email, branch, pcr_target, is_active, password_set')
+    .eq('manager_id', currentUser.id));
+}
+
+// Those FAs' open cases, with the client's name.
+async function dbLoadOpenCasesFor(faIds) {
+  if (!faIds.length) return [];
+  const rows = await _fetchAll(() => supabaseClient.from('cases')
+    .select('*, clients(first_name, last_name)')
+    .in('fa_id', faIds).in('stage', ['opened', 'submitted'])
+    .order('opened_at'));
+  return rows.map(c => ({
+    ...caseItem(c),
+    faId: c.fa_id,
+    clientId: c.client_id,
+    clientName: c.clients ? `${c.clients.first_name} ${c.clients.last_name}` : '',
+  }));
+}
+
+// fields: {name, surname, pcrTarget (number or null), active}.
+async function dbUpdateFa(faId, { name, surname, pcrTarget, active }) {
+  return _dbOk(await supabaseClient.rpc('update_fa', {
+    p_fa: faId, p_name: name, p_surname: surname, p_pcr_target: pcrTarget, p_active: active,
+  }));
+}
+
+// A new FA on the signed-in admin's list, with a login (the add-fa Edge
+// Function). fields: {name, surname, email, phone, pcrTarget}. Returns
+// {user, tempPassword}.
+async function dbAddFa(fields) {
+  const { data, error } = await supabaseClient.functions.invoke('add-fa', { body: fields });
+  if (error) {
+    // The function's own message ("There's already a login…") is in the
+    // response body.
+    const body = await error.context?.json?.().catch(() => null);
+    throw new Error(body?.error || error.message);
+  }
+  return data;
+}
+
 // rows: [{client_id, type, date, details}] — fa_id filled in here.
 async function dbInsertActivities(rows) {
   if (!rows.length) return;
@@ -572,7 +618,9 @@ document.addEventListener('appmodechange', async e => {
   _adminDays.clear();
   _adminFocusId = null;
   setMonthBarSelection(mode === 'admin' ? _adminSelection : null);
-  if (mode === 'admin') showTab('dashboard');
+  // Each mode has its own tabs (Admin: Home, FAs, Resigned), so start
+  // on Home.
+  showTab('dashboard');
   if (!currentUser || !switched) return;
   try {
     if (bookChanged) {

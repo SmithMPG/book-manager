@@ -77,6 +77,7 @@
     <script src="components/review.js"></script>
     <script src="components/leaderboard.js"></script>
     <script src="components/data.js"></script>
+    <script src="components/team.js"></script>
     <script src="components/new-client.js"></script>
     <script src="components/client-search.js"></script>
 
@@ -130,10 +131,19 @@
           <path d="M4 10v10a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V10" />
         </svg>
       </div>
-      <div class="tab" data-tab="prospects">Prospects <span class="tab-count">0</span></div>
-      <div class="tab" data-tab="business">Business <span class="tab-count">0</span></div>
-      <div class="tab" data-tab="clients">Clients <span class="tab-count">0</span></div>
-      <div class="tab tab-icon" data-tab="not-moved" title="Not Moved Forward">
+      <div class="tab fa-only" data-tab="prospects">Prospects <span class="tab-count">0</span></div>
+      <div class="tab fa-only" data-tab="business">Business <span class="tab-count">0</span></div>
+      <div class="tab fa-only" data-tab="clients">Clients <span class="tab-count">0</span></div>
+      <div class="tab tab-icon fa-only" data-tab="not-moved" title="Not Moved Forward">
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+        </svg>
+        <span class="tab-count">0</span>
+      </div>
+      <!-- Admin mode: the admin's FA list (team.js) -->
+      <div class="tab admin-only" data-tab="team">FAs <span class="tab-count">0</span></div>
+      <div class="tab tab-icon admin-only" data-tab="resigned" title="Resigned">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10" />
           <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
@@ -189,6 +199,15 @@
       <div class="tab-content" id="tab-not-moved">
         <div id="not-moved-cards"></div>
       </div>
+
+      <!-- ===== ADMIN: FA LIST ===== -->
+      <div class="tab-content" id="tab-team">
+        <div class="fa-list-actions"><button type="button" class="btn-add-fa">+ Add FA</button></div>
+        <div id="team-cards"></div>
+      </div>
+      <div class="tab-content" id="tab-resigned">
+        <div id="resigned-cards"></div>
+      </div>
     </div>
 
     <script>
@@ -209,6 +228,7 @@
       const leaderboard = initLeaderboard("leaderboard-container");
       initNewClient(".btn-new");
       initClientSearch(".search-input");
+      initTeam(document);
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').
@@ -255,7 +275,7 @@
         if (!tabContent) return;
         const tab = document.querySelector('.tab[data-tab="' + tabContent.id.replace("tab-", "") + '"]');
         const countEl = tab && tab.querySelector(".tab-count");
-        if (countEl) countEl.textContent = tabContent.querySelectorAll(".card-wrapper").length;
+        if (countEl) countEl.textContent = tabContent.querySelectorAll(".card-wrapper, .fa-wrapper").length;
       }
 
       // Keep the tab counts right when clients are added (e.g. at checkout).
@@ -263,7 +283,7 @@
         document.querySelectorAll(".tab-content").forEach(updateTabCount);
       });
 
-      document.querySelectorAll('.tab-bar .tab[data-tab]:not([data-tab="dashboard"])').forEach((tab) => {
+      document.querySelectorAll(".tab-bar .tab.fa-only").forEach((tab) => {
         tab.addEventListener("dragover", (e) => {
           if (!draggedCard) return;
           e.preventDefault();

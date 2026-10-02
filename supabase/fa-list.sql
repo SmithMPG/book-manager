@@ -54,5 +54,10 @@ on conflict (id) do update set
   is_admin = excluded.is_admin, branch = excluded.branch,
   academy = excluded.academy, pcr_target = excluded.pcr_target;
 
+-- Everyone's on Ameeth's FA list (users.manager_id) unless they already
+-- have a manager. FAs added from the app get the admin who added them.
+update users set manager_id = (select id from users where email = 'ameeth.maharaj@liblink.co.za')
+  where email <> 'ameeth.maharaj@liblink.co.za' and coalesce(branch, '') <> 'Test group' and manager_id is null;
+
 -- Check who's in (everyone on the list above should appear):
 --   select name, surname, branch, academy, is_admin, pcr_target, password_set from users order by surname;

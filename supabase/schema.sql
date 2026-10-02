@@ -65,6 +65,10 @@ create table users (
                                                 -- "Test group" for the Test Book,
                                                 -- which the leaderboard leaves out.
   academy     boolean not null default false, -- part of the Academy (yes / no)
+  manager_id  uuid references users(id) on delete set null, -- the admin whose FA list
+                                                -- they're on (team.js). That admin
+                                                -- accepts their cases and can edit
+                                                -- them or move them to Resigned.
   password_set boolean not null default false, -- flips true once they finish the
                                                 -- set-password screen after their
                                                 -- invite — see components/auth.js.
@@ -204,11 +208,24 @@ $$ language sql security definer stable;
 -- admin writing to the Test Book: a users row in branch 'Test group', owned by
 -- a login nobody signs in with (test@bookmanager.co.za). The Test Book is
 -- left out of the leaderboard, so admins can try things there (the
--- app's Test mode) without touching real figures.
+-- app's Test mode) without touching real figures. Nobody who's resigned
+-- (is_active = false) writes anything, even with a session left over.
 create or replace function can_act_as(p_fa uuid) returns boolean as $$
-  select p_fa = auth.uid()
+  select exists (select 1 from public.users where id = auth.uid() and is_active)
+     and (p_fa = auth.uid()
       or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
-          and exists (select 1 from public.users where id = p_fa and branch = 'Test group'));
+          and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
+$$ language sql security definer stable set search_path = '';
+
+-- Whether the caller manages FA p_fa: an admin with p_fa on their FA
+-- list (users.manager_id), or the super admin for the Test Book (as in
+-- can_act_as). Only a manager accepts a case, edits an FA or moves them
+-- to Resigned.
+create or replace function manages(p_fa uuid) returns boolean as $$
+  select exists (select 1 from public.users me where me.id = auth.uid() and me.is_admin and me.is_active)
+     and (exists (select 1 from public.users where id = p_fa and manager_id = auth.uid())
+          or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
+              and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
 $$ language sql security definer stable set search_path = '';
 
 create policy "users read own or all if admin" on users
@@ -323,12 +340,19 @@ grant execute on function public.leaderboard(date[], date, uuid) to authenticate
 -- ---------------------------------------------------------------------
 -- Opening a case, and moving it to its next stage. Each writes the case
 -- and its `case` timeline entry in one statement, so they can't
--- disagree. Both run as the calling user (security invoker), for the
--- case's own FA — only if can_act_as allows it (their own book, or an
--- admin in the Test Book). p_date is the FA's local
+-- disagree. open_case runs as the calling user (security invoker), for
+-- the client's own FA — only if can_act_as allows it (their own book,
+-- or the super admin in the Test Book). p_date is the FA's local
 -- today (or the day being reviewed). Both return {case, activity}.
 -- Stage changes allowed: opened → submitted | not-taken-up,
 -- submitted → accepted | not-taken-up.
+-- Accepting is the FA's manager's alone (manages(), from their FA list),
+-- never the FA's own; every other change is the FA's (can_act_as).
+-- set_case_stage runs as definer so a manager can do that for an FA whose
+-- rows RLS won't let them write — it checks who may do what itself.
+-- Accepting the client's last open case also moves them to Clients, the
+-- only place an accepted client goes. The timeline entry stays the FA's
+-- (fa_id), with who accepted it in details.acceptedBy.
 -- ---------------------------------------------------------------------
 create or replace function public.open_case(
   p_client_id uuid, p_case_type text, p_lump_sum numeric, p_monthly numeric,
@@ -354,12 +378,19 @@ $$;
 
 create or replace function public.set_case_stage(p_case_id uuid, p_stage text, p_date date)
 returns jsonb
-language plpgsql security invoker set search_path = ''
+language plpgsql security definer set search_path = ''
 as $$
-declare c public.cases; a public.activities;
+declare c public.cases; a public.activities; v_details jsonb;
 begin
   select * into c from public.cases where id = p_case_id for update;
-  if not found or not public.can_act_as(c.fa_id) then
+  if not found then
+    raise exception 'Case not found.';
+  end if;
+  if p_stage = 'accepted' then
+    if not public.manages(c.fa_id) then
+      raise exception 'Only the FA''s manager can accept a case.';
+    end if;
+  elsif not public.can_act_as(c.fa_id) then
     raise exception 'Case not found.';
   end if;
   if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
@@ -373,12 +404,52 @@ begin
     accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end
   where id = p_case_id
   returning * into c;
+  v_details := jsonb_build_object('event', p_stage);
+  if p_stage = 'accepted' then
+    v_details := v_details || jsonb_build_object('acceptedBy', auth.uid());
+    if not exists (select 1 from public.cases
+                   where client_id = c.client_id and stage in ('opened', 'submitted')) then
+      update public.clients set tab = 'clients' where id = c.client_id;
+    end if;
+  end if;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object('event', p_stage))
+  values (c.fa_id, c.client_id, c.id, 'case', p_date, v_details)
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
 $$;
+
+-- ---------------------------------------------------------------------
+-- A manager editing an FA on their list: name, Validation target, and
+-- whether they're still with the team (is_active = false: Resigned —
+-- they can't sign in and drop off the leaderboard, their data stays).
+-- Definer, because FAs (and so admins) may only update their own phone
+-- and password_set (the column grants above).
+-- ---------------------------------------------------------------------
+create or replace function public.update_fa(
+  p_fa uuid, p_name text, p_surname text, p_pcr_target int, p_active boolean)
+returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare u public.users;
+begin
+  if not public.manages(p_fa) then
+    raise exception 'That FA isn''t on your list.';
+  end if;
+  if coalesce(trim(p_name), '') = '' or coalesce(trim(p_surname), '') = '' then
+    raise exception 'Name and surname are required.';
+  end if;
+  update public.users set
+    name = trim(p_name), surname = trim(p_surname),
+    pcr_target = p_pcr_target, is_active = p_active
+  where id = p_fa
+  returning * into u;
+  return to_jsonb(u);
+end;
+$$;
+
+revoke execute on function public.update_fa(uuid, text, text, int, boolean) from public, anon;
+grant execute on function public.update_fa(uuid, text, text, int, boolean) to authenticated;
 
 revoke execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) from public, anon;
 grant execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) to authenticated;

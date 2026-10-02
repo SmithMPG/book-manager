@@ -103,10 +103,14 @@ Same list pattern, for contacts not yet converted to clients.
 ### Not Moved Forward
 Clients/prospects with no activity in X days — visibility only for now (auto-drop-off logic, no action required in MVP).
 
-### Admin-only: FA management
-- "+ Add FA" (name, surname, email, phone, PCR target)
-- Active FA list (alphabetical) + toggle for FAs who've left (deactivated, not deleted)
-- Click an FA → their dashboard, admin-scoped
+### Admin-only: FA list
+Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · FAs · ⊘ Resigned** (the ⊘ is the same icon as Not Moved Forward).
+
+- **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N to accept** · an **edit** button at the far right.
+- **Clicking a row** opens that FA's open cases (one row open at a time), cases waiting to be accepted first. A Submitted case has **Accept**: the admin accepts it for the FA. If it's the client's last open case, they move to the FA's Clients tab (the confirmation says so).
+- **Edit** — name, surname, Validation target, and **Move to Resigned** (or **Bring back to FAs** from Resigned).
+- **⊘ Resigned** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
+- **+ Add FA** (name, surname, email, phone, Validation target) — creates their login with a temporary password, shown once to the admin to hand over (no email is sent). They're on that admin's list and branch, and choose their own password on first sign-in. Runs in the `add-fa` Edge Function, since creating a login needs the secret key.
 
 ---
 
@@ -162,10 +166,10 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
   Ticks save instantly; the case shows progress (4/7).
 - **Actions** on an open case:
   - **Submitted** — the FA marks it. Allowed with items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway).
-  - **Accepted** — only once Submitted.
+  - **Accepted** — only once Submitted, and only by the FA's manager, from their [FA list](#admin-only-fa-list). The FA sees "Waiting for your manager to accept".
   - **Not taken up** — any time while open; the client can back out before submission.
 - Every stage change adds a Case entry to the timeline.
-- Tab rules: an open case puts the client in Business. Accepting the last open case moves them to **Clients** — the confirmation offers only *Cancel* or *Accept & move to Clients*. Closing the last one any other way (not taken up, deleted) asks where they go.
+- Tab rules: an open case puts the client in Business. Accepting the last open case moves them to **Clients** (the database does this as part of accepting). Closing the last one any other way (not taken up, deleted) asks the FA where they go.
 - **Numbers:** "Cases submitted" (funnel, leaderboard) counts the **Submitted** date. PCR counts on **Accepted**. Commission and PCR's in the Pot count every **open** case of a Business client.
 
 ### Daily update (client level)
@@ -204,7 +208,7 @@ Built as if the app had always worked this way — the old case status logs and 
 
 ## Roles and Test mode
 - **FA** — their own book; no toggle.
-- **Admin** (Ameeth) — toggle **My book · Admin**.
+- **Admin** (Ameeth) — toggle **My book · Admin**. Manages the FAs on their list: accepts their cases, edits them, adds new ones.
 - **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin · Test**.
 
 Test works exactly like My book, but on the shared **Test Book** — a test user in the 'Test group' branch, owned by a login nobody signs in with. It never appears on the leaderboard or in team figures, the Review is never forced there, and a strip under the top bar says you're in it. Only the super admin can write to the Test Book, enforced in the database — `can_act_as` in schema.sql.

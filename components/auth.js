@@ -190,7 +190,7 @@ function _showOverlay(id) {
 async function _fetchCurrentUser(userId) {
   const { data, error } = await supabaseClient
     .from('users')
-    .select('id, name, surname, email, is_admin, is_super_admin, branch, pcr_target, password_set, created_at')
+    .select('id, name, surname, email, is_admin, is_super_admin, is_active, branch, pcr_target, password_set, created_at')
     .eq('id', userId)
     .single();
   return error ? null : data;
@@ -214,6 +214,15 @@ async function _renderAuthState() {
   // row, network hiccup) fails closed — show the set-password screen
   // rather than risk letting someone in we're not sure about.
   const user = await _fetchCurrentUser(session.user.id);
+
+  // Resigned (moved there by their manager, team.js): no way in. Signing
+  // out re-runs this and shows the login screen; the message goes on it.
+  if (user && !user.is_active) {
+    await supabaseClient.auth.signOut();
+    _showError(document.getElementById('login-error'), 'This account is no longer active. Speak to your manager if that\'s a mistake.');
+    return;
+  }
+
   _hideOverlay('login-overlay');
   if (user?.password_set) {
     _hideOverlay('set-password-overlay');
