@@ -199,6 +199,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 - **Case pack:** the product's checklist, visible from the moment the case is opened. Every product starts with the standard 7:
   ID · Proof of residence · Proof of bank account · Signed FAIS intro letter · Signed application form · Signed quote · Signed risk profile analyser.
   Ticks save instantly; the case shows progress (4/7).
+- **Changing amounts:** while a case is open, the **✎** on its Opened line (beside the ×) changes its amounts — the fields its product type records — e.g. R1 000 pm becomes R800. It adds a Case entry to the timeline with what changed, before → after (`Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040`), which counts as the client's update for the day like any entry. The Opened line, PCR and commission show the new amounts. Saving without changing anything adds nothing. Once Accepted or Not taken up, amounts are fixed (the database refuses).
 - **The standard stages keep their rules:**
   - **Submitted** — the FA picks it. Allowed with case pack items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway). Once Submitted, the FA can only pick the stages below Submitted (and Not taken up); stages above it are done.
   - **Accepted** — only once Submitted, and only by the FA's manager, from their [FA list](#admin-only-fa-list). The FA sees "Waiting for your manager to accept".

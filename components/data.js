@@ -372,6 +372,20 @@ async function dbSetCaseStage(caseId, stage, date) {
   return { case: caseItem(r.case), activity: activityItem(r.activity) };
 }
 
+// Changes an open case's amounts and adds the "Amended" timeline entry
+// (before → after), together. Refused by the database once it's closed.
+// Returns {case, activity} as card items.
+async function dbAmendCase(caseId, { lumpSum, monthly, adviceFeePercent }, date) {
+  const r = _dbOk(await supabaseClient.rpc('amend_case', {
+    p_case_id: caseId,
+    p_lump_sum: lumpSum,
+    p_monthly: monthly,
+    p_advice_fee_percent: adviceFeePercent,
+    p_date: date,
+  }));
+  return { case: caseItem(r.case), activity: activityItem(r.activity) };
+}
+
 async function dbSetCaseChecklist(caseId, checklist) {
   _dbOk(await supabaseClient.from('cases').update({ checklist }).eq('id', caseId));
 }

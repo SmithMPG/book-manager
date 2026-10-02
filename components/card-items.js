@@ -262,6 +262,8 @@ function _injectCardItemsCSS() {
     }
     .tl-entry:hover .tl-del { visibility: visible; }
     .tl-del:hover { color: var(--red); }
+    .tl-edit { font-size: 13px; }
+    .tl-edit:hover { color: #8a6d0a; }
   `;
   document.head.appendChild(s);
 }
@@ -307,16 +309,19 @@ function _findCase(data, caseId) {
 // What an entry says: e.g. "Phone · No answer", "Fact Finder · Joint
 // call", or a case line (below).
 function timelineEntryText(data, entry) {
-  if (entry.type === 'case') return _caseEntryText(_findCase(data, entry.caseId), entry.details.event);
+  if (entry.type === 'case') return _caseEntryText(_findCase(data, entry.caseId), entry.details);
   return entry.text;
 }
 
-// A case line: its type and stage, the amounts as they were captured
-// (opened line only — the later lines are about the stage), then its PCR
-// and expected upfront commission:
+// A case line: its type and stage, the amounts as they are now (opened
+// line only — the later lines are about the stage), then its PCR and
+// expected upfront commission:
 // "Investment Builder · Opened · R500 000 lump sum · R2 000 pm · 3%
 //  upfront advice fee · PCR 500 000 · Commission R15 000"
-function _caseEntryText(c, event) {
+// An amended line says what changed, before → after (_amendedText).
+function _caseEntryText(c, details) {
+  const event = details.event;
+  if (event === 'amended') return _amendedText(c, details);
   if (!c) return `Case · ${CASE_STAGE_LABELS[event] || ''}`;
   const parts = [c.type, CASE_STAGE_LABELS[event] || ''];
   if (event === 'opened') {
@@ -325,6 +330,23 @@ function _caseEntryText(c, event) {
     if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% upfront advice fee`);
   }
   parts.push(`PCR ${formatNumber(casePcr(c))}`, `Commission ${formatRand(caseUpfrontCommission(c))}`);
+  return parts.join(' · ');
+}
+
+// "Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040" — only
+// the amounts that changed. from / to: {lumpSum, monthly,
+// adviceFeePercent}, as saved by amend_case.
+function _amendedText(c, { from = {}, to = {} }) {
+  const parts = [c?.type || 'Case', 'Amended'];
+  const changed = key => Number(from[key] || 0) !== Number(to[key] || 0);
+  const rand = n => formatRand(Number(n) || 0);
+  if (changed('lumpSum')) parts.push(`${rand(from.lumpSum)} → ${rand(to.lumpSum)} lump sum`);
+  if (changed('monthly')) parts.push(`${rand(from.monthly)} → ${rand(to.monthly)} pm`);
+  if (changed('adviceFeePercent')) parts.push(`${Number(from.adviceFeePercent) || 0}% → ${Number(to.adviceFeePercent) || 0}% advice fee`);
+  if (c) {
+    const pcr = amounts => formatNumber(casePcr({ productType: c.productType, ...amounts }));
+    parts.push(`PCR ${pcr(from)} → ${pcr(to)}`);
+  }
   return parts.join(' · ');
 }
 
@@ -447,10 +469,16 @@ function _timelineHTML(data) {
 
   const lines = (data.timeline || []).map(e => {
     const kind = TIMELINE_KINDS[e.type] || { label: e.type };
+    // An open case's amounts can be changed from its Opened line (✎);
+    // once it's closed they're fixed.
+    const openCase = e.type === 'case' && e.details.event === 'opened' && isOpenCase(_findCase(data, e.caseId) || {});
+    const edit = openCase
+      ? `<button type="button" class="tl-del tl-edit" data-action="edit-case" data-client="${data.id}" data-case="${e.caseId}" title="Change this case's amounts">&#9998;</button>`
+      : '';
     const del = e.type !== 'case'
       ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
       : e.details.event === 'opened'
-        ? `<button type="button" class="tl-del" data-action="delete-case" data-client="${data.id}" data-case="${e.caseId}" title="Delete this case">&times;</button>`
+        ? `${edit}<button type="button" class="tl-del" data-action="delete-case" data-client="${data.id}" data-case="${e.caseId}" title="Delete this case">&times;</button>`
         : '';
     return _timelineLineHTML({
       date: _dayLabel(e.date),
@@ -726,6 +754,42 @@ async function _setStage(btn) {
   }
 }
 
+// Changing an open case's amounts (the client changes their mind: R1 000
+// pm becomes R800). Only the fields its product type records. Saving adds
+// an "Amended" line to the timeline with the before and after, dated
+// today (or the day being reviewed). Once it's accepted or not taken up
+// it can't be changed (the database refuses).
+async function _editCaseAmounts(btn) {
+  const { client: clientId, case: caseId } = btn.dataset;
+  const c = _findCase(getClientData(clientId) || {}, caseId);
+  if (!c || !isOpenCase(c)) return;
+  const premiumOnly = productIsPremiumOnly(c.productType);
+  const fields = [
+    ...(premiumOnly ? [] : [{ key: 'lumpSum', label: 'Lump sum (R)', money: true, value: c.lumpSum }]),
+    { key: 'monthly', label: 'Monthly premium (R)', money: true, value: c.monthly },
+    ...(premiumOnly ? [] : [{ key: 'adviceFeePercent', label: 'Upfront advice fee (%)', type: 'number', value: c.adviceFeePercent }]),
+  ];
+  await _faFormDialog({
+    title: `Change ${c.type} amounts`,
+    fields,
+    submitLabel: 'Save',
+    onSubmit: async v => {
+      const fee = v.adviceFeePercent === undefined || v.adviceFeePercent === '' ? 0 : Number(v.adviceFeePercent);
+      if (!isFinite(fee) || fee < 0) throw new Error('The advice fee must be a number.');
+      const amounts = {
+        lumpSum: premiumOnly ? 0 : v.lumpSum || 0,
+        monthly: v.monthly || 0,
+        adviceFeePercent: premiumOnly ? 0 : fee,
+      };
+      const same = Object.keys(amounts).every(k => Number(amounts[k]) === Number(c[k] || 0));
+      if (same) return; // nothing changed: no Amended line
+      const r = await dbAmendCase(caseId, amounts, entryDateFor(btn));
+      _addToCard(clientId, { activity: r.activity, caseItem: r.case });
+      await refreshDashboard();
+    },
+  });
+}
+
 async function _deleteCase(btn) {
   const { client: clientId, case: caseId } = btn.dataset;
   const c = _findCase(getClientData(clientId) || {}, caseId);
@@ -812,6 +876,8 @@ function initCardItems(root) {
       _setStage(btn);
     } else if (action === 'delete-case') {
       _deleteCase(btn);
+    } else if (action === 'edit-case') {
+      _editCaseAmounts(btn);
     } else if (action === 'delete-entry') {
       _deleteEntry(btn);
     }

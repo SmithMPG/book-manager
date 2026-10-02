@@ -205,7 +205,10 @@ create index cases_stage_idx on cases(stage);
 --                    client_id left null (see header note)
 --   referral         {} — the client gave a referral
 --   case             {event: opened|submitted|accepted|not-taken-up} —
---                    case_id set; written by open_case / set_case_stage
+--                    case_id set; written by open_case / set_case_stage.
+--                    {event: amended, from, to} — an open case's amounts
+--                    changed, before and after ({lumpSum, monthly,
+--                    adviceFeePercent}); written by amend_case
 --   checkout         {noActivity: bool} — client_id left null; this date
 --                    has been reviewed (the Review) by this FA — noActivity
 --                    when nothing at all was logged. At most one per
@@ -250,6 +253,25 @@ $$ language plpgsql security definer;
 create trigger client_fa_change_cascades_to_cases
   after update of fa_id on clients
   for each row execute function _cascade_client_fa_to_cases();
+
+-- ---------------------------------------------------------------------
+-- An open case's amounts can be changed (the client changes their mind)
+-- — amend_case, below, which also records the change on the timeline;
+-- once it's accepted or not taken up they're fixed.
+-- ---------------------------------------------------------------------
+create or replace function _closed_case_amounts_fixed() returns trigger as $$
+begin
+  if old.stage in ('accepted', 'not-taken-up')
+     and (new.lump_sum, new.monthly, new.advice_fee_percent)
+         is distinct from (old.lump_sum, old.monthly, old.advice_fee_percent) then
+    raise exception 'This case is closed, so its amounts can''t be changed.';
+  end if;
+  return new;
+end;
+$$ language plpgsql set search_path = '';
+
+create trigger closed_case_amounts_fixed before update on cases
+  for each row execute function _closed_case_amounts_fixed();
 
 -- ---------------------------------------------------------------------
 -- Products and open cases: open cases follow their product (a rename or
@@ -621,6 +643,39 @@ $$;
 
 revoke execute on function public.update_fa(uuid, text, text, int, boolean) from public, anon;
 grant execute on function public.update_fa(uuid, text, text, int, boolean) to authenticated;
+
+-- Changing an open case's amounts, and its "amended" timeline entry
+-- with the before and after, in one statement. The FA's own case (or the
+-- super admin's, in the Test Book). Returns {case, activity}.
+create or replace function public.amend_case(
+  p_case_id uuid, p_lump_sum numeric, p_monthly numeric, p_advice_fee_percent numeric, p_date date)
+returns jsonb
+language plpgsql security invoker set search_path = ''
+as $$
+declare was public.cases; c public.cases; a public.activities;
+begin
+  select * into was from public.cases where id = p_case_id for update;
+  if not found or not public.can_act_as(was.fa_id) then
+    raise exception 'Case not found.';
+  end if;
+  if was.stage not in ('opened', 'submitted') then
+    raise exception 'This case is closed, so its amounts can''t be changed.';
+  end if;
+  update public.cases set lump_sum = p_lump_sum, monthly = p_monthly, advice_fee_percent = p_advice_fee_percent
+  where id = p_case_id
+  returning * into c;
+  insert into public.activities (fa_id, client_id, case_id, type, date, details)
+  values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object(
+    'event', 'amended',
+    'from', jsonb_build_object('lumpSum', was.lump_sum, 'monthly', was.monthly, 'adviceFeePercent', was.advice_fee_percent),
+    'to',   jsonb_build_object('lumpSum', c.lump_sum, 'monthly', c.monthly, 'adviceFeePercent', c.advice_fee_percent)))
+  returning * into a;
+  return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
+end;
+$$;
+
+revoke execute on function public.amend_case(uuid, numeric, numeric, numeric, date) from public, anon;
+grant execute on function public.amend_case(uuid, numeric, numeric, numeric, date) to authenticated;
 
 revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) from public, anon;
 grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) to authenticated;
