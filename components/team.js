@@ -9,7 +9,7 @@
 //
 // Edit: name, surname and Validation target, and moving them to Resigned
 // (or back). Resigned FAs can't sign in and drop off the leaderboard;
-// their clients and history stay. "+ Add FA" creates a login for someone
+// their clients and history stay. The floating + creates a login for someone
 // new (the add-fa Edge Function) and shows their temporary password.
 //
 // Loaded whenever Admin mode is switched to; reads and writes go through
@@ -20,20 +20,6 @@ function _injectTeamCSS() {
   const s = document.createElement('style');
   s.id = 'team-styles';
   s.textContent = `
-    .fa-list-actions { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-    .btn-add-fa {
-      background: var(--gold);
-      border: none;
-      border-radius: 10px;
-      color: var(--navy);
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 700;
-      font-family: inherit;
-      padding: 10px 18px;
-    }
-    .btn-add-fa:hover { opacity: 0.9; }
-
     .fa-row {
       background: #f2f2f0;
       border: 1px solid rgba(0, 0, 0, 0.08);
@@ -147,7 +133,8 @@ function _injectTeamCSS() {
       letter-spacing: 0.04em;
       color: var(--ink-dim);
     }
-    .fa-form input {
+    .fa-form input,
+    .fa-form select {
       border: 1px solid rgba(0, 0, 0, 0.15);
       border-radius: 6px;
       padding: 8px 10px;
@@ -158,7 +145,8 @@ function _injectTeamCSS() {
       letter-spacing: 0;
       font-weight: 400;
     }
-    .fa-form input:focus { border-color: var(--gold); outline: none; }
+    .fa-form input:focus,
+    .fa-form select:focus { border-color: var(--gold); outline: none; }
     .fa-form-error { font-size: 12px; color: var(--red); }
     .fa-form-error:empty { display: none; }
     .fa-form-actions { display: flex; align-items: center; gap: 10px; }
@@ -201,7 +189,7 @@ function _faCaseHTML(c) {
     <div class="fa-case">
       <span class="fa-case-client">${_escHtml(c.clientName)}</span>
       <span class="fa-case-type">${_escHtml(c.type)}</span>
-      <span class="fa-case-stage">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${CASE_CHECKLIST.length}</span>
+      <span class="fa-case-stage">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
       <span class="fa-case-pcr">PCR ${formatNumber(casePcr(c))}</span>
       <span class="fa-case-action">${action}</span>
     </div>
@@ -256,7 +244,7 @@ function _renderTeamList(containerId, fas, emptyText) {
 }
 
 function _renderTeam() {
-  _renderTeamList('team-cards', _teamFas.filter(f => f.is_active), 'No FAs on your list yet. Use + Add FA to add one.');
+  _renderTeamList('team-cards', _teamFas.filter(f => f.is_active), 'No FAs on your list yet. Use + (bottom right) to add one.');
   _renderTeamList('resigned-cards', _teamFas.filter(f => !f.is_active), 'Nobody on your list has resigned.');
   updateTabCount(document.getElementById('tab-team'));      // index.html
   updateTabCount(document.getElementById('tab-resigned'));
@@ -280,6 +268,25 @@ function _clearTeam() {
   _teamCases = [];
   _teamOpenId = null;
   _renderTeam();
+}
+
+// The admin's FAs for the top bar's search (client-search.js), with the
+// tab each is in.
+function getFaRecords() {
+  return _teamFas.map(fa => ({
+    id: fa.id,
+    name: _faName(fa),
+    tab: fa.is_active ? 'team' : 'resigned',
+    tabLabel: fa.is_active ? 'FAs' : 'Resigned',
+  }));
+}
+
+// Opens one FA's row (closing any other) and scrolls to it — used by
+// search. Their tab should already be showing.
+function openFaRow(id) {
+  _teamOpenId = id;
+  _renderTeam();
+  document.querySelector(`.fa-row[data-fa-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ---------- accepting ----------
@@ -311,8 +318,9 @@ async function _acceptCase(btn) {
 
 // ---------- edit / add ----------
 
-// A popup with a form. fields: [{key, label, type?, money?, value?,
-// placeholder?}]. onSubmit(values) saves and returns nothing, or throws
+// A popup with a form (also the Products tab's, products.js). fields:
+// [{key, label, type?, money?, options?: [{value, label}], value?,
+// placeholder?}] — options makes it a dropdown. onSubmit(values) saves and returns nothing, or throws
 // to show its message and stay open. extra: an optional link at the
 // bottom left, {label, className, onClick(values, close)}. Resolves true
 // once saved (or extra finished), false if cancelled.
@@ -326,9 +334,15 @@ function _faFormDialog({ title, fields, submitLabel, onSubmit, extra }) {
         <form class="fa-form" novalidate>
           ${fields.map(f => `
             <label>${_escHtml(f.label)}
-              <input name="${f.key}" ${f.money ? MONEY_INPUT_ATTRS : `type="${f.type || 'text'}"`}
-                value="${_escHtml(f.money ? moneyInputValue(f.value) : f.value ?? '')}"
-                placeholder="${_escHtml(f.placeholder || '')}">
+              ${f.options ? `
+                <select name="${f.key}">
+                  ${f.options.map(o => `<option value="${_escHtml(o.value)}"${o.value === f.value ? ' selected' : ''}>${_escHtml(o.label)}</option>`).join('')}
+                </select>
+              ` : `
+                <input name="${f.key}" ${f.money ? MONEY_INPUT_ATTRS : `type="${f.type || 'text'}"`}
+                  value="${_escHtml(f.money ? moneyInputValue(f.value) : f.value ?? '')}"
+                  placeholder="${_escHtml(f.placeholder || '')}">
+              `}
             </label>
           `).join('')}
           <div class="fa-form-error"></div>
@@ -378,7 +392,7 @@ function _faFormDialog({ title, fields, submitLabel, onSubmit, extra }) {
     overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
-    form.querySelector('input')?.focus();
+    form.querySelector('input, select')?.focus();
   });
 }
 

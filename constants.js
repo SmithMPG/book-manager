@@ -38,69 +38,66 @@ const CC_RISK_PCR_MULTIPLIER = 26.15;
 // RA Builder: once-off commission is this many times the monthly premium.
 const CC_BUILDER_RA_COMMISSION_MULTIPLIER = 4;
 
-// Liberty RA: upfront commission is an advice fee % of the lump sum (set
-// per case — same shape as the advice-fee default below), plus an ongoing
-// advice fee on the growing annuity value. PCR = annual premium x
-// CC_LIBERTY_RA_PCR_MULTIPLIER.
+// Liberty RA (Commission Calculator only): upfront commission is an
+// advice fee % of the lump sum, plus an ongoing advice fee on the growing
+// annuity value. PCR = annual premium x CC_LIBERTY_RA_PCR_MULTIPLIER. A
+// logged RA Liberty case is an Investment (PRODUCT_TYPES below).
 const CC_LIBERTY_RA_PCR_MULTIPLIER = 5;
 
-// Case commission (checkout / dashboard): maps the app's real 22-item case
-// type list onto whichever of the rates above applies. Only Risk and RA
-// Builder have a fixed multiplier; RA Liberty has no entry here because its
-// upfront rule is just the advice-fee default. Educator has no lump sum
-// (see PREMIUM_ONLY_CASE_TYPES below) so it can't use the
-// advice-fee rule either — mapped to the same rule as Risk as a best guess,
-// unconfirmed. Everything else (the various Investment/INN8/Stanlib/TFSA/
-// UT/Sec 14/... names, and RA Liberty) falls back to "advice fee % x lump
-// sum", with the FA setting that fee when logging the case.
-const CASE_COMMISSION_RULE = {
-  Risk: 'risk',
-  'RA Builder': 'ra-builder',
-  Educator: 'risk',
-};
+// Product types: the hard-coded part of a product (products.type in
+// supabase/schema.sql). Admins add and rename products on the Products
+// tab; each one is one of these three, which decides what its cases
+// record and how their commission and PCR are worked out:
+//   risk         monthly premium only; commission CC_RISK_YEAR1_RATE x
+//                monthly; PCR annual premium x CC_RISK_PCR_MULTIPLIER
+//   ra-builder   lump sum, monthly, advice fee; commission
+//                CC_BUILDER_RA_COMMISSION_MULTIPLIER x monthly; PCR annual
+//                premium x CASE_PCR_BUILDER_RA_TERM (the calculator's
+//                default commission term)
+//   investment   lump sum, monthly, advice fee; commission advice fee % x
+//                lump sum (the FA sets the fee when logging the case);
+//                PCR the lump sum, 1:1
+// PCR is ASSUMED, not yet confirmed. The dashboard counts it on cases
+// accepted this business month.
+const PRODUCT_TYPES = [
+  { key: 'risk', label: 'Risk' },
+  { key: 'ra-builder', label: 'RA Builder' },
+  { key: 'investment', label: 'Investment' },
+];
+const PRODUCT_TYPE_LABELS = Object.fromEntries(PRODUCT_TYPES.map(t => [t.key, t.label]));
+const CASE_PCR_BUILDER_RA_TERM = 15;
 
-function caseCommissionRule(caseType) {
-  return CASE_COMMISSION_RULE[caseType] || 'advice-fee';
+// Risk cases record the monthly premium only — no lump sum or advice fee.
+function productIsPremiumOnly(productType) {
+  return productType === 'risk';
 }
 
-// Whether this case type takes an advice fee % (vs. a fixed premium
-// multiple, or no upfront commission at all).
-function caseUsesAdviceFee(caseType) {
-  return caseCommissionRule(caseType) === 'advice-fee';
-}
-
-// Upfront commission in rand for one case item: {type, lumpSum, monthly,
-// adviceFeePercent}.
+// Upfront commission in rand for one case item: {productType, lumpSum,
+// monthly, adviceFeePercent}.
 function caseUpfrontCommission(item) {
-  switch (caseCommissionRule(item.type)) {
-    case 'risk': return (Number(item.monthly) || 0) * CC_RISK_YEAR1_RATE;
-    case 'ra-builder': return (Number(item.monthly) || 0) * CC_BUILDER_RA_COMMISSION_MULTIPLIER;
-    case 'no-upfront': return 0;
+  const monthly = Number(item.monthly) || 0;
+  switch (item.productType) {
+    case 'risk': return monthly * CC_RISK_YEAR1_RATE;
+    case 'ra-builder': return monthly * CC_BUILDER_RA_COMMISSION_MULTIPLIER;
     default: return (Number(item.lumpSum) || 0) * ((Number(item.adviceFeePercent) || 0) / 100);
   }
 }
 
-// PCR for one case (or a sum of same-type cases): {type, lumpSum, monthly}.
-// Mirrors the Commission Calculator's formulas: Risk (and Educator, as
-// above) = annual premium x CC_RISK_PCR_MULTIPLIER; RA Builder = annual
-// premium x 15 (the calculator's default commission term); RA Liberty =
-// annual premium x CC_LIBERTY_RA_PCR_MULTIPLIER; everything else is an
-// investment, PCR = lump sum 1:1. Linear in lumpSum/monthly, so it works
-// on the leaderboard's per-type sums too. The dashboard counts PCR on
-// cases accepted this business month. ASSUMED, not yet confirmed.
-const CASE_PCR_BUILDER_RA_TERM = 15;
-
+// PCR for one case (or a sum of same-type cases): {productType, lumpSum,
+// monthly}. Linear in lumpSum/monthly, so it works on the leaderboard's
+// per-type sums too.
 function casePcr(item) {
   const annual = (Number(item.monthly) || 0) * 12;
-  if (caseCommissionRule(item.type) === 'risk') return annual * CC_RISK_PCR_MULTIPLIER;
-  if (item.type === 'RA Builder') return annual * CASE_PCR_BUILDER_RA_TERM;
-  if (item.type === 'RA Liberty') return annual * CC_LIBERTY_RA_PCR_MULTIPLIER;
-  return Number(item.lumpSum) || 0;
+  switch (item.productType) {
+    case 'risk': return annual * CC_RISK_PCR_MULTIPLIER;
+    case 'ra-builder': return annual * CASE_PCR_BUILDER_RA_TERM;
+    default: return Number(item.lumpSum) || 0;
+  }
 }
 
-// Leaderboard/PCR split: Risk-rule products vs everything else.
-function caseIsRisk(caseType) {
-  return caseCommissionRule(caseType) === 'risk';
+// Leaderboard/PCR split: Risk products vs everything else.
+function caseIsRisk(productType) {
+  return productType === 'risk';
 }
 
 // Meeting types, as on the leaderboard's meetings breakdown.
@@ -109,10 +106,6 @@ const MEETING_TYPES = [
   { key: 'relational', label: 'Relational' },
   { key: 'closing', label: 'Closing' },
 ];
-
-// Premium-only products: no lump sum or upfront advice fee, just the
-// monthly premium.
-const PREMIUM_ONLY_CASE_TYPES = ['Risk', 'Educator'];
 
 // How prospects (people not yet in the app) were reached — the Review's
 // "Prospects contacted" counts. The total is the sum.
@@ -138,8 +131,11 @@ function isOpenCase(c) {
   return c.stage === 'opened' || c.stage === 'submitted';
 }
 
-// What has to be in place to submit a case — the same for every
-// product. Stored on the case as {key: true} for each ticked item.
+// The standard case pack: what every product starts with (dbAddProduct
+// in data.js). A case's own case pack comes from its product, or for a
+// closed case, from what was saved when it closed — see
+// caseChecklistItems in data.js. Ticks are stored on the case as
+// {key: true}.
 const CASE_CHECKLIST = [
   { key: 'id', label: 'ID' },
   { key: 'residenceProof', label: 'Proof of residence' },
@@ -149,10 +145,6 @@ const CASE_CHECKLIST = [
   { key: 'quote', label: 'Signed quote' },
   { key: 'riskProfile', label: 'Signed risk profile analyser' },
 ];
-
-function caseChecklistDone(c) {
-  return CASE_CHECKLIST.filter(item => c.checklist?.[item.key]).length;
-}
 
 // Timeline contact entries: how the client was contacted (a fixed list)
 // and what came of it — one of the standard outcomes, or the FA's own

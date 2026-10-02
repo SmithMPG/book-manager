@@ -2,8 +2,8 @@
 // "Client timeline"). Top to bottom:
 //
 //   Case panel  shown when one of the row's case chips is clicked: that
-//               case's checklist (the standard submission items,
-//               CASE_CHECKLIST) and its next steps — Mark submitted,
+//               case's case pack (its product's checklist,
+//               caseChecklistItems) and its next steps — Mark submitted,
 //               or Not taken up — and Delete case. Only the FA's
 //               manager accepts a case, from their FA list (team.js).
 //   Add form    opened from the row's "+" menu: the event on the left
@@ -359,7 +359,7 @@ function _entryTime(entry) {
 
 function _caseRowHTML(c) {
   const done = caseChecklistDone(c);
-  const total = CASE_CHECKLIST.length;
+  const total = caseChecklistItems(c).length;
   return `
     <span class="cb-type">${_escHtml(c.type)}</span>
     <span class="cb-stage">${CASE_STAGE_LABELS[c.stage]}</span>
@@ -369,7 +369,7 @@ function _caseRowHTML(c) {
 }
 
 function _casePanelHTML(data, c) {
-  const checks = CASE_CHECKLIST.map(item => `
+  const checks = caseChecklistItems(c).map(item => `
     <label class="item-check">
       <input type="checkbox" data-action="check" data-client="${data.id}" data-case="${c.id}" data-item="${item.key}"${c.checklist?.[item.key] ? ' checked' : ''}>
       ${_escHtml(item.label)}
@@ -516,9 +516,9 @@ function _addFormFieldsHTML(kind, last = '') {
     `;
   }
   if (kind === 'case') {
-    const opts = CASE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+    const opts = getProducts().map(p => `<option value="${p.id}">${_escHtml(p.name)}</option>`).join('');
     return `
-      <select data-field="caseType"><option value="">Case type&hellip;</option>${opts}</select>
+      <select data-field="productId"><option value="">Product&hellip;</option>${opts}</select>
       <label class="item-money" data-wrap="lumpSum"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="lumpSum" placeholder="Lump sum"></label>
       <label class="item-money" data-wrap="monthly"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="monthly" placeholder="Monthly"></label>
       <label class="item-money" data-wrap="adviceFeePercent"><input type="number" min="0" step="0.1" data-field="adviceFeePercent" placeholder="Upfront advice fee"><span>%</span></label>
@@ -551,22 +551,21 @@ function _closeAddForm(form) {
   delete form.dataset.kind;
 }
 
-// A case's own fields depend on its type, and appear once one's picked:
-// premium-only products (Risk, Educator — PREMIUM_ONLY_CASE_TYPES)
-// take just the monthly premium; everything else takes lump sum, monthly
-// premium and upfront advice fee.
+// A case's own fields depend on its product's type, and appear once a
+// product's picked: Risk products take just the monthly premium;
+// everything else takes lump sum, monthly premium and upfront advice fee.
 function _syncCaseFields(form) {
   if (form.dataset.kind !== 'case') return;
-  const type = form.querySelector('[data-field="caseType"]').value;
-  const premiumOnly = PREMIUM_ONLY_CASE_TYPES.includes(type);
+  const product = getProduct(form.querySelector('[data-field="productId"]').value);
+  const premiumOnly = productIsPremiumOnly(product?.type);
   const show = (key, on) => {
     const wrap = form.querySelector(`[data-wrap="${key}"]`);
     wrap.classList.toggle('hidden', !on);
     if (!on) wrap.querySelector('input').value = '';
   };
-  show('monthly', !!type);
-  show('lumpSum', !!type && !premiumOnly);
-  show('adviceFeePercent', !!type && !premiumOnly);
+  show('monthly', !!product);
+  show('lumpSum', !!product && !premiumOnly);
+  show('adviceFeePercent', !!product && !premiumOnly);
 }
 
 function _formValues(form) {
@@ -589,7 +588,7 @@ function _validateAddForm(form, v) {
   if (kind === 'note' && !v.text) { flag('text'); return 'Type the note.'; }
   if (kind === 'meeting' && !v.meetingType) { flag('meetingType'); return 'Pick the meeting type.'; }
   if (kind === 'quote' && !v.risk && !v.investment) return 'Tick Risk, Investment, or both.';
-  if (kind === 'case' && !v.caseType) { flag('caseType'); return 'Pick the case type.'; }
+  if (kind === 'case' && !v.productId) { flag('productId'); return 'Pick the product.'; }
   return '';
 }
 
@@ -683,7 +682,7 @@ async function _toggleChecklistItem(box) {
 // is the manager's, from their FA list — team.js.)
 async function _confirmStage(c, stage) {
   if (stage === 'submitted') {
-    const missing = CASE_CHECKLIST.filter(item => !c.checklist?.[item.key]).map(item => item.label);
+    const missing = caseChecklistItems(c).filter(item => !c.checklist?.[item.key]).map(item => item.label);
     if (!missing.length) return true;
     return !!await showChoiceDialog({
       title: 'Checklist not complete',
@@ -821,7 +820,7 @@ function initCardItems(root) {
   root.addEventListener('change', e => {
     const t = e.target;
     if (t.matches('[data-action="check"]')) _toggleChecklistItem(t);
-    if (t.matches('.item-add-form [data-field="caseType"]')) _syncCaseFields(t.closest('.item-add-form'));
+    if (t.matches('.item-add-form [data-field="productId"]')) _syncCaseFields(t.closest('.item-add-form'));
   });
 
   root.addEventListener('keydown', e => {

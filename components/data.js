@@ -101,12 +101,144 @@ function _faId() {
   return _actingFa().id;
 }
 
+// ---------- products ----------
+//
+// The New Case dropdown, each product with its own stages and case pack
+// (products, product_stages, product_checklist_items). Loaded with
+// everything else; the Products tab (products.js) shows them.
+
+let _products = [];
+
+function _byName(a, b) {
+  return a.localeCompare(b, undefined, { sensitivity: 'base' });
+}
+
+// Case packs are alphabetical; stages keep the order admins put them in.
+function _alphabetical(items) {
+  return [...items].sort((a, b) => _byName(a.label, b.label));
+}
+
+async function loadProducts() {
+  const [products, stages, items] = await Promise.all([
+    supabaseClient.from('products').select('id, name, type'),
+    supabaseClient.from('product_stages').select('id, product_id, label, standard, sort_order').order('sort_order'),
+    supabaseClient.from('product_checklist_items').select('id, product_id, key, label, sort_order').order('sort_order'),
+  ].map(async q => _dbOk(await q)));
+  const of = (rows, id) => rows.filter(r => r.product_id === id);
+  products.sort((a, b) => _byName(a.name, b.name));
+  _products = products.map(p => ({
+    id: p.id,
+    name: p.name,
+    type: p.type,
+    // Between Opened and the end: its own stages and Submitted (standard).
+    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, standard: r.standard, sortOrder: r.sort_order })),
+    checklist: _alphabetical(of(items, p.id).map(r => ({ id: r.id, key: r.key, label: r.label }))),
+  }));
+  document.dispatchEvent(new CustomEvent('products:changed'));
+}
+
+// Writes (admins only — RLS). Each reloads the products afterwards, so
+// every dropdown and the Products tab redraw ('products:changed').
+
+function _productError(err, name) {
+  if (err?.code === '23505') return new Error(`There's already a product called ${name}.`);
+  return err;
+}
+
+// A new product gets the standard case pack (CASE_CHECKLIST) and the
+// standard stages — Submitted is added by the database — and no stages
+// of its own.
+async function dbAddProduct({ name, type }) {
+  const { data: p, error } = await supabaseClient.from('products').insert({ name, type }).select().single();
+  if (error) throw _productError(error, name);
+  _dbOk(await supabaseClient.from('product_checklist_items').insert(
+    CASE_CHECKLIST.map((item, i) => ({ product_id: p.id, key: item.key, label: item.label, sort_order: i + 1 }))));
+  await loadProducts();
+}
+
+async function dbUpdateProduct(id, { name, type }) {
+  const { error } = await supabaseClient.from('products').update({ name, type }).eq('id', id);
+  if (error) throw _productError(error, name);
+  await loadProducts();
+}
+
+// Refused by the database while the product has open cases.
+async function dbDeleteProduct(id) {
+  _dbOk(await supabaseClient.from('products').delete().eq('id', id));
+  await loadProducts();
+}
+
+async function dbCountOpenCases(productId) {
+  const { count, error } = await supabaseClient.from('cases').select('id', { count: 'exact', head: true })
+    .eq('product_id', productId).in('stage', ['opened', 'submitted']);
+  if (error) throw error;
+  return count || 0;
+}
+
+// A product's own stages and its case pack are lists edited the same
+// way. part: 'stages' (product_stages) or 'checklist'
+// (product_checklist_items). Case pack items get a key of their own,
+// which ticks on cases are stored under.
+const _PRODUCT_PART_TABLES = { stages: 'product_stages', checklist: 'product_checklist_items' };
+
+async function dbAddProductItem(part, productId, label) {
+  const row = { product_id: productId, label };
+  if (part === 'stages') row.sort_order = Math.max(0, ...getProduct(productId).stages.map(x => x.sortOrder)) + 1;
+  if (part === 'checklist') row.key = `c${crypto.randomUUID().slice(0, 8)}`; // alphabetical, so no sort_order
+  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).insert(row));
+  await loadProducts();
+}
+
+async function dbRenameProductItem(part, id, label) {
+  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).update({ label }).eq('id', id));
+  await loadProducts();
+}
+
+// Removing a stage is refused by the database while open cases are at it.
+async function dbRemoveProductItem(part, id) {
+  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).delete().eq('id', id));
+  await loadProducts();
+}
+
+// ids: the stages' ids in their new order. (Case packs are alphabetical.)
+async function dbReorderProductItems(part, ids) {
+  const table = _PRODUCT_PART_TABLES[part];
+  const results = await Promise.all(ids.map((id, i) =>
+    supabaseClient.from(table).update({ sort_order: i + 1 }).eq('id', id)));
+  results.forEach(_dbOk);
+  await loadProducts();
+}
+
+// Alphabetical, like every list in the app — the dropdown's order too.
+function getProducts() {
+  return _products;
+}
+
+function getProduct(id) {
+  return _products.find(p => p.id === id) || null;
+}
+
+// A case's case pack: what was saved when it closed, or (while open) its
+// product's as it is now. [{key, label}]
+function caseChecklistItems(c) {
+  if (c.closedSnapshot?.checklist) return _alphabetical(c.closedSnapshot.checklist);
+  return getProduct(c.productId)?.checklist || _alphabetical(CASE_CHECKLIST);
+}
+
+function caseChecklistDone(c) {
+  return caseChecklistItems(c).filter(item => c.checklist?.[item.key]).length;
+}
+
 // ---------- reads ----------
 
 function caseItem(c) {
   return {
     id: c.id,
-    type: c.case_type,
+    type: c.case_type,          // the product's name
+    productId: c.product_id,
+    productType: c.product_type,
+    stageId: c.stage_id,
+    closedSnapshot: c.closed_snapshot,
     stage: c.stage,
     openedAt: c.opened_at,
     submittedAt: c.submitted_at,
@@ -182,13 +314,15 @@ async function _loadTeamTargets() {
 
 // ---------- writes ----------
 
-async function dbCreateClient({ firstName, lastName, email, phone }) {
+// tab: where they start — 'prospects' (the default) or 'clients'.
+async function dbCreateClient({ firstName, lastName, email, phone, tab }) {
   const row = _dbOk(await supabaseClient.from('clients').insert({
     fa_id: _faId(),
     first_name: firstName,
     last_name: lastName,
     email: email || null,
     phone: phone || null,
+    tab: tab || 'prospects',
   }).select().single());
   return _cardFromRows(row, [], []);
 }
@@ -216,13 +350,13 @@ async function dbDeleteActivity(id) {
 }
 
 // Opens a case: the case and its "opened" timeline entry, together.
-// fields: {caseType, lumpSum, monthly, adviceFeePercent}; any amount left
+// fields: {productId, lumpSum, monthly, adviceFeePercent}; any amount left
 // blank counts as 0. Returns {case, activity} as card items.
 async function dbOpenCase(clientId, fields, date) {
   const amount = x => (x === '' || x == null || !isFinite(Number(x)) ? 0 : Number(x));
   const r = _dbOk(await supabaseClient.rpc('open_case', {
     p_client_id: clientId,
-    p_case_type: fields.caseType,
+    p_product_id: fields.productId,
     p_lump_sum: amount(fields.lumpSum),
     p_monthly: amount(fields.monthly),
     p_advice_fee_percent: amount(fields.adviceFeePercent),
@@ -370,9 +504,10 @@ function _repFromLeaderboardRow(row) {
   const m = row.meetings || {};
   const cases = row.cases || [];
   const sum = (pred, fn) => cases.filter(pred).reduce((t, c) => t + fn(c), 0);
-  const pcrOf = c => casePcr({ type: c.type, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
-  const isRisk = c => caseIsRisk(c.type);
-  const notRisk = c => !caseIsRisk(c.type);
+  const pcrOf = c => casePcr({ productType: c.productType, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
+  const submittedPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
+  const isRisk = c => caseIsRisk(c.productType);
+  const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;
   return {
     id: row.id,
@@ -389,6 +524,8 @@ function _repFromLeaderboardRow(row) {
     quotes: row.quotes || 0,
     cases: sum(() => true, c => c.submitted),
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
+    submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
+    submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),
     pcrBreakdown: { risk: Math.round(sum(isRisk, pcrOf)), investments: Math.round(sum(notRisk, pcrOf)) },
   };
@@ -402,7 +539,7 @@ function _teamRep(reps) {
     prospects: add('prospects'), referrals: add('referrals'), willsLeads: add('willsLeads'),
     meetings: add('meetings'),
     meetingsBreakdown: { factFinder: addIn('meetingsBreakdown', 'factFinder'), closing: addIn('meetingsBreakdown', 'closing'), relational: addIn('meetingsBreakdown', 'relational') },
-    fnas: add('fnas'), quotes: add('quotes'), cases: add('cases'), pcr: add('pcr'),
+    fnas: add('fnas'), quotes: add('quotes'), cases: add('cases'), submittedPcr: add('submittedPcr'), pcr: add('pcr'),
   };
 }
 
@@ -474,7 +611,7 @@ function _businessCasesHTML(rep) {
       <div class="lb-detail-row">
         <span class="lb-detail-client">${_escHtml(c.clientName)}</span>
         <span class="lb-detail-type">${_escHtml(c.type)}</span>
-        <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${CASE_CHECKLIST.length}</span>
+        <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
         <span class="lb-detail-pcr">PCR ${formatNumber(casePcr(c))}</span>
       </div>
     `).join('')}
@@ -648,6 +785,7 @@ async function _ensureTestBook() {
 // anything that writes more than one card's worth (e.g. a checkout).
 async function loadAppData() {
   if (getAppMode() === 'test' && !await _ensureTestBook()) return;
+  await loadProducts();
   const cards = await _loadMyCards();
   CLIENT_STORE.clear();
   Object.keys(CLIENT_TAB_LABELS).forEach(tab => {
@@ -658,6 +796,8 @@ async function loadAppData() {
 
 function clearAppData() {
   _dash = null;
+  _products = [];
+  document.dispatchEvent(new CustomEvent('products:changed'));
   CLIENT_STORE.clear();
   Object.keys(CLIENT_TAB_LABELS).forEach(tab => renderClientCards(`${tab}-cards`, []));
   _widgets.leaderboard?.setReps([]);

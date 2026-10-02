@@ -23,6 +23,9 @@
 --             changes — if a client is handed to a new FA, their history
 --             stays attributed to whoever really did it. Compare cases,
 --             below.
+-- products    the New Case dropdown (+ product_stages, product_checklist_items):
+--             each product's type, stages and case pack. Admins edit
+--             them; open cases follow, closed ones keep a snapshot.
 -- cases       its own table, not folded into activities, because it's
 --             the one place real money math runs (lump sum, monthly,
 --             advice fee) and needs typed columns, not a details blob.
@@ -97,19 +100,74 @@ create table clients (
 create index clients_fa_id_idx on clients(fa_id);
 
 -- ---------------------------------------------------------------------
--- cases: the app's 22-product case-type list (see CASE_TYPES in
--- components/client-cases.js). A case moves through stages:
---   opened → submitted → accepted, or not taken up (from opened or
---   submitted). Open = opened or submitted.
+-- products: the New Case dropdown, kept by admins (the Products tab).
+-- type is the hard-coded part — it decides what a case records and how
+-- commission and PCR are worked out (PRODUCT_TYPES in constants.js):
+--   risk         monthly premium only
+--   ra-builder   lump sum, monthly premium, advice fee
+--   investment   lump sum, monthly premium, advice fee
+-- product_stages: the product's stages between Opened and the end
+-- (Accepted or Not taken up — those, and Opened, aren't rows: every
+-- product has them, always first and last). That's its own stages plus
+-- Submitted (standard = 'submitted'), which every product has exactly
+-- one of (_product_gets_submitted) and which can be moved among them —
+-- stages above it come before submission, below it after — but not
+-- renamed or removed (_standard_stage_guard). product_checklist_items: its case pack, what has to be ticked
+-- before submitting; key is what a case's checklist ticks are stored
+-- under, so the standard 7 keep their keys (id, bankProof, …).
+-- Everyone signed in reads these; only admins write (policies below).
+-- ---------------------------------------------------------------------
+create table products (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null unique,
+  type        text not null check (type in ('risk', 'ra-builder', 'investment')),
+  sort_order  int not null default 0,
+  created_at  timestamptz not null default now()
+);
+
+create table product_stages (
+  id          uuid primary key default gen_random_uuid(),
+  product_id  uuid not null references products(id) on delete cascade,
+  label       text not null,
+  standard    text check (standard in ('submitted')), -- null for the product's own stages
+  sort_order  int not null default 0
+);
+create index product_stages_product_idx on product_stages(product_id);
+create unique index product_stages_one_submitted on product_stages(product_id) where standard = 'submitted';
+
+create table product_checklist_items (
+  id          uuid primary key default gen_random_uuid(),
+  product_id  uuid not null references products(id) on delete cascade,
+  key         text not null,
+  label       text not null,
+  sort_order  int not null default 0,
+  unique (product_id, key)
+);
+create index product_checklist_items_product_idx on product_checklist_items(product_id);
+
+-- ---------------------------------------------------------------------
+-- cases: one per product sold to a client. A case moves through stages:
+--   opened → (the product's own stages, any order) → submitted →
+--   accepted, or not taken up (any time while open). Open = not yet
+--   accepted or not taken up; stage_id is the product's own stage it's
+--   at, if any (stage stays 'opened' until submitted).
 -- Each stage change is also a `case` entry on the client's timeline;
 -- open_case() and set_case_stage() (below) do both in one statement.
--- checklist: which of the standard submission items (CASE_CHECKLIST in
--- constants.js) are ticked, e.g. {"id": true, "bankProof": true}.
+-- checklist: which case pack items are ticked, by key, e.g.
+-- {"id": true, "bankProof": true}.
+-- While open, case_type (the product's name) and product_type follow
+-- the product (_product_change_follows_open_cases). On closing they're
+-- frozen, and closed_snapshot keeps the stages and case pack as they
+-- were: {stages: [label…], checklist: [{key, label}…]} — so editing or
+-- deleting the product afterwards never changes a closed case.
 -- ---------------------------------------------------------------------
 create table cases (
   id                  uuid primary key default gen_random_uuid(),
   client_id           uuid not null references clients(id) on delete cascade,
   fa_id               uuid not null references users(id) on delete cascade, -- current servicing FA; moves on handover
+  product_id          uuid references products(id) on delete set null, -- null once the product's deleted
+  product_type        text not null check (product_type in ('risk', 'ra-builder', 'investment')),
+  stage_id            uuid references product_stages(id) on delete set null,
   case_type           text not null,
   stage               text not null default 'opened'
                         check (stage in ('opened', 'submitted', 'accepted', 'not-taken-up')),
@@ -120,9 +178,11 @@ create table cases (
   monthly             numeric,
   advice_fee_percent  numeric,
   checklist           jsonb not null default '{}'::jsonb,
+  closed_snapshot     jsonb,
   created_at          timestamptz not null default now()
 );
 create index cases_fa_id_idx on cases(fa_id);
+create index cases_product_id_idx on cases(product_id);
 create index cases_client_id_idx on cases(client_id);
 create index cases_stage_idx on cases(stage);
 
@@ -192,6 +252,81 @@ create trigger client_fa_change_cascades_to_cases
   for each row execute function _cascade_client_fa_to_cases();
 
 -- ---------------------------------------------------------------------
+-- Products and open cases: open cases follow their product (a rename or
+-- a new type reaches them); closed ones don't (they're frozen — see
+-- cases). A product, or one of its own stages, can't be deleted while
+-- an open case uses it.
+-- ---------------------------------------------------------------------
+create or replace function _product_change_follows_open_cases() returns trigger as $$
+begin
+  update public.cases set case_type = new.name, product_type = new.type
+  where product_id = new.id and stage in ('opened', 'submitted');
+  return new;
+end;
+$$ language plpgsql security definer set search_path = '';
+
+create trigger product_change_follows_open_cases
+  after update of name, type on products
+  for each row execute function _product_change_follows_open_cases();
+
+create or replace function _product_in_use_check() returns trigger as $$
+declare n int;
+begin
+  if tg_table_name = 'products' then
+    select count(*) into n from public.cases where product_id = old.id and stage in ('opened', 'submitted');
+    if n > 0 then
+      raise exception '% has % open case%. Close them before deleting it.', old.name, n, case when n = 1 then '' else 's' end;
+    end if;
+  else
+    select count(*) into n from public.cases where stage_id = old.id and stage in ('opened', 'submitted');
+    if n > 0 then
+      raise exception '% open case% at "%". Move them on before removing it.', n, case when n = 1 then ' is' else 's are' end, old.label;
+    end if;
+  end if;
+  return old;
+end;
+$$ language plpgsql security definer set search_path = '';
+
+create trigger product_in_use before delete on products
+  for each row execute function _product_in_use_check();
+create trigger product_stage_in_use before delete on product_stages
+  for each row execute function _product_in_use_check();
+
+-- Every product has a Submitted stage, from the moment it's added...
+create or replace function _product_gets_submitted() returns trigger as $$
+begin
+  insert into public.product_stages (product_id, label, standard, sort_order)
+  values (new.id, 'Submitted', 'submitted', 1);
+  return new;
+end;
+$$ language plpgsql security definer set search_path = '';
+
+create trigger product_gets_submitted after insert on products
+  for each row execute function _product_gets_submitted();
+
+-- ...that can be moved but not renamed or removed (except along with its
+-- product: by then the product row's already gone). An own stage can't
+-- be turned into a standard one either.
+create or replace function _standard_stage_guard() returns trigger as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.standard is not null and exists (select 1 from public.products where id = old.product_id) then
+      raise exception 'Submitted is a standard stage, so it can''t be removed.';
+    end if;
+    return old;
+  end if;
+  if new.standard is distinct from old.standard
+     or (old.standard is not null and new.label is distinct from old.label) then
+    raise exception 'Submitted is a standard stage, so it can''t be renamed.';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = '';
+
+create trigger standard_stage_guard before update or delete on product_stages
+  for each row execute function _standard_stage_guard();
+
+-- ---------------------------------------------------------------------
 -- Row Level Security: an FA sees only their own rows; an admin
 -- (is_admin = true) sees everyone's.
 -- ---------------------------------------------------------------------
@@ -228,6 +363,23 @@ create or replace function manages(p_fa uuid) returns boolean as $$
               and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
 $$ language sql security definer stable set search_path = '';
 
+-- Products: everyone signed in reads them (the New Case dropdown, a
+-- case's stages and case pack); only admins change them.
+alter table products enable row level security;
+alter table product_stages enable row level security;
+alter table product_checklist_items enable row level security;
+do $$
+declare t text;
+begin
+  foreach t in array array['products','product_stages','product_checklist_items']
+  loop
+    execute format('create policy "%1$s read" on %1$s for select to authenticated using (true);', t);
+    execute format('create policy "%1$s admin insert" on %1$s for insert with check (is_admin());', t);
+    execute format('create policy "%1$s admin update" on %1$s for update using (is_admin());', t);
+    execute format('create policy "%1$s admin delete" on %1$s for delete using (is_admin());', t);
+  end loop;
+end $$;
+
 create policy "users read own or all if admin" on users
   for select using (id = auth.uid() or is_admin());
 create policy "users update own" on users
@@ -258,7 +410,7 @@ end $$;
 -- ---------------------------------------------------------------------
 grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on
-  users, clients, cases, activities
+  users, clients, cases, activities, products, product_stages, product_checklist_items
   to authenticated, service_role;
 
 -- Column-level update rights on users: RLS picks the rows, this picks the
@@ -274,8 +426,8 @@ grant update (phone, password_set) on users to authenticated;
 -- counts and summed amounts per FA for a set of days, never an
 -- individual client, case or activity. p_dates is any set of days (month
 -- to date, or the days an admin picks on the month bar). PCR is worked
--- out in the app (casePcr in constants.js) from the per-case-type sums,
--- so its rules live in one place. checkedOut: did they check out for
+-- out in the app (casePcr in constants.js) from the per-product-type
+-- sums, so its rules live in one place. checkedOut: did they check out for
 -- p_checkout_date (null when not asked)? The Test Book is left out,
 -- except when p_include names it (test mode needs its own figures).
 -- ---------------------------------------------------------------------
@@ -312,15 +464,20 @@ as $$
         from public.activities a
         where a.fa_id = u.id and a.type = 'meeting' and a.date = any(p_dates)) as meetings,
       (select coalesce(jsonb_agg(jsonb_build_object(
-          'type', x.case_type, 'submitted', x.submitted,
+          'productType', x.product_type, 'submitted', x.submitted,
+          'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly)), '[]'::jsonb)
         from (
-          select c.case_type,
+          select c.product_type,
             count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
+            -- Submitted PCR's: every case submitted on these days, whatever
+            -- has happened to it since.
+            coalesce(sum(c.lump_sum) filter (where c.submitted_at = any(p_dates)), 0) as submitted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.submitted_at = any(p_dates)), 0) as submitted_monthly,
             coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_lump_sum,
             coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_monthly
           from public.cases c where c.fa_id = u.id
-          group by c.case_type
+          group by c.product_type
         ) x) as cases,
       case when p_checkout_date is null then null
         else exists (select 1 from public.activities a
@@ -354,20 +511,27 @@ grant execute on function public.leaderboard(date[], date, uuid) to authenticate
 -- only place an accepted client goes. The timeline entry stays the FA's
 -- (fa_id), with who accepted it in details.acceptedBy.
 -- ---------------------------------------------------------------------
+drop function if exists public.open_case(uuid, text, numeric, numeric, numeric, date);
 create or replace function public.open_case(
-  p_client_id uuid, p_case_type text, p_lump_sum numeric, p_monthly numeric,
+  p_client_id uuid, p_product_id uuid, p_lump_sum numeric, p_monthly numeric,
   p_advice_fee_percent numeric, p_date date)
 returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
-declare c public.cases; a public.activities; v_fa uuid;
+declare c public.cases; a public.activities; v_fa uuid; p public.products;
 begin
   select fa_id into v_fa from public.clients where id = p_client_id;
   if v_fa is null or not public.can_act_as(v_fa) then
     raise exception 'Client not found.';
   end if;
-  insert into public.cases (client_id, fa_id, case_type, stage, opened_at, lump_sum, monthly, advice_fee_percent)
-  values (p_client_id, v_fa, p_case_type, 'opened', p_date, p_lump_sum, p_monthly, p_advice_fee_percent)
+  select * into p from public.products where id = p_product_id;
+  if not found then
+    raise exception 'That product no longer exists.';
+  end if;
+  insert into public.cases (client_id, fa_id, product_id, product_type, case_type, stage, opened_at,
+                            lump_sum, monthly, advice_fee_percent)
+  values (p_client_id, v_fa, p.id, p.type, p.name, 'opened', p_date,
+          p_lump_sum, p_monthly, p_advice_fee_percent)
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
   values (v_fa, p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
@@ -401,7 +565,14 @@ begin
   update public.cases set
     stage        = p_stage,
     submitted_at = case when p_stage = 'submitted' then p_date else submitted_at end,
-    accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end
+    accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end,
+    -- Closing: keep the product's stages and case pack as they are now.
+    closed_snapshot = case when p_stage in ('accepted', 'not-taken-up') then jsonb_build_object(
+      'stages', coalesce((select jsonb_agg(s.label order by s.sort_order)
+                          from public.product_stages s where s.product_id = c.product_id), '[]'::jsonb),
+      'checklist', coalesce((select jsonb_agg(jsonb_build_object('key', i.key, 'label', i.label) order by i.sort_order)
+                             from public.product_checklist_items i where i.product_id = c.product_id), '[]'::jsonb)
+    ) else closed_snapshot end
   where id = p_case_id
   returning * into c;
   v_details := jsonb_build_object('event', p_stage);
@@ -451,7 +622,7 @@ $$;
 revoke execute on function public.update_fa(uuid, text, text, int, boolean) from public, anon;
 grant execute on function public.update_fa(uuid, text, text, int, boolean) to authenticated;
 
-revoke execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) from public, anon;
-grant execute on function public.open_case(uuid, text, numeric, numeric, numeric, date) to authenticated;
+revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) from public, anon;
+grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) to authenticated;
 revoke execute on function public.set_case_stage(uuid, text, date) from public, anon;
 grant execute on function public.set_case_stage(uuid, text, date) to authenticated;

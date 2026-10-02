@@ -1,5 +1,7 @@
-// Team leaderboard: sortable by any funnel-stage column. Defaults to PCR's,
-// descending. Clicking a header sorts by that column (largest first);
+// Team leaderboard: sortable by any funnel-stage column. Defaults to
+// Accepted PCR's, descending. Shows the main five columns (Prospects,
+// Meetings, Cases submitted, Submitted and Accepted PCR's); "Show all" on the title
+// line adds the rest (Referrals, Wills Leads, FNAs, Quotes). Clicking a header sorts by that column (largest first);
 // clicking the active header again flips to smallest first.
 //
 // Admin view (setReps with options): each name is clickable — it opens
@@ -17,8 +19,20 @@ function _injectLeaderboardCSS() {
       padding: 20px 0 0;
       border-top: 1px solid rgba(0, 0, 0, 0.1);
     }
+    .lb-title { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+    .lb-more {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--ink-dim);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .lb-more:hover { color: var(--ink); }
     .leaderboard h4 {
-      margin: 0 0 14px 0;
+      margin: 0;
       font-size: 14px;
       color: var(--ink-dim);
       font-weight: 500;
@@ -68,12 +82,15 @@ function _injectLeaderboardCSS() {
     .lb-detail-pcr { flex-shrink: 0; color: var(--ink-dim); }
     .lb-detail-empty { color: var(--ink-dim); }
     .lb-value {
-      width: 70px;
+      width: 96px;
+      flex-shrink: 0;
       text-align: center;
       color: var(--ink);
       font-weight: 600;
     }
     .lb-value.active { color: var(--gold); }
+    .lb-value.wide { width: 140px; }
+    .lb-value, .lb-head .lb-value { white-space: nowrap; } /* headings on one line */
     .lb-head {
       border-bottom: none;
       padding: 0 0 6px;
@@ -138,19 +155,23 @@ _injectLeaderboardCSS();
 
 const LEADERBOARD_COLUMNS = [
   { key: "prospects", label: "Prospects" },
-  { key: "referrals", label: "Referrals" },
-  { key: "willsLeads", label: "Wills Leads" },
+  { key: "referrals", label: "Referrals", extra: true },
+  { key: "willsLeads", label: "Wills Leads", extra: true },
   { key: "meetings", label: "Meetings" },
-  { key: "fnas", label: "FNAs" },
-  { key: "quotes", label: "Quotes" },
-  { key: "cases", label: "Cases" },
-  { key: "pcr", label: "PCR’s" },
+  { key: "fnas", label: "FNAs", extra: true },
+  { key: "quotes", label: "Quotes", extra: true },
+  { key: "cases", label: "Cases submitted", wide: true }, // submitted in the period, like Submitted PCR's
+  // Submitted: PCR on cases submitted in the period, whatever's happened
+  // to them since. Accepted: PCR on cases accepted in the period (what
+  // counts towards Validation). Wide columns fit their two-word headings.
+  { key: "submittedPcr", label: "Submitted PCR’s", wide: true },
+  { key: "pcr", label: "Accepted PCR’s", wide: true },
 ];
 
 // PCR in full with thousand separators (money.js); PCR is a score, not
 // rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (key === "pcr") return formatNumber(value);
+  if (key === "pcr" || key === "submittedPcr") return formatNumber(value);
   return value;
 }
 
@@ -161,6 +182,10 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "factFinder", label: "Fact Finder" },
     { key: "closing", label: "Closing" },
     { key: "relational", label: "Relational" },
+  ],
+  submittedPcr: [
+    { key: "risk", label: "Risk" },
+    { key: "investments", label: "Investments" },
   ],
   pcr: [
     { key: "risk", label: "Risk" },
@@ -179,8 +204,19 @@ class Leaderboard {
     this.options = {};
     this.sortKey = "pcr";
     this.sortDir = "desc";
+    this.showAll = false; // the extra columns (LEADERBOARD_COLUMNS' extra: true)
     this.render();
     this.container.addEventListener("click", (e) => {
+      if (e.target.closest("[data-lb-toggle]")) {
+        this.showAll = !this.showAll;
+        // Hiding the column it's sorted by: back to the default.
+        if (!this.showAll && LEADERBOARD_COLUMNS.find((c) => c.key === this.sortKey)?.extra) {
+          this.sortKey = "pcr";
+          this.sortDir = "desc";
+        }
+        this.render();
+        return;
+      }
       const row = e.target.closest(".lb-row.clickable");
       if (row) {
         const id = row.dataset.repId;
@@ -213,17 +249,18 @@ class Leaderboard {
     const { onSelect, selectedId, detailHTML, checkoutDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
+    const columns = LEADERBOARD_COLUMNS.filter((col) => this.showAll || !col.extra);
 
-    const headCells = LEADERBOARD_COLUMNS.map((col) => {
+    const headCells = columns.map((col) => {
       const active = col.key === this.sortKey;
       const arrow = this.sortDir === "desc" ? "▼" : "▲";
-      return `<div class="lb-value${active ? " active" : ""}" data-sort-key="${col.key}">${col.label}<span class="lb-sort-arrow">${arrow}</span></div>`;
+      return `<div class="lb-value${col.wide ? " wide" : ""}${active ? " active" : ""}" data-sort-key="${col.key}">${col.label}<span class="lb-sort-arrow">${arrow}</span></div>`;
     }).join("");
 
     const rows = sorted
       .map((rep, i) => {
         const rank = i + 1;
-        const cells = LEADERBOARD_COLUMNS.map((col, colIndex) => {
+        const cells = columns.map((col, colIndex) => {
           const activeClass = col.key === this.sortKey ? " active" : "";
           const value = _lbFormatValue(col.key, rep[col.key]);
           const breakdownConfig = LEADERBOARD_BREAKDOWNS[col.key];
@@ -232,15 +269,15 @@ class Leaderboard {
             const parts = breakdownConfig
               .map((b) => `${b.label} <b>${_lbFormatValue(col.key, breakdownData[b.key])}</b>`)
               .join(" &middot; ");
-            const isEnd = colIndex === LEADERBOARD_COLUMNS.length - 1;
+            const isEnd = colIndex === columns.length - 1;
             return `
-              <div class="lb-value lb-breakdown-cell${isEnd ? " lb-breakdown-cell-end" : ""}${activeClass}">
+              <div class="lb-value lb-breakdown-cell${col.wide ? " wide" : ""}${isEnd ? " lb-breakdown-cell-end" : ""}${activeClass}">
                 ${value}
                 <div class="lb-breakdown-tooltip">${parts}</div>
               </div>
             `;
           }
-          return `<div class="lb-value${activeClass}">${value}</div>`;
+          return `<div class="lb-value${col.wide ? " wide" : ""}${activeClass}">${value}</div>`;
         }).join("");
         const selected = selectedId === rep.id;
         const day = _escHtml(checkoutDayLabel || "");
@@ -264,7 +301,10 @@ class Leaderboard {
 
     this.container.innerHTML = `
       <div class="leaderboard">
-        <h4>${title}</h4>
+        <div class="lb-title">
+          <h4>${title}</h4>
+          <button type="button" class="lb-more" data-lb-toggle>${this.showAll ? "Show fewer" : "Show all"}</button>
+        </div>
         <div class="lb-row lb-head">
           <div class="lb-rank"></div>
           <div class="lb-name"></div>

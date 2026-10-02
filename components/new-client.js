@@ -1,7 +1,7 @@
-// New client: the small form behind the top bar's "+ New Client" button.
-// Just first name and surname; the client is saved
-// (data.js) and lands in the Prospects tab, same as a client added
-// on the fly during checkout.
+// New client: the small form behind the floating "+" on the Prospects
+// and Clients tabs. Just first name and surname; the person is saved
+// (data.js) into the tab whose + was pressed (the button's data-tab).
+// Someone added on the fly in the Review lands in Prospects.
 
 function _injectNewClientCSS() {
   if (document.getElementById('new-client-styles')) return;
@@ -75,14 +75,19 @@ function _injectNewClientCSS() {
 }
 _injectNewClientCSS();
 
+const _NEW_CLIENT_WORDING = {
+  prospects: { title: 'New prospect', save: 'Add to Prospects' },
+  clients: { title: 'New client', save: 'Add to Clients' },
+};
+
 function initNewClient(triggerSelector) {
-  const trigger = document.querySelector(triggerSelector);
-  if (!trigger) return;
+  if (!document.querySelector(triggerSelector)) return;
+  let tab = 'prospects'; // where the person being added goes
 
   document.body.insertAdjacentHTML('beforeend', `
     <div class="nc-overlay" id="new-client-overlay">
       <form class="nc-modal" id="new-client-form" role="dialog" aria-modal="true">
-        <h3 class="nc-title">New client</h3>
+        <h3 class="nc-title" id="nc-title">New client</h3>
         <div class="nc-row">
           <div class="nc-field">
             <label for="nc-first">First name</label>
@@ -108,14 +113,20 @@ function initNewClient(triggerSelector) {
   const saveBtn = document.getElementById('nc-save');
 
   const close = () => overlay.classList.remove('open');
-  const open = () => {
+  const open = forTab => {
+    tab = _NEW_CLIENT_WORDING[forTab] ? forTab : 'prospects';
+    document.getElementById('nc-title').textContent = _NEW_CLIENT_WORDING[tab].title;
+    saveBtn.textContent = _NEW_CLIENT_WORDING[tab].save;
     form.reset();
     errorEl.textContent = '';
     overlay.classList.add('open');
     document.getElementById('nc-first').focus();
   };
 
-  trigger.addEventListener('click', open);
+  document.addEventListener('click', e => {
+    const trigger = e.target.closest(triggerSelector);
+    if (trigger) open(trigger.dataset.tab);
+  });
   document.getElementById('nc-cancel').addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', e => {
@@ -133,15 +144,15 @@ function initNewClient(triggerSelector) {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
     try {
-      const card = await dbCreateClient({ firstName, lastName });
-      appendClientCard('prospects-cards', card);
+      const card = await dbCreateClient({ firstName, lastName, tab });
+      appendClientCard(`${tab}-cards`, card);
       close();
     } catch (err) {
       console.error(err);
       errorEl.textContent = `Couldn't save — ${err.message || err}`;
     } finally {
       saveBtn.disabled = false;
-      saveBtn.textContent = 'Add to Prospects';
+      saveBtn.textContent = _NEW_CLIENT_WORDING[tab].save;
     }
   });
 }

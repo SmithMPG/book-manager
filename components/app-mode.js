@@ -21,7 +21,8 @@
 //
 // Admin mode has its own tabs — Home, for the whole team (see data.js),
 // and the admin's FA list: FAs and Resigned (team.js) — and none of the
-// FA's own tools (new client, search, checkout). Tabs that are only for
+// FA's own tools (the Review); the search box finds FAs instead of
+// clients (client-search.js). Tabs that are only for
 // working on a book carry class="fa-only".
 //
 // Listen for changes with:
@@ -36,10 +37,9 @@ function _injectAppModeCSS() {
   s.id = 'app-mode-styles';
   s.textContent = `
     body:not([data-app-mode="admin"]) .admin-only { display: none !important; }
-    body[data-app-mode="admin"] .fa-only,
-    body[data-app-mode="admin"] .btn-new,
-    body[data-app-mode="admin"] .search-wrap,
-    body[data-app-mode="admin"] #checkout-trigger { display: none !important; }
+    body[data-app-mode="admin"] .fa-only { display: none !important; }
+    /* Hidden but still taking its space, so the search box doesn't move. */
+    body[data-app-mode="admin"] #checkout-trigger { visibility: hidden; }
 
     .test-mode-strip {
       display: none;

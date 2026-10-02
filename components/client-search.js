@@ -1,7 +1,9 @@
 // Client search: the top bar's "Search clients…" box. Typing lists the
 // FA's clients whose name matches, from every tab, each with the tab
 // it's in. Picking one (click, or ↑ ↓ and Enter) switches to that tab
-// and opens the client's card. Every word typed has to match the start
+// and opens the client's card. In Admin mode it searches the admin's FAs
+// instead ("Search FAs…", FAs and Resigned — team.js), and picking one
+// opens their row. Every word typed has to match the start
 // of the first name or surname, in any order ("smi ge" finds Gert Smith).
 
 function _injectClientSearchCSS() {
@@ -52,10 +54,14 @@ _injectClientSearchCSS();
 
 const _SEARCH_MAX_RESULTS = 8;
 
+function _searchingFas() {
+  return getAppMode() === 'admin';
+}
+
 function _searchClients(query) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
-  return getClientRecords()
+  return (_searchingFas() ? getFaRecords() : getClientRecords())
     .filter(c => {
       const names = c.name.toLowerCase().split(/\s+/);
       return words.every(w => names.some(n => n.startsWith(w)));
@@ -87,7 +93,7 @@ function initClientSearch(inputSelector) {
             <span class="search-result-tab">${_escHtml(c.tabLabel)}</span>
           </button>
         `).join('')
-      : '<div class="search-empty">No clients match.</div>';
+      : `<div class="search-empty">No ${_searchingFas() ? 'FAs' : 'clients'} match.</div>`;
     results.classList.add('open');
   };
 
@@ -98,7 +104,8 @@ function initClientSearch(inputSelector) {
     input.value = '';
     input.blur();
     showTab(c.tab);
-    openClientCard(c.id);
+    if (_searchingFas()) openFaRow(c.id);
+    else openClientCard(c.id);
   };
 
   const setActive = i => {
@@ -124,4 +131,12 @@ function initClientSearch(inputSelector) {
     pick(Number(btn.dataset.index));
   });
   input.addEventListener('blur', close);
+
+  const setPlaceholder = () => {
+    input.placeholder = _searchingFas() ? 'Search FAs…' : 'Search clients…';
+    input.value = '';
+    close();
+  };
+  document.addEventListener('appmodechange', setPlaceholder);
+  setPlaceholder();
 }
