@@ -121,7 +121,7 @@ function _alphabetical(items) {
 async function loadProducts() {
   const [products, stages, items] = await Promise.all([
     supabaseClient.from('products').select('id, name, type'),
-    supabaseClient.from('product_stages').select('id, product_id, label, sort_order').order('sort_order'),
+    supabaseClient.from('product_stages').select('id, product_id, label, standard, sort_order').order('sort_order'),
     supabaseClient.from('product_checklist_items').select('id, product_id, key, label, sort_order').order('sort_order'),
   ].map(async q => _dbOk(await q)));
   const of = (rows, id) => rows.filter(r => r.product_id === id);
@@ -130,8 +130,8 @@ async function loadProducts() {
     id: p.id,
     name: p.name,
     type: p.type,
-    // Its own stages, between Submitted and Accepted.
-    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, sortOrder: r.sort_order })),
+    // Between Opened and Accepted: its own stages and Submitted (standard).
+    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, standard: r.standard, sortOrder: r.sort_order })),
     checklist: _alphabetical(of(items, p.id).map(r => ({ id: r.id, key: r.key, label: r.label }))),
   }));
   document.dispatchEvent(new CustomEvent('products:changed'));
@@ -145,8 +145,9 @@ function _productError(err, name) {
   return err;
 }
 
-// A new product gets the standard case pack (CASE_CHECKLIST) and no
-// stages of its own (the standard ones are on every product).
+// A new product gets the standard case pack (CASE_CHECKLIST) and the
+// standard stages — its Submitted row is added by the database — and no
+// stages of its own.
 async function dbAddProduct({ name, type }) {
   const { data: p, error } = await supabaseClient.from('products').insert({ name, type }).select().single();
   if (error) throw _productError(error, name);
@@ -224,10 +225,10 @@ function caseChecklistItems(c) {
   return getProduct(c.productId)?.checklist || _alphabetical(CASE_CHECKLIST);
 }
 
-// Where a case is at: its product's own stage once it's moved on to one
-// after submitting ("Underwriting"), else its standard stage.
+// Where a case is at: its product's own stage if it's moved on to one
+// ("Underwriting"), else its standard stage.
 function caseStageLabel(c) {
-  if (c.stage === 'submitted' && c.stageId) {
+  if (isOpenCase(c) && c.stageId) {
     const own = getProduct(c.productId)?.stages.find(s => s.id === c.stageId);
     if (own) return own.label;
   }
