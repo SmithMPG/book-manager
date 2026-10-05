@@ -19,17 +19,31 @@
 // on the month bar in the admin view.
 //
 // Wills leads / referrals: counted over those same days (leaderboard()).
+//
+// The admin view (the team, or one FA picked on the leaderboard) shows
+// the cases instead of commission, each as a count and its PCR:
+//   Open cases       the pipeline right now: open, not yet submitted
+//   Submitted cases  the pipeline right now: submitted, waiting to be
+//                    accepted (the admin's PCR meter shows these too)
+//   Cases Accepted   accepted on the days being looked at (Validation)
+// then wills leads and referrals. The first two are snapshots, so they
+// don't follow the days picked on the month bar.
 
-// cases: [{stage, tab, type, lumpSum, monthly, adviceFeePercent,
-// acceptedAt}]; days: Set of ISO dates.
+// cases: [{stage, tab, productType, lumpSum, monthly, adviceFeePercent,
+// openedAt, submittedAt, acceptedAt}]; days: Set of ISO dates.
 function caseStats(cases, days) {
   const open = cases.filter(c => isOpenCase(c) && c.tab === 'business');
+  const opened = cases.filter(c => c.stage === 'opened');
+  const submitted = cases.filter(c => c.stage === 'submitted');
   const accepted = cases.filter(c => c.stage === 'accepted' && days.has(c.acceptedAt));
   const sum = (list, fn) => list.reduce((t, c) => t + fn(c), 0);
   return {
     commissionInPot: sum(open, caseUpfrontCommission),
     pcrInPot: sum(open, casePcr),
     expectedCommission: sum(accepted, caseUpfrontCommission),
+    opened: { count: opened.length, pcr: sum(opened, casePcr) },
+    submitted: { count: submitted.length, pcr: sum(submitted, casePcr) },
+    accepted: { count: accepted.length, pcr: sum(accepted, casePcr) },
   };
 }
 
@@ -42,6 +56,10 @@ class MonthlyStats {
       expectedCommission: 0,
       willsLeads: 0,
       referrals: 0,
+      opened: { count: 0, pcr: 0 },
+      submitted: { count: 0, pcr: 0 },
+      accepted: { count: 0, pcr: 0 },
+      admin: false,             // the admin view's rows (cases, not commission)
       periodWord: 'This Month', // "Selected Days" when the admin picks days
     }, config);
     this.render();
@@ -56,6 +74,20 @@ class MonthlyStats {
   // (formatRand / formatNumber, money.js).
   render() {
     const c = this.config;
+    if (c.admin) {
+      const cases = (label, x) =>
+        `<div class="stat-cell">${label}: <b>${x.count}</b> · PCR <b>${formatNumber(x.pcr)}</b></div>`;
+      this.container.innerHTML = `
+        <div class="stat-list">
+          ${cases('Open cases', c.opened)}
+          ${cases('Submitted cases', c.submitted)}
+          ${cases(`Cases Accepted ${c.periodWord}`, c.accepted)}
+          <div class="stat-cell">Wills Leads ${c.periodWord}: <b>${c.willsLeads}</b></div>
+          <div class="stat-cell">Referrals ${c.periodWord}: <b>${c.referrals}</b></div>
+        </div>
+      `;
+      return;
+    }
     this.container.innerHTML = `
       <div class="stat-list">
         <div class="stat-cell">Commission in the Pot: <b>${formatRand(c.commissionInPot)}</b></div>

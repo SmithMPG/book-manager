@@ -106,14 +106,11 @@ create index clients_fa_id_idx on clients(fa_id);
 --   risk         monthly premium only
 --   ra-builder   lump sum, monthly premium, advice fee
 --   investment   lump sum, monthly premium, advice fee
--- product_stages: the product's stages between Opened and the end
--- (Accepted or Not taken up — those, and Opened, aren't rows: every
--- product has them, always first and last). That's its own stages plus
--- Submitted (standard = 'submitted'), which every product has exactly
--- one of (_product_gets_submitted) and which can be moved among them —
--- stages above it come before submission, below it after — but not
--- renamed or removed (_standard_stage_guard). product_checklist_items: its case pack, what has to be ticked
--- before submitting; key is what a case's checklist ticks are stored
+-- product_stages: the product's own stages, which always come between
+-- Submitted and Accepted (the standard stages — Opened, Submitted,
+-- Accepted / Not taken up — aren't rows: every product has them).
+-- product_checklist_items: its case pack, what has to be ticked before
+-- submitting; key is what a case's checklist ticks are stored
 -- under, so the standard 7 keep their keys (id, bankProof, …).
 -- Everyone signed in reads these; only admins write (policies below).
 -- ---------------------------------------------------------------------
@@ -129,11 +126,9 @@ create table product_stages (
   id          uuid primary key default gen_random_uuid(),
   product_id  uuid not null references products(id) on delete cascade,
   label       text not null,
-  standard    text check (standard in ('submitted')), -- null for the product's own stages
   sort_order  int not null default 0
 );
 create index product_stages_product_idx on product_stages(product_id);
-create unique index product_stages_one_submitted on product_stages(product_id) where standard = 'submitted';
 
 create table product_checklist_items (
   id          uuid primary key default gen_random_uuid(),
@@ -147,10 +142,10 @@ create index product_checklist_items_product_idx on product_checklist_items(prod
 
 -- ---------------------------------------------------------------------
 -- cases: one per product sold to a client. A case moves through stages:
---   opened → (the product's own stages, any order) → submitted →
+--   opened → submitted → (the product's own stages, any order) →
 --   accepted, or not taken up (any time while open). Open = not yet
 --   accepted or not taken up; stage_id is the product's own stage it's
---   at, if any (stage stays 'opened' until submitted).
+--   at, if any (stage stays 'submitted' while it moves through them).
 -- Each stage change is also a `case` entry on the client's timeline;
 -- open_case() and set_case_stage() (below) do both in one statement.
 -- checklist: which case pack items are ticked, by key, e.g.
@@ -313,40 +308,6 @@ create trigger product_in_use before delete on products
   for each row execute function _product_in_use_check();
 create trigger product_stage_in_use before delete on product_stages
   for each row execute function _product_in_use_check();
-
--- Every product has a Submitted stage, from the moment it's added...
-create or replace function _product_gets_submitted() returns trigger as $$
-begin
-  insert into public.product_stages (product_id, label, standard, sort_order)
-  values (new.id, 'Submitted', 'submitted', 1);
-  return new;
-end;
-$$ language plpgsql security definer set search_path = '';
-
-create trigger product_gets_submitted after insert on products
-  for each row execute function _product_gets_submitted();
-
--- ...that can be moved but not renamed or removed (except along with its
--- product: by then the product row's already gone). An own stage can't
--- be turned into a standard one either.
-create or replace function _standard_stage_guard() returns trigger as $$
-begin
-  if tg_op = 'DELETE' then
-    if old.standard is not null and exists (select 1 from public.products where id = old.product_id) then
-      raise exception 'Submitted is a standard stage, so it can''t be removed.';
-    end if;
-    return old;
-  end if;
-  if new.standard is distinct from old.standard
-     or (old.standard is not null and new.label is distinct from old.label) then
-    raise exception 'Submitted is a standard stage, so it can''t be renamed.';
-  end if;
-  return new;
-end;
-$$ language plpgsql security definer set search_path = '';
-
-create trigger standard_stage_guard before update or delete on product_stages
-  for each row execute function _standard_stage_guard();
 
 -- ---------------------------------------------------------------------
 -- Row Level Security: an FA sees only their own rows; an admin

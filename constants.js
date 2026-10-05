@@ -158,7 +158,7 @@ const CONTACT_METHODS = [
 ];
 const CONTACT_OUTCOMES = ['Spoke to client', 'No answer', 'Left message', 'Sent'];
 
-// Team PCR target (admin view's PCR meter): a fixed Validation target for
-// the whole team. High Flyer is still 3x this, as for an individual
-// (pcr-meter.js).
+// Team PCR target (admin view's PCR meter, which shows the PCR on the
+// team's submitted cases waiting to be accepted against it): a fixed
+// target for the whole team.
 const TEAM_PCR_TARGET = 10000000;

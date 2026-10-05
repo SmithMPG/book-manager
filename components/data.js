@@ -121,7 +121,7 @@ function _alphabetical(items) {
 async function loadProducts() {
   const [products, stages, items] = await Promise.all([
     supabaseClient.from('products').select('id, name, type'),
-    supabaseClient.from('product_stages').select('id, product_id, label, standard, sort_order').order('sort_order'),
+    supabaseClient.from('product_stages').select('id, product_id, label, sort_order').order('sort_order'),
     supabaseClient.from('product_checklist_items').select('id, product_id, key, label, sort_order').order('sort_order'),
   ].map(async q => _dbOk(await q)));
   const of = (rows, id) => rows.filter(r => r.product_id === id);
@@ -130,8 +130,8 @@ async function loadProducts() {
     id: p.id,
     name: p.name,
     type: p.type,
-    // Between Opened and the end: its own stages and Submitted (standard).
-    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, standard: r.standard, sortOrder: r.sort_order })),
+    // Its own stages, between Submitted and Accepted.
+    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, sortOrder: r.sort_order })),
     checklist: _alphabetical(of(items, p.id).map(r => ({ id: r.id, key: r.key, label: r.label }))),
   }));
   document.dispatchEvent(new CustomEvent('products:changed'));
@@ -145,9 +145,8 @@ function _productError(err, name) {
   return err;
 }
 
-// A new product gets the standard case pack (CASE_CHECKLIST) and the
-// standard stages — Submitted is added by the database — and no stages
-// of its own.
+// A new product gets the standard case pack (CASE_CHECKLIST) and no
+// stages of its own (the standard ones are on every product).
 async function dbAddProduct({ name, type }) {
   const { data: p, error } = await supabaseClient.from('products').insert({ name, type }).select().single();
   if (error) throw _productError(error, name);
@@ -568,10 +567,11 @@ function _myCases() {
 // ---------- admin view ----------
 //
 // Home only (no tabs), with the whole team's figures: the funnel and
-// monthly stats add up every FA's, and the PCR meter is the team's PCR's
-// in the Pot (every open case) against TEAM_PCR_TARGET (constants.js), a
-// single ring. Month to date by default; days picked on the month bar
-// narrow everything else to just those days (the pot is a snapshot), and the
+// monthly stats add up every FA's, and the PCR meter is the PCR on the
+// team's submitted cases waiting to be accepted (a snapshot) against
+// TEAM_PCR_TARGET (constants.js), a single ring. Month to date by
+// default; days picked on the month bar narrow the dated figures to just
+// those days, and the
 // PCR meter's label names them. Clicking a name on the leaderboard opens
 // that FA's Business-tab cases under their row and switches the hero to
 // their figures; clicking it again goes back to the team.
@@ -661,18 +661,20 @@ function _renderDashboard() {
     casesSubmitted: rep.cases,
   });
   // An FA's meter (their own, or one picked on the leaderboard): accepted
-  // PCR against Validation and High Flyer (3x). The team meter: PCR's in
-  // the Pot — every open case on a Business client, across the team —
-  // against the one team target (TEAM_PCR_TARGET).
+  // PCR against Validation and High Flyer (3x). The team meter: the PCR on
+  // every case submitted and waiting to be accepted, across the team (the
+  // stats column's Cases Submitted) — against the one team target
+  // (TEAM_PCR_TARGET).
   const teamView = d.admin && !_adminFocusId;
   _widgets.pcrMeter?.update(teamView
-    ? { currentCount: caseStats(cases, d.days).pcrInPot, validationTarget: target, highFlyerTarget: null, stageNote: 'in the Pot', showValue: true }
+    ? { currentCount: caseStats(cases, d.days).submitted.pcr, validationTarget: target, highFlyerTarget: null, stageNote: 'submitted', showValue: true }
     : { currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
   _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(getMonthBarPeriod() || _currentPeriod()));
   _widgets.monthlyStats?.update({
     ...caseStats(cases, d.days),
     willsLeads: rep.willsLeads,
     referrals: rep.referrals,
+    admin: d.admin,
     periodWord: d.admin && _adminDays.size ? 'Selected Days' : 'This Month',
   });
 

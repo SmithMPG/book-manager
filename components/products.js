@@ -12,11 +12,10 @@
 // clicked; then rename an item in place (Enter or clicking away saves,
 // Esc puts it back), × removes it, drag ⋮⋮ to reorder (stages only — the
 // case pack is alphabetical), and the box under the list adds one. Done
-// goes back to read-only. The standard
-// stages are on every product: Opened always first, Accepted / Not
-// taken up — the two ways a case ends — always last (both fixed), and Submitted, which is dragged
-// among the product's own stages like them but can't be renamed or
-// removed.
+// goes back to read-only. The standard stages are on every product and
+// shown fixed: Opened and Submitted first, Accepted / Not taken up — the
+// two ways a case ends — last. The product's own stages always come
+// between Submitted and Accepted.
 //
 // Open cases follow the product as it's edited; closed ones keep what
 // they had (SPEC.md, "Admin-only: Products"). The database refuses to
@@ -46,10 +45,7 @@ function _injectProductsCSS() {
       color: var(--ink);
     }
     .pe-fixed { background: #f2f2f0; color: var(--ink-dim); font-size: 13px; padding-left: 30px; }
-    .pe-fixed::after,
-    .pe-item.standard::after { content: 'Standard'; margin-left: auto; padding-right: 4px; font-size: 11px; color: var(--ink-dim); }
-    .pe-item.standard { background: #f2f2f0; }
-    .pe-standard-label { flex: 1; padding: 5px 6px; font-size: 13px; color: var(--ink-dim); }
+    .pe-fixed::after { content: 'Standard'; margin-left: auto; padding-right: 4px; font-size: 11px; color: var(--ink-dim); }
     .pe-item.view { padding-left: 30px; font-size: 13px; }
     .pe-list[data-part="checklist"] .pe-item:not(.view) { padding-left: 23px; } /* no handle: text lines up with view mode */
     .pe-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -134,15 +130,7 @@ const _PART_NOUN = { stages: 'stage', checklist: 'case pack item' };
 
 function _peItemHTML(item, editing, part) {
   if (!editing) {
-    return `<div class="pe-item view${item.standard ? ' standard' : ''}">${_escHtml(item.label)}</div>`;
-  }
-  if (item.standard) {
-    return `
-      <div class="pe-item standard" data-id="${item.id}">
-        <span class="pe-handle" draggable="true" title="Drag to move it among this product's stages">⋮⋮</span>
-        <span class="pe-standard-label">${_escHtml(item.label)}</span>
-      </div>
-    `;
+    return `<div class="pe-item view">${_escHtml(item.label)}</div>`;
   }
   return `
     <div class="pe-item" data-id="${item.id}">
@@ -178,6 +166,7 @@ function _productDetailHTML(p) {
       <div class="pe-col">
         ${_peHeadHTML('stages', 'Stages')}
         ${fixed(CASE_STAGE_LABELS.opened)}
+        ${fixed(CASE_STAGE_LABELS.submitted)}
         ${_peListHTML(p, 'stages', '+ Add a stage (Enter to save)')}
         ${fixed(`${CASE_STAGE_LABELS.accepted} / ${CASE_STAGE_LABELS['not-taken-up']}`)}
       </div>
@@ -191,7 +180,7 @@ function _productDetailHTML(p) {
 
 function _productRowHTML(p) {
   const open = p.id === _openProduct;
-  const own = p.stages.filter(s => !s.standard).length;
+  const own = p.stages.length;
   return `
     <div class="fa-wrapper">
       <div class="fa-row${open ? ' active' : ''}" data-product="${p.id}">
