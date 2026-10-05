@@ -114,7 +114,7 @@ Two tabs after Home, for what's coming in and from whom: **the whole team**, lik
 - Refreshed whenever the admin comes back to the app.
 
 ### Admin-only: FA list
-Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open cases · Submitted cases**, all three the same width, then a **☰ menu** at the end with **Products** and **Financial Advisers** (the menu's tab shows as active on either page). The Financial Advisers page has two views at the top: **Active** and **Left**, each with its count.
+Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open cases · Submitted cases**, all three the same width, then a **☰ menu** at the end with **Products**, **Financial Advisers** and **Calendar** (the menu's tab shows as active on either page). The Financial Advisers page has two views at the top: **Active** and **Left**, each with its count.
 
 - **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N submitted** · an **edit** button at the far right.
 - **Clicking a row** opens that FA's open cases, read-only (one row open at a time), submitted ones first. Accepting is on the [Submitted tab](#admin-only-open-and-submitted).
@@ -150,6 +150,42 @@ Today's products: Risk and Educator are **Risk**; RA Builder is **RA Builder**; 
 - **The standard stages stay on every product.** Opened, Submitted, Accepted and Not taken up can't be removed or renamed, since the numbers hang on them (see Cases). **Opened is always first and Accepted / Not taken up always last.** The admin's own stages can go anywhere between them, before or after **Submitted**, which they place among them (e.g. Quote signed before it; Underwriting, Medicals after).
 - **A custom stage with open cases sitting in it can't be removed** until they've moved on.
 - **Open cases follow the product; closed cases keep what they had.** Editing a product (stages, case pack, name or type) changes its **open** cases straight away: a new case pack item shows up unticked, and a removed one stops counting (4/7 can become 4/6). When a case closes (Accepted or Not taken up), its product name, type, stages and case pack, with what was ticked, are **saved onto the case** as they were at that moment. Nothing done to the product afterwards changes it.
+
+### Admin-only: Calendar
+**Why:** close-off dates used to be typed into the app's code, so a new month needed a developer. Admins should set them, along with the team's **weekly submission target** for each month, and Home should show week by week whether the team is hitting it.
+
+**Where:** a third option in the ☰ menu: **Products · Financial Advisers · Calendar**.
+
+**The Calendar page** is purely for editing. One row per month, in date order:
+- **Month and year** (e.g. October 2026), and two fields, saved as they're changed:
+  - **Close-off date** — the month's last day (a Friday).
+  - **Weekly submission target** — the PCR the whole team should submit in each week of that month (the same for every week of the month).
+- **Always one month ahead:** after the last month with a close-off date there's one more row, empty, ready to fill in (if December 2026 is the last, January 2027 shows). Filling in its close-off date adds the next empty row.
+- A close-off date has to fall after the previous month's.
+
+**Weeks:** a business month runs from the day after the previous close-off to its own close-off. Its weeks are 7-day blocks from the first day (Saturday to Friday), so a month has 4 or 5 weeks. If a close-off isn't 7-day aligned, the last week is shorter.
+
+**"Submitted in a week"** = every case whose Submitted date falls in that week, across the whole team, whatever's happened to it since (as the leaderboard's Submitted PCR's).
+
+**The month bar** reads months from the Calendar instead of the code: ‹ › only move between months that have a close-off date. Payout date stays the Monday after close-off.
+
+**No close-off for today's month** (not set yet): the app keeps showing the last month it has, and admins see a strip under the top bar: "No close-off date for this month yet — set it under ☰ → Calendar."
+
+**Home (admin, the whole team): week rings** — replace the team PCR meter.
+- **Rings grow outward through the month.** Week 1 is the inner ring; at the start of each new week another ring is added around the outside for it. So in week 3 there are three rings, the outermost being this week. A past month shows all its weeks' rings.
+- Each ring fills with that week's **submitted PCR** against the month's **weekly submission target**:
+  - **Met** — full, green.
+  - **This week, not met yet** — filling, gold.
+  - **Past and missed** — filled as far as it got, red.
+- **Centre:** this week's submitted PCR against the target, e.g. "1 200 000 of 2 000 000 · Week 3". (For a past month: the month's total.)
+- **Under the rings:** a small key, one line per week so far: "W2 · 2 100 000 / 2 000 000 ✓", then the month.
+- Follows the month on the month bar (‹ › to look at past months). Picking days on the bar doesn't change it.
+- No weekly target set for the month: the rings still show the PCR submitted each week, with "No target set".
+- **Clicking an FA on the leaderboard** still shows that FA's own meter (Accepted PCR's against Validation). **The FA's own Home** is unchanged.
+
+**Data:**
+- **months** — `month` (first day, e.g. 2026-10-01, standing for October 2026; unique), `close_off_date`, `weekly_target` (PCR). Start = the previous month's close-off + 1 day; the first row is only the starting boundary, as today. Everyone reads; admins write.
+- The close-off dates that used to be written into `constants.js` were loaded in (`supabase/calendar.sql`); `CLOSE_OFF_DATES` is now filled from this table on sign-in.
 
 ---
 

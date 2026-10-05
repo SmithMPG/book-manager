@@ -1,23 +1,13 @@
 // Close-off dates define what constitutes a "month" in Cadence.
 // A production month runs from the day after the previous close-off date
 // up to and including its own close-off date (see month_periods in SPEC.md).
-// `weeks` is the length of that production month (4 or 5 weeks).
-const CLOSE_OFF_DATES = [
-  { month: 'December',  year: 2025, closeOffDate: '2026-01-09', weeks: 5 },
-  { month: 'January',   year: 2026, closeOffDate: '2026-02-06', weeks: 4 },
-  { month: 'February',  year: 2026, closeOffDate: '2026-03-06', weeks: 4 },
-  { month: 'March',     year: 2026, closeOffDate: '2026-04-10', weeks: 5 },
-  { month: 'April',     year: 2026, closeOffDate: '2026-05-08', weeks: 4 },
-  { month: 'May',       year: 2026, closeOffDate: '2026-06-05', weeks: 4 },
-  { month: 'June',      year: 2026, closeOffDate: '2026-07-03', weeks: 4 },
-  { month: 'July',      year: 2026, closeOffDate: '2026-08-07', weeks: 5 },
-  { month: 'August',    year: 2026, closeOffDate: '2026-09-04', weeks: 4 },
-  { month: 'September', year: 2026, closeOffDate: '2026-10-02', weeks: 4 },
-  { month: 'October',   year: 2026, closeOffDate: '2026-11-06', weeks: 5 },
-  { month: 'November',  year: 2026, closeOffDate: '2026-12-04', weeks: 4 },
-  { month: 'December',  year: 2026, closeOffDate: '2027-01-08', weeks: 5 },
-  { month: 'January',   year: 2027, closeOffDate: '2027-02-05', weeks: 4 },
-];
+// Admins set them on the Calendar (☰ → Calendar, calendar.js); they load
+// from the months table on sign-in (data.js loadMonths), oldest first —
+// only months with a close-off date:
+//   {month: 'October', year: 2026, monthStart: '2026-10-01',
+//    closeOffDate: '2026-11-06', weeklyTarget: 2000000 | null}
+// The first only marks where the next month starts.
+let CLOSE_OFF_DATES = [];
 
 // ---------------------------------------------------------------------------
 
@@ -158,7 +148,3 @@ const CONTACT_METHODS = [
 ];
 const CONTACT_OUTCOMES = ['Spoke to client', 'No answer', 'Left message', 'Sent'];
 
-// Team PCR target (admin view's PCR meter, which shows the PCR on the
-// team's submitted cases waiting to be accepted against it): a fixed
-// target for the whole team.
-const TEAM_PCR_TARGET = 10000000;

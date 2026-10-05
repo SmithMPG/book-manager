@@ -1,5 +1,7 @@
 // Month bar: one cell per day of the current production month.
-// Relies on the global CLOSE_OFF_DATES array from constants.js.
+// Relies on the global CLOSE_OFF_DATES array from constants.js, which is
+// loaded from the Calendar on sign-in — reloadMonthBar() rebuilds the
+// bar then. ‹ › only reach months with a close-off date.
 //
 // A production month runs from the day after the previous entry's
 // close-off date through this entry's close-off date. The first entry
@@ -202,9 +204,25 @@ function buildMonthPeriods() {
       label: `${CLOSE_OFF_DATES[i].month} ${CLOSE_OFF_DATES[i].year}`,
       start,
       end,
+      weeklyTarget: CLOSE_OFF_DATES[i].weeklyTarget ?? null,
     });
   }
   return periods;
+}
+
+// A period's weeks: 7-day blocks from its first day (Saturday to Friday
+// when it starts after a Friday close-off); the last can be shorter.
+// [{week: 1, start: Date, end: Date}]
+function periodWeeks(period) {
+  const weeks = [];
+  if (!period) return weeks;
+  for (let start = new Date(period.start), n = 1; start <= period.end; n++) {
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    weeks.push({ week: n, start: new Date(start), end: end > period.end ? new Date(period.end) : end });
+    start.setDate(start.getDate() + 7);
+  }
+  return weeks;
 }
 
 function isSameDay(a, b) {
@@ -258,6 +276,7 @@ class MonthBar {
   }
 
   findDefaultIndex() {
+    if (!this.periods.length) return -1;
     const idx = this.periods.findIndex(p => this.today >= p.start && this.today <= p.end);
     if (idx !== -1) return idx;
     return this.today < this.periods[0].start ? 0 : this.periods.length - 1;
@@ -268,6 +287,11 @@ class MonthBar {
 
     this.container.innerHTML = '';
     this.container.className = 'month-bar';
+    if (!period) {
+      // Before the months load, or none set up yet.
+      this.onNavigate?.(null);
+      return;
+    }
 
     const row = document.createElement('div');
     row.className = 'mb-row';
@@ -382,6 +406,20 @@ class MonthBar {
 
 let _monthBarInstance = null;
 
+// After the Calendar's months (re)load: rebuild the bar, staying on the
+// month being looked at if it's still there.
+function reloadMonthBar() {
+  const bar = _monthBarInstance;
+  if (!bar) return;
+  const label = bar.periods[bar.index]?.label;
+  bar.periods = buildMonthPeriods();
+  bar.today = new Date();
+  bar.today.setHours(0, 0, 0, 0);
+  const same = bar.periods.findIndex(p => p.label === label);
+  bar.index = same !== -1 ? same : bar.findDefaultIndex();
+  bar.render();
+}
+
 function initMonthBar(containerId, options) {
   const container = document.getElementById(containerId);
   if (!container) return null;
@@ -434,6 +472,7 @@ function getCurrentPeriodLabel() {
   const periods = buildMonthPeriods();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  if (!periods.length) return '';
   const idx = periods.findIndex(p => today >= p.start && today <= p.end);
   const period = idx !== -1 ? periods[idx] : (today < periods[0].start ? periods[0] : periods[periods.length - 1]);
   return period.label;

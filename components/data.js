@@ -101,6 +101,69 @@ function _faId() {
   return _actingFa().id;
 }
 
+// ---------- the Calendar ----------
+//
+// Every month row (months table), oldest first: {month (ISO first of the
+// month), label ("October 2026"), closeOffDate, weeklyTarget}. The ones
+// with a close-off date become CLOSE_OFF_DATES (constants.js), which the
+// month bar and every "this month" figure read. Loaded with everything
+// else; the Calendar page (calendar.js) shows and edits them.
+
+const _MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+let _months = [];
+
+function monthLabel(iso) {
+  const [y, m] = iso.split('-').map(Number);
+  return `${_MONTH_NAMES[m - 1]} ${y}`;
+}
+
+async function loadMonths() {
+  const rows = _dbOk(await supabaseClient.from('months')
+    .select('month, close_off_date, weekly_target').order('month'));
+  _months = rows.map(r => ({
+    month: r.month,
+    label: monthLabel(r.month),
+    closeOffDate: r.close_off_date,
+    weeklyTarget: r.weekly_target == null ? null : Number(r.weekly_target),
+  }));
+  CLOSE_OFF_DATES = _months.filter(m => m.closeOffDate).map(m => {
+    const [y, mo] = m.month.split('-').map(Number);
+    return { month: _MONTH_NAMES[mo - 1], year: y, monthStart: m.month, closeOffDate: m.closeOffDate, weeklyTarget: m.weeklyTarget };
+  });
+  reloadMonthBar();                                        // month-bar.js
+  _syncNoMonthStrip();
+  document.dispatchEvent(new CustomEvent('months:changed'));
+}
+
+function getMonths() {
+  return _months;
+}
+
+// Saves one month's close-off date and weekly target (either can be
+// blank), then reloads. The database refuses a close-off date out of
+// order with its neighbours.
+async function dbSaveMonth(month, { closeOffDate, weeklyTarget }) {
+  _dbOk(await supabaseClient.from('months').upsert({
+    month,
+    close_off_date: closeOffDate || null,
+    weekly_target: weeklyTarget ?? null,
+  }, { onConflict: 'month' }));
+  await loadMonths();
+  await refreshDashboard();
+}
+
+// Admins: a strip under the top bar when today's month has no close-off
+// date yet (the app shows the last month it has meanwhile).
+function _syncNoMonthStrip() {
+  const strip = document.getElementById('no-month-strip');
+  if (!strip) return;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const covered = buildMonthPeriods().some(p => today >= p.start && today <= p.end);
+  strip.hidden = covered || !currentUser?.is_admin;
+}
+
 // ---------- products ----------
 //
 // The New Case dropdown, each product with its own stages and case pack
@@ -504,11 +567,13 @@ function _currentPeriod() {
   return periods.find(p => today >= p.start && today <= p.end) || periods[periods.length - 1];
 }
 
-// Every day of a business month up to today: "month to date".
+// Every day of a business month up to today: "month to date". None if
+// there's no month (the Calendar has none set up).
 function _periodDays(period) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = new Set();
+  if (!period) return days;
   for (const d = new Date(period.start); d <= period.end && d <= today; d.setDate(d.getDate() + 1)) {
     days.add(isoDate(d));
   }
@@ -576,13 +641,12 @@ function _myCases() {
 
 // ---------- admin view ----------
 //
-// Home only (no tabs), with the whole team's figures: the funnel and
-// monthly stats add up every FA's, and the PCR meter is the PCR on the
-// team's submitted cases waiting to be accepted (a snapshot) against
-// TEAM_PCR_TARGET (constants.js), a single ring. Month to date by
-// default; days picked on the month bar narrow the dated figures to just
-// those days, and the
-// PCR meter's label names them. Clicking a name on the leaderboard opens
+// Home, with the whole team's figures: the funnel and monthly stats add
+// up every FA's, and in place of the PCR meter, the week rings
+// (week-rings.js) — the PCR submitted each week of the month on the
+// month bar against its weekly submission target (the Calendar). Month
+// to date by default; days picked on the month bar narrow the dated
+// figures to just those days (not the rings — always the whole month). Clicking a name on the leaderboard opens
 // that FA's Business-tab cases under their row and switches the hero to
 // their figures; clicking it again goes back to the team.
 
@@ -660,7 +724,7 @@ function _renderDashboard() {
   } else {
     rep = _teamRep(d.reps);
     cases = d.teamCases;
-    target = TEAM_PCR_TARGET;
+    target = null; // the team's is the week rings
   }
 
   _widgets.funnel?.update({
@@ -671,15 +735,18 @@ function _renderDashboard() {
     casesSubmitted: rep.cases,
   });
   // An FA's meter (their own, or one picked on the leaderboard): accepted
-  // PCR against Validation and High Flyer (3x). The team meter: the PCR on
-  // every case submitted and waiting to be accepted, across the team (the
-  // stats column's Cases Submitted) — against the one team target
-  // (TEAM_PCR_TARGET).
+  // PCR against Validation and High Flyer (3x). The team: the week rings
+  // instead.
   const teamView = d.admin && !_adminFocusId;
-  _widgets.pcrMeter?.update(teamView
-    ? { currentCount: caseStats(cases, d.days).submitted.pcr, validationTarget: target, highFlyerTarget: null, stageNote: 'submitted', showValue: true }
-    : { currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
-  _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(getMonthBarPeriod() || _currentPeriod()));
+  const period = getMonthBarPeriod() || _currentPeriod();
+  if (_widgets.pcrMeter) _widgets.pcrMeter.container.hidden = teamView;
+  _widgets.weekRings?.show(teamView);
+  if (teamView) {
+    _widgets.weekRings?.update(_weekRingsFor(period, cases));
+  } else {
+    _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
+    _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
+  }
   _widgets.monthlyStats?.update({
     ...caseStats(cases, d.days),
     willsLeads: rep.willsLeads,
@@ -701,6 +768,44 @@ function _renderDashboard() {
     // The Test Book's row only came back for the hero — never rank it.
     _widgets.leaderboard?.setReps(d.reps.filter(r => !_testBook || r.id !== _testBook.id));
   }
+}
+
+// The week rings for a month (week-rings.js): each week so far — every
+// week of a past month, none of a future one — with the PCR submitted in
+// it across these cases, against the month's weekly target.
+function _weekRingsFor(period, cases) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = period?.weeklyTarget || null;
+  const weeks = periodWeeks(period).filter(w => w.start <= today).map(w => {
+    const from = isoDate(w.start);
+    const to = isoDate(w.end);
+    const pcr = Math.round(cases
+      .filter(c => c.submittedAt && c.submittedAt >= from && c.submittedAt <= to)
+      .reduce((t, c) => t + casePcr(c), 0));
+    const current = today >= w.start && today <= w.end;
+    const state = !target ? 'none' : pcr >= target ? 'met' : current ? 'current' : 'missed';
+    return { week: w.week, pcr, state, current };
+  });
+  const thisWeek = weeks.find(w => w.current);
+  let centre;
+  if (thisWeek) {
+    centre = {
+      value: formatNumber(thisWeek.pcr),
+      of: target ? `of ${formatNumber(target)}` : 'No target set',
+      note: `Week ${thisWeek.week} · submitted`,
+    };
+  } else if (weeks.length) {
+    const total = weeks.reduce((t, w) => t + w.pcr, 0);
+    centre = {
+      value: formatNumber(total),
+      of: target ? `of ${formatNumber(target * weeks.length)}` : 'No target set',
+      note: 'submitted in the month',
+    };
+  } else {
+    centre = { value: '0', of: target ? `${formatNumber(target)} a week` : 'No target set', note: 'Not started yet' };
+  }
+  return { weeks, target, centre, periodLabel: period?.label || '' };
 }
 
 // Funnel, PCR meter, monthly stats, leaderboard and the month bar's
@@ -811,7 +916,7 @@ async function _ensureTestBook() {
 // anything that writes more than one card's worth (e.g. a checkout).
 async function loadAppData() {
   if (getAppMode() === 'test' && !await _ensureTestBook()) return;
-  await loadProducts();
+  await Promise.all([loadMonths(), loadProducts()]);
   const cards = await _loadMyCards();
   CLIENT_STORE.clear();
   Object.keys(CLIENT_TAB_LABELS).forEach(tab => {
@@ -822,6 +927,10 @@ async function loadAppData() {
 
 function clearAppData() {
   _dash = null;
+  _months = [];
+  CLOSE_OFF_DATES = [];
+  reloadMonthBar();
+  _syncNoMonthStrip();
   _products = [];
   document.dispatchEvent(new CustomEvent('products:changed'));
   CLIENT_STORE.clear();

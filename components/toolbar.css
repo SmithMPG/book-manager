@@ -207,3 +207,14 @@ body[data-app-mode="admin"] .tab[data-tab="dashboard"] {
   white-space: nowrap;
 }
 .tab-menu-list button:hover { background: #f2f2f0; }
+
+/* Admins: today's month has no close-off date yet (data.js). */
+.no-month-strip {
+  background: #f7d9d9;
+  color: #8a2b2b;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 5px 12px;
+}
+.no-month-strip[hidden] { display: none; }

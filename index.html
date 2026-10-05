@@ -93,6 +93,7 @@
     <script src="constants.js"></script>
     <script src="components/month-bar.js"></script>
     <script src="components/pcr-meter.js"></script>
+    <script src="components/week-rings.js"></script>
     <script src="components/client-funnel.js"></script>
     <script src="components/monthly-stats.js"></script>
     <script src="components/client-card.js"></script>
@@ -106,6 +107,7 @@
     <script src="components/team.js"></script>
     <script src="components/products.js"></script>
     <script src="components/pipeline.js"></script>
+    <script src="components/calendar.js"></script>
     <script src="components/new-client.js"></script>
     <script src="components/client-search.js"></script>
 
@@ -148,6 +150,7 @@
       </div>
     </div>
 
+    <div class="no-month-strip" id="no-month-strip" hidden>No close-off date for this month yet — set it under ☰ → Calendar.</div>
     <div class="test-mode-strip">Test mode — you're in the Test Book. Nothing here counts on the leaderboard or team figures.</div>
 
     <!-- ===== Tab bar ===== -->
@@ -170,11 +173,11 @@
         <span class="tab-count">0</span>
       </div>
       <!-- Admin mode: Home and the pipeline (pipeline.js), the same width;
-           then a menu for Products (products.js) and Financial Advisers
-           (team.js). The menu's tab shows as active on either page. -->
+           then a menu for Products (products.js), Financial Advisers
+           (team.js) and the Calendar (calendar.js). The menu's tab shows as active on either page. -->
       <div class="tab admin-only" data-tab="open">Open cases <span class="tab-count">0</span></div>
       <div class="tab admin-only" data-tab="submitted">Submitted cases <span class="tab-count">0</span></div>
-      <div class="tab tab-icon admin-only tab-menu" data-menu="products team" title="Products and Financial Advisers">
+      <div class="tab tab-icon admin-only tab-menu" data-menu="products team calendar" title="Products, Financial Advisers and Calendar">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="4" y1="6" x2="20" y2="6" />
           <line x1="4" y1="12" x2="20" y2="12" />
@@ -183,6 +186,7 @@
         <div class="tab-menu-list">
           <button type="button" data-menu-tab="products">Products</button>
           <button type="button" data-menu-tab="team">Financial Advisers</button>
+          <button type="button" data-menu-tab="calendar">Calendar</button>
         </div>
       </div>
     </div>
@@ -201,6 +205,7 @@
         </div>
         <div class="hero-center">
           <div id="pcr-meter-container"></div>
+          <div id="week-rings-container" hidden></div>
         </div>
         <div class="hero-col hero-col-monthly">
           <div id="monthly-stats-container"></div>
@@ -256,6 +261,11 @@
         <div id="submitted-pipeline"></div>
       </div>
 
+      <!-- ===== ADMIN: CALENDAR (calendar.js) ===== -->
+      <div class="tab-content" id="tab-calendar">
+        <div id="calendar-months"></div>
+      </div>
+
       <!-- ===== ADMIN: PRODUCTS (products.js) ===== -->
       <div class="tab-content" id="tab-products">
         <div id="products-cards"></div>
@@ -272,6 +282,7 @@
       });
       const funnel = initClientFunnel("client-funnel-container");
       const monthlyStats = initMonthlyStats("monthly-stats-container");
+      const weekRings = initWeekRings("week-rings-container");
       initClientCards(document);
       initCardItems(document);
       initCommissionCalculator("commission-calc-trigger");
@@ -282,10 +293,11 @@
       initTeam(document);
       initProducts(document);
       initPipeline(document);
+      initCalendar(document);
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').
-      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard });
+      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard, weekRings });
 
       // Tab switching. tab: a tab element, or a page's name ('dashboard',
       // 'products', …). A page reached from the admin's menu (data-menu)

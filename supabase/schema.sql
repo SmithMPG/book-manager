@@ -147,6 +147,25 @@ create table product_checklist_items (
 create index product_checklist_items_product_idx on product_checklist_items(product_id);
 
 -- ---------------------------------------------------------------------
+-- months: the Calendar (☰ → Calendar, calendar.js). One row per month:
+-- its close-off date (the business month's last day) and the team's
+-- weekly submission target (PCR to submit in each week of it). A month
+-- runs from the day after the previous month's close-off to its own;
+-- the earliest row only marks where the first month starts. The month
+-- bar and every "this month" figure come from here.
+-- month: the first of the calendar month it's named for (2026-10-01 =
+-- October 2026). close_off_date can be blank for a month that's only had
+-- its target set; close-off dates run in month order
+-- (_months_in_order). Everyone reads; admins write.
+-- ---------------------------------------------------------------------
+create table months (
+  month           date primary key check (extract(day from month) = 1),
+  close_off_date  date unique,
+  weekly_target   bigint check (weekly_target is null or weekly_target >= 0),
+  updated_at      timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------
 -- cases: one per product sold to a client. A case moves through stages:
 --   opened → (the product's own stages, any order, with submitted
 --   wherever the product puts it among them) → accepted, or not taken up
@@ -352,6 +371,27 @@ create trigger standard_stage_guard before update or delete on product_stages
   for each row execute function _standard_stage_guard();
 
 -- ---------------------------------------------------------------------
+-- Close-off dates run in month order: each after the previous month's
+-- and before the next month's.
+-- ---------------------------------------------------------------------
+create or replace function _months_in_order() returns trigger as $$
+begin
+  new.updated_at := now();
+  if new.close_off_date is null then return new; end if;
+  if exists (select 1 from public.months where month < new.month and close_off_date >= new.close_off_date) then
+    raise exception 'The close-off date has to be after the previous month''s.';
+  end if;
+  if exists (select 1 from public.months where month > new.month and close_off_date <= new.close_off_date) then
+    raise exception 'The close-off date has to be before the next month''s.';
+  end if;
+  return new;
+end;
+$$ language plpgsql set search_path = '';
+
+create trigger months_in_order before insert or update on months
+  for each row execute function _months_in_order();
+
+-- ---------------------------------------------------------------------
 -- Row Level Security: an FA sees only their own rows; an admin
 -- (is_admin = true) sees everyone's.
 -- ---------------------------------------------------------------------
@@ -388,15 +428,17 @@ create or replace function manages(p_fa uuid) returns boolean as $$
               and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
 $$ language sql security definer stable set search_path = '';
 
--- Products: everyone signed in reads them (the New Case dropdown, a
--- case's stages and case pack); only admins change them.
+-- Products and the Calendar: everyone signed in reads them (the New
+-- Case dropdown, a case's stages and case pack, the month bar); only
+-- admins change them.
 alter table products enable row level security;
 alter table product_stages enable row level security;
 alter table product_checklist_items enable row level security;
+alter table months enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['products','product_stages','product_checklist_items']
+  foreach t in array array['products','product_stages','product_checklist_items','months']
   loop
     execute format('create policy "%1$s read" on %1$s for select to authenticated using (true);', t);
     execute format('create policy "%1$s admin insert" on %1$s for insert with check (is_admin());', t);
@@ -435,7 +477,7 @@ end $$;
 -- ---------------------------------------------------------------------
 grant usage on schema public to authenticated, service_role;
 grant select, insert, update, delete on
-  users, clients, cases, activities, products, product_stages, product_checklist_items
+  users, clients, cases, activities, products, product_stages, product_checklist_items, months
   to authenticated, service_role;
 
 -- Column-level update rights on users: RLS picks the rows, this picks the
