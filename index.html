@@ -105,6 +105,7 @@
     <script src="components/data.js"></script>
     <script src="components/team.js"></script>
     <script src="components/products.js"></script>
+    <script src="components/pipeline.js"></script>
     <script src="components/new-client.js"></script>
     <script src="components/client-search.js"></script>
 
@@ -167,7 +168,9 @@
         </svg>
         <span class="tab-count">0</span>
       </div>
-      <!-- Admin mode: the admin's FA list (team.js), and Products -->
+      <!-- Admin mode: the pipeline (pipeline.js), Products, and the admin's FA list (team.js) -->
+      <div class="tab admin-only" data-tab="open">Open <span class="tab-count">0</span></div>
+      <div class="tab admin-only" data-tab="submitted">Submitted <span class="tab-count">0</span></div>
       <div class="tab admin-only" data-tab="products">Products <span class="tab-count">0</span></div>
       <div class="tab admin-only" data-tab="team">FAs <span class="tab-count">0</span></div>
       <div class="tab tab-icon admin-only" data-tab="resigned" title="Resigned">
@@ -238,6 +241,14 @@
         <div id="resigned-cards"></div>
       </div>
 
+      <!-- ===== ADMIN: PIPELINE (pipeline.js) ===== -->
+      <div class="tab-content" id="tab-open">
+        <div id="open-pipeline"></div>
+      </div>
+      <div class="tab-content" id="tab-submitted">
+        <div id="submitted-pipeline"></div>
+      </div>
+
       <!-- ===== ADMIN: PRODUCTS (products.js) ===== -->
       <div class="tab-content" id="tab-products">
         <div id="products-cards"></div>
@@ -263,6 +274,7 @@
       initClientSearch(".search-input");
       initTeam(document);
       initProducts(document);
+      initPipeline(document);
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').
@@ -309,7 +321,7 @@
         if (!tabContent) return;
         const tab = document.querySelector('.tab[data-tab="' + tabContent.id.replace("tab-", "") + '"]');
         const countEl = tab && tab.querySelector(".tab-count");
-        if (countEl) countEl.textContent = tabContent.querySelectorAll(".card-wrapper, .fa-wrapper").length;
+        if (countEl) countEl.textContent = tabContent.querySelectorAll(".card-wrapper, .fa-wrapper, .pl-case").length;
       }
 
       // Keep the tab counts right when clients are added (e.g. at checkout).

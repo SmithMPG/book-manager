@@ -105,11 +105,19 @@ Same list pattern, for contacts not yet converted to clients.
 ### Not Moved Forward
 Clients/prospects with no activity in X days — visibility only for now (auto-drop-off logic, no action required in MVP).
 
-### Admin-only: FA list
-Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Products · FAs · ⊘ Resigned** (the ⊘ is the same icon as Not Moved Forward; see [Products](#admin-only-products) below).
+### Admin-only: Open and Submitted
+Two tabs after Home, for what's coming in and from whom: **the whole team**, like Home's figures, and all their open cases — not tied to a month.
+- **Open** — cases opened but not yet submitted. **Submitted** — cases submitted and waiting to be accepted.
+- **Grouped by FA**, the biggest PCR first (FAs with nothing there are left out). The FA's line: case count · PCR total. Each case: client · product · where it's at (Open: case pack progress, e.g. 4/7; Submitted: its own stage, e.g. Underwriting) · **days waiting** (since opened / submitted — highlighted past 30 days open or 14 days submitted, oldest first) · PCR.
+- **Accept** is on each Submitted case of an FA on the admin's own list — **the only place a case is accepted.** Other FAs' groups say who accepts them ("Accepted by Ameeth Maharaj"). Accepting the client's last open case moves them to the FA's Clients tab (the confirmation says so).
+- Home's **Open cases** and **Submitted cases** rows open these tabs. The tab counts are cases.
+- Refreshed whenever the admin comes back to the app.
 
-- **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N to accept** · an **edit** button at the far right.
-- **Clicking a row** opens that FA's open cases (one row open at a time), cases waiting to be accepted first. A Submitted case has **Accept**: the admin accepts it for the FA. If it's the client's last open case, they move to the FA's Clients tab (the confirmation says so).
+### Admin-only: FA list
+Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open · Submitted · Products · FAs · ⊘ Resigned** (the ⊘ is the same icon as Not Moved Forward; see [Products](#admin-only-products) below).
+
+- **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N submitted** · an **edit** button at the far right.
+- **Clicking a row** opens that FA's open cases, read-only (one row open at a time), submitted ones first. Accepting is on the [Submitted tab](#admin-only-open-and-submitted).
 - **Edit** — name, surname, Validation target, and **Move to Resigned** (or **Bring back to FAs** from Resigned).
 - **Search:** in Admin mode the top bar's search box finds the admin's FAs ("Search FAs…"), active or resigned; picking one opens their tab with their row open.
 - **⊘ Resigned** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
@@ -204,7 +212,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 - **Changing amounts:** while a case is open, the **✎** on its Opened line (beside the ×) changes its amounts — the fields its product type records — e.g. R1 000 pm becomes R800. It adds a Case entry to the timeline with what changed, before → after (`Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040`), which counts as the client's update for the day like any entry. The Opened line, PCR and commission show the new amounts. Saving without changing anything adds nothing. Once Accepted or Not taken up, amounts are fixed (the database refuses).
 - **The standard stages keep their rules:**
   - **Submitted** — the FA picks it. Allowed with case pack items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway). The product's own stages can only be picked once the case is Submitted.
-  - **Accepted** — only once Submitted, and only by the FA's manager, from their [FA list](#admin-only-fa-list). The FA sees "Waiting for your manager to accept".
+  - **Accepted** — only once Submitted, and only by the FA's manager, from the [Submitted tab](#admin-only-open-and-submitted). The FA sees "Waiting for your manager to accept".
   - **Not taken up** — any time while open; the client can back out before submission.
 - Tab rules: an open case puts the client in Business. Accepting the last open case moves them to **Clients** (the database does this as part of accepting). Closing the last one any other way (not taken up, deleted) asks the FA where they go.
 - **Numbers:** "Cases submitted" (funnel, leaderboard) counts the **Submitted** date. PCR counts on **Accepted** (the leaderboard's **Accepted PCR's**, and an FA's PCR meter); the leaderboard's **Submitted PCR's** counts PCR on the **Submitted** date, whatever happened to the case since. Commission and PCR's in the Pot count every **open** case of a Business client.
@@ -254,6 +262,8 @@ Built as if the app had always worked this way — the old case status logs and 
 - **FA** — their own book; no toggle.
 - **Admin** (Ameeth) — toggle **My book · Admin**. Manages the FAs on their list: accepts their cases, edits them, adds new ones.
 - **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin · Test**.
+
+**Viewing as** (super admin, Admin mode only): a picker beside the toggle — "Viewing: my own" or "Viewing as Ameeth Maharaj". It shows Admin mode as that admin sees it: their FA list and Resigned, their search, which Submitted cases they can accept. **Look only:** Accept, edit, resign and + are shown but greyed out. Products are shared, so they stay editable. Leaving Admin mode goes back to your own view.
 
 Test works exactly like My book, but on the shared **Test Book** — a test user in the 'Test group' branch, owned by a login nobody signs in with. It never appears on the leaderboard or in team figures, the Review is never forced there, and a strip under the top bar says you're in it. Only the super admin can write to the Test Book, enforced in the database — `can_act_as` in schema.sql.
 

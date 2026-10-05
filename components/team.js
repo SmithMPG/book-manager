@@ -2,10 +2,19 @@
 // admin's list (users.manager_id), like a client list but of people.
 //
 // Collapsed row: name, branch, Validation target, how many open cases
-// they have and how many are waiting to be accepted, and an edit button
-// at the far right. Clicking the row opens their open cases (one row
-// open at a time); a Submitted case has an Accept button — accepting is
-// the manager's alone, FAs can't (set_case_stage in supabase/schema.sql).
+// they have and how many are submitted, and an edit button at the far
+// right. Clicking the row opens their open cases, read-only (one row open
+// at a time). Accepting is done on the Submitted tab (pipeline.js), with
+// acceptTeamCase below — the manager's alone, FAs can't (set_case_stage
+// in supabase/schema.sql).
+//
+// This file also holds the admin's team for the Open and Submitted tabs
+// (getTeamFas, getTeamCases; 'team:changed' when they reload).
+//
+// Viewing as: the super admin can pick another admin from the picker
+// beside the mode toggle and see Admin mode as they do — their FA list,
+// which cases they can accept. Look only: Accept, edit, resign and + are
+// shown but greyed out (isLookOnly).
 //
 // Edit: name, surname and Validation target, and moving them to Resigned
 // (or back). Resigned FAs can't sign in and drop off the leaderboard;
@@ -71,6 +80,25 @@ function _injectTeamCSS() {
     .fa-edit:hover { border-color: var(--gold); color: #8a6d0a; background: rgba(212, 175, 55, 0.1); }
     .fa-row.active .fa-edit { border-color: rgba(255, 255, 255, 0.35); color: var(--text-dim); }
     .fa-row.active .fa-edit:hover { border-color: var(--gold); color: var(--gold-soft); }
+    .fa-edit:disabled,
+    .fab:disabled { opacity: 0.4; cursor: not-allowed; }
+    .fa-edit:disabled:hover { border-color: rgba(0, 0, 0, 0.15); color: var(--ink-dim); background: transparent; }
+    .fab:disabled:hover { transform: none; }
+
+    /* The super admin's "Viewing as" picker, beside the mode toggle. */
+    .view-as {
+      background: var(--navy-lighter);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 7px 10px;
+      cursor: pointer;
+      max-width: 220px;
+    }
+    .view-as.hidden { display: none; }
+    .view-as.looking { border-color: var(--gold); color: var(--gold-soft); }
 
     .fa-detail {
       background: #ffffff;
@@ -104,20 +132,6 @@ function _injectTeamCSS() {
     .fa-case-type { width: 150px; flex-shrink: 0; color: var(--ink-dim); }
     .fa-case-stage { flex: 1; min-width: 0; }
     .fa-case-pcr { flex-shrink: 0; color: var(--ink-dim); width: 120px; text-align: right; }
-    .fa-case-action { flex-shrink: 0; width: 90px; display: flex; justify-content: flex-end; }
-    .fa-accept {
-      background: var(--gold);
-      border: 1px solid var(--gold);
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: inherit;
-      color: var(--navy);
-      cursor: pointer;
-    }
-    .fa-accept:hover { opacity: 0.9; }
-    .fa-accept:disabled { opacity: 0.6; cursor: default; }
     .fa-empty { color: var(--ink-dim); padding: 6px 0; }
     .fa-list-empty { color: var(--ink-dim); font-size: 14px; padding: 20px 4px; }
 
@@ -169,7 +183,8 @@ function _injectTeamCSS() {
 _injectTeamCSS();
 
 let _teamFas = [];        // users rows on the admin's list
-let _teamCases = [];      // their open cases (data.js dbLoadOpenCasesFor)
+let _pipelineFas = [];    // everyone whose cases the Open and Submitted tabs show
+let _teamCases = [];      // open cases of everyone in _pipelineFas (data.js dbLoadOpenCasesFor)
 let _teamOpenId = null;   // the FA whose row is open
 let _teamLoadRun = 0;
 
@@ -182,21 +197,17 @@ function _faCases(faId) {
 }
 
 function _faCaseHTML(c) {
-  const action = c.stage === 'submitted'
-    ? `<button type="button" class="fa-accept" data-accept="${c.id}">Accept</button>`
-    : '';
   return `
     <div class="fa-case">
       <span class="fa-case-client">${_escHtml(c.clientName)}</span>
       <span class="fa-case-type">${_escHtml(c.type)}</span>
-      <span class="fa-case-stage">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
+      <span class="fa-case-stage">${_escHtml(caseStageLabel(c))} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
       <span class="fa-case-pcr">PCR ${formatNumber(casePcr(c))}</span>
-      <span class="fa-case-action">${action}</span>
     </div>
   `;
 }
 
-// Submitted (waiting to be accepted) first, then by when they were opened.
+// Submitted first, then by when they were opened.
 function _faDetailHTML(fa) {
   const cases = _faCases(fa.id).sort((a, b) =>
     (a.stage === 'submitted' ? 0 : 1) - (b.stage === 'submitted' ? 0 : 1) || a.openedAt.localeCompare(b.openedAt));
@@ -209,7 +220,7 @@ function _faDetailHTML(fa) {
 
 function _faRowHTML(fa) {
   const cases = _faCases(fa.id);
-  const toAccept = cases.filter(c => c.stage === 'submitted').length;
+  const submitted = cases.filter(c => c.stage === 'submitted').length;
   const open = fa.id === _teamOpenId;
   const target = fa.pcr_target ? `Target ${formatNumber(fa.pcr_target)}` : 'No target';
   return `
@@ -221,8 +232,8 @@ function _faRowHTML(fa) {
         <span class="spacer"></span>
         ${fa.password_set ? '' : '<span class="fa-chip pending" title="Hasn\'t signed in and set a password yet">Not signed in yet</span>'}
         ${cases.length ? `<span class="fa-chip">${cases.length} open case${cases.length === 1 ? '' : 's'}</span>` : ''}
-        ${toAccept ? `<span class="fa-chip to-accept">${toAccept} to accept</span>` : ''}
-        <button type="button" class="fa-edit" data-fa-edit title="Edit ${_escHtml(fa.name)}">
+        ${submitted ? `<span class="fa-chip to-accept">${submitted} submitted</span>` : ''}
+        <button type="button" class="fa-edit" data-fa-edit title="${isLookOnly() ? 'Look only while viewing as another admin' : `Edit ${_escHtml(fa.name)}`}"${isLookOnly() ? ' disabled' : ''}>
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -248,23 +259,88 @@ function _renderTeam() {
   _renderTeamList('resigned-cards', _teamFas.filter(f => !f.is_active), 'Nobody on your list has resigned.');
   updateTabCount(document.getElementById('tab-team'));      // index.html
   updateTabCount(document.getElementById('tab-resigned'));
+  document.dispatchEvent(new CustomEvent('team:changed'));  // the Open and Submitted tabs
+}
+
+// For the Open and Submitted tabs (pipeline.js): the whole team, like
+// Home's figures — every FA (active and resigned), the Test Book only if
+// it's on the admin's own list — and their open cases.
+function getTeamFas() {
+  return _pipelineFas;
+}
+
+function getTeamCases() {
+  return _teamCases;
+}
+
+// Viewing as (super admin only): another admin's id, or null for your own.
+let _viewAs = null;
+
+// The admin whose Admin mode is shown: you, or whoever you're viewing as.
+function _viewerId() {
+  return _viewAs || currentUser?.id;
+}
+
+// Viewing as another admin: everything shows, nothing can be changed.
+function isLookOnly() {
+  return !!_viewAs && _viewAs !== currentUser?.id;
+}
+
+// Whether the admin being shown can accept this FA's cases: they're on
+// their list (the database's manages(), schema.sql). Look only still
+// shows the button, greyed out.
+function canAcceptFor(fa) {
+  return !!fa && (fa.manager_id === _viewerId()
+    || (!isLookOnly() && !!currentUser?.is_super_admin && fa.branch === 'Test group'));
+}
+
+// fa's manager's name, for a case the signed-in admin can't accept.
+function managerName(fa) {
+  const m = _pipelineFas.find(u => u.id === fa?.manager_id) || null;
+  return m ? `${m.name} ${m.surname}` : '';
 }
 
 async function loadTeam() {
   const run = ++_teamLoadRun;
   if (!currentUser?.is_admin || getAppMode() !== 'admin') return;
-  const fas = await dbLoadMyFas();
-  const cases = await dbLoadOpenCasesFor(fas.map(f => f.id));
+  const everyone = await dbLoadFas();
+  const viewer = _viewerId();
+  const mine = everyone.filter(u => u.manager_id === viewer);
+  const pipeline = everyone.filter(u => u.branch !== 'Test group' || u.manager_id === viewer);
+  const cases = await dbLoadOpenCasesFor(pipeline.map(f => f.id));
   if (run !== _teamLoadRun) return;
-  _teamFas = fas;
+  _teamFas = mine;
+  _pipelineFas = pipeline;
   _teamCases = cases;
-  if (!fas.some(f => f.id === _teamOpenId)) _teamOpenId = null;
+  if (!mine.some(f => f.id === _teamOpenId)) _teamOpenId = null;
+  _syncViewAs(everyone.filter(u => u.is_admin && u.is_active));
   _renderTeam();
+}
+
+// The picker: the super admin's own view first, then every other admin.
+// Also greys out + while looking.
+function _syncViewAs(admins) {
+  const select = document.getElementById('view-as');
+  if (!select) return;
+  const show = !!currentUser?.is_super_admin && getAppMode() === 'admin';
+  select.classList.toggle('hidden', !show);
+  if (show) {
+    const others = admins.filter(a => a.id !== currentUser.id).sort((a, b) => _faName(a).localeCompare(_faName(b)));
+    select.innerHTML = '<option value="">Viewing: my own</option>'
+      + others.map(a => `<option value="${a.id}"${a.id === _viewAs ? ' selected' : ''}>Viewing as ${_escHtml(_faName(a))}</option>`).join('');
+  }
+  select.classList.toggle('looking', isLookOnly());
+  document.querySelectorAll('.btn-add-fa').forEach(b => {
+    b.disabled = isLookOnly();
+    b.title = isLookOnly() ? 'Look only while viewing as another admin' : 'Add an FA';
+  });
 }
 
 function _clearTeam() {
   _teamLoadRun++;
+  _viewAs = null;
   _teamFas = [];
+  _pipelineFas = [];
   _teamCases = [];
   _teamOpenId = null;
   _renderTeam();
@@ -291,10 +367,13 @@ function openFaRow(id) {
 
 // ---------- accepting ----------
 
-async function _acceptCase(btn) {
-  const c = _teamCases.find(k => k.id === btn.dataset.accept);
-  const fa = c && _teamFas.find(f => f.id === c.faId);
-  if (!fa) return;
+// From the Submitted tab (pipeline.js): accepts a case for one of the
+// admin's FAs, after confirming. btn is disabled while it saves.
+async function acceptTeamCase(caseId, btn) {
+  if (isLookOnly()) return;
+  const c = _teamCases.find(k => k.id === caseId);
+  const fa = c && _pipelineFas.find(f => f.id === c.faId);
+  if (!canAcceptFor(fa)) return;
   const lastOpen = !_teamCases.some(k => k.id !== c.id && k.clientId === c.clientId);
   const ok = await showChoiceDialog({
     title: 'Accept this case?',
@@ -308,7 +387,7 @@ async function _acceptCase(btn) {
   try {
     await dbSetCaseStage(c.id, 'accepted', _todayIso());
     _teamCases = _teamCases.filter(k => k.id !== c.id);
-    _renderTeam();
+    _renderTeam(); // the Submitted tab redraws too ('team:changed')
     await refreshDashboard();
   } catch (err) {
     btn.disabled = false;
@@ -469,14 +548,18 @@ async function _addFa() {
 // ---------- wiring ----------
 
 function initTeam(root) {
+  document.querySelector('.topbar-left')?.insertAdjacentHTML('beforeend',
+    '<select class="view-as hidden" id="view-as" title="Super admin: see Admin mode as another admin does (look only)"></select>');
+  document.getElementById('view-as')?.addEventListener('change', e => {
+    _viewAs = e.target.value || null;
+    _teamOpenId = null;
+    loadTeam().catch(showSaveError);
+  });
+
   root.addEventListener('click', e => {
+    if (isLookOnly() && e.target.closest('.btn-add-fa, [data-fa-edit], [data-accept]')) return;
     if (e.target.closest('.btn-add-fa')) {
       _addFa().catch(showSaveError);
-      return;
-    }
-    const accept = e.target.closest('[data-accept]');
-    if (accept) {
-      _acceptCase(accept);
       return;
     }
     const row = e.target.closest('.fa-row');
@@ -492,7 +575,18 @@ function initTeam(root) {
   });
 
   document.addEventListener('appmodechange', e => {
-    if (e.detail.mode === 'admin') loadTeam().catch(showSaveError);
+    if (e.detail.mode === 'admin') {
+      loadTeam().catch(showSaveError);
+    } else {
+      // Leaving Admin mode: back to your own view next time.
+      _viewAs = null;
+      document.getElementById('view-as')?.classList.add('hidden');
+    }
+  });
+  // Coming back to the app: pick up cases FAs have opened or submitted
+  // since (the Open and Submitted tabs).
+  window.addEventListener('focus', () => {
+    if (currentUser && getAppMode() === 'admin') loadTeam().catch(console.error);
   });
   document.addEventListener('currentuser:changed', () => {
     if (!currentUser) _clearTeam();

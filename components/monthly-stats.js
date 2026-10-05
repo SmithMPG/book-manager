@@ -63,6 +63,10 @@ class MonthlyStats {
       periodWord: 'This Month', // "Selected Days" when the admin picks days
     }, config);
     this.render();
+    this.container.addEventListener('click', e => {
+      const link = e.target.closest('[data-show-tab]');
+      if (link) showTab(link.dataset.showTab); // index.html
+    });
   }
 
   update(config) {
@@ -75,12 +79,13 @@ class MonthlyStats {
   render() {
     const c = this.config;
     if (c.admin) {
-      const cases = (label, x) =>
-        `<div class="stat-cell">${label}: <b>${x.count}</b> · PCR <b>${formatNumber(x.pcr)}</b></div>`;
+      // The pipeline rows open their tab (pipeline.js).
+      const cases = (label, x, tab) =>
+        `<div class="stat-cell${tab ? ' stat-link' : ''}"${tab ? ` data-show-tab="${tab}" title="See them"` : ''}>${label}: <b>${x.count}</b> · PCR <b>${formatNumber(x.pcr)}</b></div>`;
       this.container.innerHTML = `
         <div class="stat-list">
-          ${cases('Open cases', c.opened)}
-          ${cases('Submitted cases', c.submitted)}
+          ${cases('Open cases', c.opened, 'open')}
+          ${cases('Submitted cases', c.submitted, 'submitted')}
           ${cases(`Cases Accepted ${c.periodWord}`, c.accepted)}
           <div class="stat-cell">Wills Leads ${c.periodWord}: <b>${c.willsLeads}</b></div>
           <div class="stat-cell">Referrals ${c.periodWord}: <b>${c.referrals}</b></div>

@@ -224,6 +224,16 @@ function caseChecklistItems(c) {
   return getProduct(c.productId)?.checklist || _alphabetical(CASE_CHECKLIST);
 }
 
+// Where a case is at: its product's own stage once it's moved on to one
+// after submitting ("Underwriting"), else its standard stage.
+function caseStageLabel(c) {
+  if (c.stage === 'submitted' && c.stageId) {
+    const own = getProduct(c.productId)?.stages.find(s => s.id === c.stageId);
+    if (own) return own.label;
+  }
+  return CASE_STAGE_LABELS[c.stage] || '';
+}
+
 function caseChecklistDone(c) {
   return caseChecklistItems(c).filter(item => c.checklist?.[item.key]).length;
 }
@@ -398,10 +408,11 @@ async function dbDeleteCase(id) {
 
 // The FAs on the signed-in admin's list (users.manager_id), active and
 // resigned.
-async function dbLoadMyFas() {
+// Everyone (admins read every users row): the FA list filters to the
+// admin's own (manager_id), the Open and Submitted tabs show the team.
+async function dbLoadFas() {
   return _dbOk(await supabaseClient.from('users')
-    .select('id, name, surname, email, branch, pcr_target, is_active, password_set')
-    .eq('manager_id', currentUser.id));
+    .select('id, name, surname, email, branch, pcr_target, is_active, password_set, manager_id, is_admin'));
 }
 
 // Those FAs' open cases, with the client's name.

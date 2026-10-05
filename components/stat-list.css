@@ -16,3 +16,7 @@
   color: var(--ink);
   font-weight: 700;
 }
+
+/* A row that opens a tab (the admin's Open / Submitted cases). */
+.stat-cell.stat-link { cursor: pointer; }
+.stat-cell.stat-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
