@@ -167,3 +167,43 @@
   .topbar-center { order: 3; max-width: none; flex-basis: 100%; }
   .advisor-name { display: none; }
 }
+
+/* Admin mode: Home is a full tab, the same width as Open / Submitted
+   cases, with its name beside the icon. */
+body[data-app-mode="admin"] .tab[data-tab="dashboard"] {
+  flex: 1;
+  padding: 11px 16px;
+  opacity: 1;
+}
+
+/* The admin's menu tab (Products, Financial Advisers). */
+.tab-menu { position: relative; }
+.tab-menu-list {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  flex-direction: column;
+  gap: 1px;
+}
+.tab-menu.open .tab-menu-list { display: flex; }
+.tab-menu-list button {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab-menu-list button:hover { background: #f2f2f0; }

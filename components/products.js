@@ -210,7 +210,6 @@ function _renderProducts() {
   container.innerHTML = products.length
     ? products.map(_productRowHTML).join('')
     : '<div class="fa-list-empty">No products yet. Use + (bottom right) to add one.</div>';
-  updateTabCount(document.getElementById('tab-products')); // index.html
   if (_refocusPart) {
     container.querySelector(`.pe-add[data-part="${_refocusPart}"]`)?.focus();
     _refocusPart = null;

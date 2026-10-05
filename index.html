@@ -157,6 +157,7 @@
           <path d="m3 9 9-7 9 7" />
           <path d="M4 10v10a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V10" />
         </svg>
+        <span class="admin-only">Home</span>
       </div>
       <div class="tab fa-only" data-tab="prospects">Prospects <span class="tab-count">0</span></div>
       <div class="tab fa-only" data-tab="business">Business <span class="tab-count">0</span></div>
@@ -168,17 +169,21 @@
         </svg>
         <span class="tab-count">0</span>
       </div>
-      <!-- Admin mode: the pipeline (pipeline.js), Products, and the admin's FA list (team.js) -->
-      <div class="tab admin-only" data-tab="open">Open <span class="tab-count">0</span></div>
-      <div class="tab admin-only" data-tab="submitted">Submitted <span class="tab-count">0</span></div>
-      <div class="tab admin-only" data-tab="products">Products <span class="tab-count">0</span></div>
-      <div class="tab admin-only" data-tab="team">FAs <span class="tab-count">0</span></div>
-      <div class="tab tab-icon admin-only" data-tab="resigned" title="Resigned">
+      <!-- Admin mode: Home and the pipeline (pipeline.js), the same width;
+           then a menu for Products (products.js) and Financial Advisers
+           (team.js). The menu's tab shows as active on either page. -->
+      <div class="tab admin-only" data-tab="open">Open cases <span class="tab-count">0</span></div>
+      <div class="tab admin-only" data-tab="submitted">Submitted cases <span class="tab-count">0</span></div>
+      <div class="tab tab-icon admin-only tab-menu" data-menu="products team" title="Products and Financial Advisers">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="18" x2="20" y2="18" />
         </svg>
-        <span class="tab-count">0</span>
+        <div class="tab-menu-list">
+          <button type="button" data-menu-tab="products">Products</button>
+          <button type="button" data-menu-tab="team">Financial Advisers</button>
+        </div>
       </div>
     </div>
 
@@ -234,11 +239,13 @@
 
       <!-- ===== ADMIN: FA LIST ===== -->
       <div class="tab-content" id="tab-team">
+        <div class="fa-views">
+          <button type="button" class="fa-view active" data-fa-view="active">Active <span class="tab-count">0</span></button>
+          <button type="button" class="fa-view" data-fa-view="left">Left <span class="tab-count">0</span></button>
+        </div>
         <div id="team-cards"></div>
+        <div id="left-cards" hidden></div>
         <button type="button" class="fab btn-add-fa" title="Add an FA" aria-label="Add an FA">+</button>
-      </div>
-      <div class="tab-content" id="tab-resigned">
-        <div id="resigned-cards"></div>
       </div>
 
       <!-- ===== ADMIN: PIPELINE (pipeline.js) ===== -->
@@ -280,23 +287,46 @@
       // signed in (data.js, on 'currentuser:changed').
       registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard });
 
-      // Tab switching
+      // Tab switching. tab: a tab element, or a page's name ('dashboard',
+      // 'products', …). A page reached from the admin's menu (data-menu)
+      // marks the menu's tab active.
       function activateTab(tab) {
-        document.querySelectorAll(".tab-bar .tab").forEach((t) => t.classList.remove("active"));
-        tab.classList.add("active");
+        const name = typeof tab === "string" ? tab : tab.dataset.tab;
+        const content = document.getElementById("tab-" + name);
+        if (!content) return;
+        document.querySelectorAll(".tab-bar .tab").forEach((t) => {
+          t.classList.toggle("active", t.dataset.tab === name || (t.dataset.menu || "").split(" ").includes(name));
+        });
         document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
-        document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
-        document.getElementById("month-bar-wrapper").classList.toggle("active", tab.dataset.tab === "dashboard");
-        document.getElementById("home-hero-wrapper").classList.toggle("active", tab.dataset.tab === "dashboard");
+        content.classList.add("active");
+        document.getElementById("month-bar-wrapper").classList.toggle("active", name === "dashboard");
+        document.getElementById("home-hero-wrapper").classList.toggle("active", name === "dashboard");
       }
-      document.querySelectorAll(".tab-bar .tab").forEach((tab) => {
+      document.querySelectorAll(".tab-bar .tab[data-tab]").forEach((tab) => {
         tab.addEventListener("click", () => activateTab(tab));
+      });
+
+      // The admin's menu tab: opens its list; picking one shows that page.
+      document.querySelectorAll(".tab-menu").forEach((menu) => {
+        menu.addEventListener("click", (e) => {
+          const item = e.target.closest("[data-menu-tab]");
+          if (item) {
+            menu.classList.remove("open");
+            activateTab(item.dataset.menuTab);
+            return;
+          }
+          menu.classList.toggle("open");
+        });
+      });
+      document.addEventListener("click", (e) => {
+        document.querySelectorAll(".tab-menu.open").forEach((m) => {
+          if (!m.contains(e.target)) m.classList.remove("open");
+        });
       });
 
       // Switch to a tab by name, e.g. after a client moves there.
       function showTab(name) {
-        const tab = document.querySelector('.tab-bar .tab[data-tab="' + name + '"]');
-        if (tab) activateTab(tab);
+        activateTab(name);
       }
 
       // Drag a card onto a tab heading to move it into that stage.

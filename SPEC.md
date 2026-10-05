@@ -114,13 +114,13 @@ Two tabs after Home, for what's coming in and from whom: **the whole team**, lik
 - Refreshed whenever the admin comes back to the app.
 
 ### Admin-only: FA list
-Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open · Submitted · Products · FAs · ⊘ Resigned** (the ⊘ is the same icon as Not Moved Forward; see [Products](#admin-only-products) below).
+Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open cases · Submitted cases**, all three the same width, then a **☰ menu** at the end with **Products** and **Financial Advisers** (the menu's tab shows as active on either page). The Financial Advisers page has two views at the top: **Active** and **Left**, each with its count.
 
 - **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N submitted** · an **edit** button at the far right.
 - **Clicking a row** opens that FA's open cases, read-only (one row open at a time), submitted ones first. Accepting is on the [Submitted tab](#admin-only-open-and-submitted).
-- **Edit** — name, surname, Validation target, and **Move to Resigned** (or **Bring back to FAs** from Resigned).
-- **Search:** in Admin mode the top bar's search box finds the admin's FAs ("Search FAs…"), active or resigned; picking one opens their tab with their row open.
-- **⊘ Resigned** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
+- **Edit** — name, surname, Validation target, and **Mark as left** (or **Bring back to Active** from Left).
+- **Search:** in Admin mode the top bar's search box finds the admin's FAs ("Search FAs…"), active or left; picking one opens Financial Advisers on the right view with their row open.
+- **Left** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
 - **Add FA** — the floating **+** in the bottom-right corner (name, surname, email, phone, Validation target) — creates their login with a temporary password, shown once to the admin to hand over (no email is sent). They're on that admin's list and branch, and choose their own password on first sign-in. Runs in the `add-fa` Edge Function, since creating a login needs the secret key.
 
 ### Admin-only: Products
@@ -263,7 +263,7 @@ Built as if the app had always worked this way — the old case status logs and 
 - **Admin** (Ameeth) — toggle **My book · Admin**. Manages the FAs on their list: accepts their cases, edits them, adds new ones.
 - **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin · Test**.
 
-**Viewing as** (super admin, Admin mode only): a picker beside the toggle — "Viewing: my own" or "Viewing as Ameeth Maharaj". It shows Admin mode as that admin sees it: their FA list and Resigned, their search, which Submitted cases they can accept. **Look only:** Accept, edit, resign and + are shown but greyed out. Products are shared, so they stay editable. Leaving Admin mode goes back to your own view.
+**Viewing as** (super admin, Admin mode only): a picker beside the toggle — "Viewing: my own" or "Viewing as Ameeth Maharaj". It shows Admin mode as that admin sees it: their Financial Advisers (Active and Left), their search, which Submitted cases they can accept. **Look only:** Accept, edit and + are shown but greyed out. Products are shared, so they stay editable. Leaving Admin mode goes back to your own view.
 
 Test works exactly like My book, but on the shared **Test Book** — a test user in the 'Test group' branch, owned by a login nobody signs in with. It never appears on the leaderboard or in team figures, the Review is never forced there, and a strip under the top bar says you're in it. Only the super admin can write to the Test Book, enforced in the database — `can_act_as` in schema.sql.
 

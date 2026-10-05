@@ -1,5 +1,6 @@
-// FA list: Admin mode's FAs and Resigned tabs — the FAs on the signed-in
-// admin's list (users.manager_id), like a client list but of people.
+// FA list: Admin mode's Financial Advisers page (from the tab bar's
+// menu) — the FAs on the signed-in admin's list (users.manager_id), like
+// a client list but of people, split into Active and Left.
 //
 // Collapsed row: name, branch, Validation target, how many open cases
 // they have and how many are submitted, and an edit button at the far
@@ -13,12 +14,13 @@
 //
 // Viewing as: the super admin can pick another admin from the picker
 // beside the mode toggle and see Admin mode as they do — their FA list,
-// which cases they can accept. Look only: Accept, edit, resign and + are
-// shown but greyed out (isLookOnly).
+// which cases they can accept. Look only: Accept, edit and + are shown
+// but greyed out (isLookOnly).
 //
-// Edit: name, surname and Validation target, and moving them to Resigned
-// (or back). Resigned FAs can't sign in and drop off the leaderboard;
-// their clients and history stay. The floating + creates a login for someone
+// Edit: name, surname and Validation target, and marking them as left
+// (or bringing them back). FAs who've left (users.is_active = false)
+// can't sign in and drop off the leaderboard; their clients and history
+// stay. The floating + creates a login for someone
 // new (the add-fa Edge Function) and shows their temporary password.
 //
 // Loaded whenever Admin mode is switched to; reads and writes go through
@@ -29,6 +31,31 @@ function _injectTeamCSS() {
   const s = document.createElement('style');
   s.id = 'team-styles';
   s.textContent = `
+    /* Financial Advisers: Active / Left. */
+    .fa-views {
+      display: inline-flex;
+      background: #d4d6d8;
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+      margin-bottom: 16px;
+    }
+    .fa-view {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      color: #4b5563;
+      cursor: pointer;
+    }
+    .fa-view.active { background: #ffffff; color: var(--navy); font-weight: 600; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+
     .fa-row {
       background: #f2f2f0;
       border: 1px solid rgba(0, 0, 0, 0.08);
@@ -254,16 +281,26 @@ function _renderTeamList(containerId, fas, emptyText) {
     : `<div class="fa-list-empty">${emptyText}</div>`;
 }
 
+// Which list the Financial Advisers page shows: 'active' or 'left'.
+let _faView = 'active';
+
 function _renderTeam() {
-  _renderTeamList('team-cards', _teamFas.filter(f => f.is_active), 'No FAs on your list yet. Use + (bottom right) to add one.');
-  _renderTeamList('resigned-cards', _teamFas.filter(f => !f.is_active), 'Nobody on your list has resigned.');
-  updateTabCount(document.getElementById('tab-team'));      // index.html
-  updateTabCount(document.getElementById('tab-resigned'));
+  const active = _teamFas.filter(f => f.is_active);
+  const left = _teamFas.filter(f => !f.is_active);
+  _renderTeamList('team-cards', active, 'No FAs on your list yet. Use + (bottom right) to add one.');
+  _renderTeamList('left-cards', left, 'Nobody on your list has left.');
+  document.getElementById('team-cards')?.toggleAttribute('hidden', _faView !== 'active');
+  document.getElementById('left-cards')?.toggleAttribute('hidden', _faView !== 'left');
+  document.querySelectorAll('[data-fa-view]').forEach(b => {
+    b.classList.toggle('active', b.dataset.faView === _faView);
+    const count = b.querySelector('.tab-count');
+    if (count) count.textContent = (b.dataset.faView === 'active' ? active : left).length;
+  });
   document.dispatchEvent(new CustomEvent('team:changed'));  // the Open and Submitted tabs
 }
 
 // For the Open and Submitted tabs (pipeline.js): the whole team, like
-// Home's figures — every FA (active and resigned), the Test Book only if
+// Home's figures — every FA (active and left), the Test Book only if
 // it's on the admin's own list — and their open cases.
 function getTeamFas() {
   return _pipelineFas;
@@ -352,14 +389,16 @@ function getFaRecords() {
   return _teamFas.map(fa => ({
     id: fa.id,
     name: _faName(fa),
-    tab: fa.is_active ? 'team' : 'resigned',
-    tabLabel: fa.is_active ? 'FAs' : 'Resigned',
+    tab: 'team',
+    tabLabel: fa.is_active ? 'Active' : 'Left',
   }));
 }
 
 // Opens one FA's row (closing any other) and scrolls to it — used by
 // search. Their tab should already be showing.
 function openFaRow(id) {
+  const fa = _teamFas.find(f => f.id === id);
+  if (fa) _faView = fa.is_active ? 'active' : 'left';
   _teamOpenId = id;
   _renderTeam();
   document.querySelector(`.fa-row[data-fa-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -484,14 +523,14 @@ async function _editFa(fa) {
     _checkName(v);
     await dbUpdateFa(fa.id, { name: v.name, surname: v.surname, pcrTarget: v.pcrTarget, active });
   };
-  const resign = async v => {
+  const markLeft = async v => {
     _checkName(v);
     const open = _faCases(fa.id).length;
     const ok = await showChoiceDialog({
-      title: `Move ${fa.name} to Resigned?`,
+      title: `Mark ${fa.name} as left?`,
       message: `${_faName(fa)} won't be able to sign in and comes off the leaderboard. Their clients and history are kept.`
         + (open ? ` They still have ${open} open case${open === 1 ? '' : 's'}.` : ''),
-      choices: [{ label: 'Cancel', value: null }, { label: 'Move to Resigned', value: true, primary: true }],
+      choices: [{ label: 'Cancel', value: null }, { label: 'Mark as left', value: true, primary: true }],
     });
     if (!ok) return false;
     await save(v, false);
@@ -506,8 +545,8 @@ async function _editFa(fa) {
     submitLabel: 'Save',
     onSubmit: v => save(v, fa.is_active),
     extra: fa.is_active
-      ? { label: 'Move to Resigned', onClick: resign }
-      : { label: 'Bring back to FAs', className: 'back', onClick: v => save(v, true) },
+      ? { label: 'Mark as left', onClick: markLeft }
+      : { label: 'Bring back to Active', className: 'back', onClick: v => save(v, true) },
   });
   if (!saved) return;
   await loadTeam();
@@ -560,6 +599,13 @@ function initTeam(root) {
     if (isLookOnly() && e.target.closest('.btn-add-fa, [data-fa-edit], [data-accept]')) return;
     if (e.target.closest('.btn-add-fa')) {
       _addFa().catch(showSaveError);
+      return;
+    }
+    const view = e.target.closest('[data-fa-view]');
+    if (view) {
+      _faView = view.dataset.faView;
+      _teamOpenId = null;
+      _renderTeam();
       return;
     }
     const row = e.target.closest('.fa-row');

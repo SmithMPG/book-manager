@@ -406,8 +406,6 @@ async function dbDeleteCase(id) {
 
 // ---------- FA list (admins: team.js) ----------
 
-// The FAs on the signed-in admin's list (users.manager_id), active and
-// resigned.
 // Everyone (admins read every users row): the FA list filters to the
 // admin's own (manager_id), the Open and Submitted tabs show the team.
 async function dbLoadFas() {
@@ -782,7 +780,7 @@ document.addEventListener('appmodechange', async e => {
   _adminDays.clear();
   _adminFocusId = null;
   setMonthBarSelection(mode === 'admin' ? _adminSelection : null);
-  // Each mode has its own tabs (Admin: Home, FAs, Resigned), so start
+  // Each mode has its own tabs (Admin: Home, Open and Submitted cases, and a menu), so start
   // on Home.
   showTab('dashboard');
   if (!currentUser || !switched) return;

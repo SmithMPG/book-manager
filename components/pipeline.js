@@ -139,7 +139,7 @@ function _renderPipeline(part) {
       <div class="pl-fa">
         <div class="pl-fa-head">
           <div class="name"><b>${_escHtml(fa.name)}</b><span>${_escHtml(fa.surname)}</span></div>
-          ${fa.is_active ? '' : '<span>Resigned</span>'}
+          ${fa.is_active ? '' : '<span>Left</span>'}
           ${acceptedBy}
           <span class="spacer"></span>
           <span class="pl-total">${own.length} case${own.length === 1 ? '' : 's'} · PCR <b>${formatNumber(pcr)}</b></span>

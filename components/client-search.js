@@ -2,7 +2,7 @@
 // FA's clients whose name matches, from every tab, each with the tab
 // it's in. Picking one (click, or ↑ ↓ and Enter) switches to that tab
 // and opens the client's card. In Admin mode it searches the admin's FAs
-// instead ("Search FAs…", FAs and Resigned — team.js), and picking one
+// instead ("Search FAs…", active and left — team.js), and picking one
 // opens their row. Every word typed has to match the start
 // of the first name or surname, in any order ("smi ge" finds Gert Smith).
 

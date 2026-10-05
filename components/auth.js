@@ -215,7 +215,7 @@ async function _renderAuthState() {
   // rather than risk letting someone in we're not sure about.
   const user = await _fetchCurrentUser(session.user.id);
 
-  // Resigned (moved there by their manager, team.js): no way in. Signing
+  // Left (marked so by their manager, team.js): no way in. Signing
   // out re-runs this and shows the login screen; the message goes on it.
   if (user && !user.is_active) {
     await supabaseClient.auth.signOut();

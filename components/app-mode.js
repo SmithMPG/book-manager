@@ -20,7 +20,7 @@
 // carry class="admin-only" and it's hidden outside admin mode.
 //
 // Admin mode has its own tabs — Home, for the whole team (see data.js),
-// and the admin's FA list: FAs and Resigned (team.js) — and none of the
+// and the menu's Products and Financial Advisers (products.js, team.js) — and none of the
 // FA's own tools (the Review); the search box finds FAs instead of
 // clients (client-search.js). Tabs that are only for
 // working on a book carry class="fa-only".
