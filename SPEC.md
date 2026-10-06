@@ -172,6 +172,7 @@ Today's products: Risk and Educator are **Risk**; RA Builder is **RA Builder**; 
 **No close-off for today's month** (not set yet): the app keeps showing the last month it has, and admins see a strip under the top bar: "No close-off date for this month yet — set it under ☰ → Calendar."
 
 **Home (admin, the whole team): week rings** — replace the team PCR meter.
+- **Drawn like the PCR meter:** each ring is open at the bottom, with "PCR's" in the opening, **0** at the bottom left and the **weekly target** at the bottom right (beside the outermost ring), and the month's name underneath.
 - **Rings grow outward through the month.** Week 1 is the inner ring; at the start of each new week another ring is added around the outside for it. So in week 3 there are three rings, the outermost being this week. A past month shows all its weeks' rings.
 - Each ring fills with that week's **submitted PCR** against the month's **weekly submission target**:
   - **Met** — full, green.

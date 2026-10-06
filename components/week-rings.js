@@ -2,6 +2,9 @@
 // one ring per week of the business month, against that month's weekly
 // submission target (the Calendar, calendar.js).
 //
+// Drawn like the PCR meter (pcr-meter.js, whose arc helpers and label
+// styles it uses): each ring is open at the bottom, with "PCR's" in the
+// gap, 0 at the bottom left and the weekly target at the bottom right.
 // The rings grow outward through the month: Week 1 is the inner ring,
 // and each new week adds a ring around the outside, so the outermost is
 // this week. A past month shows all its weeks. Each ring fills with the
@@ -12,7 +15,7 @@
 //   none     no target set — just the track
 // The centre: this week's PCR against the target (a past month: the
 // month's total against its weeks' targets). Under the rings, a key with
-// each week's figures, then the month.
+// each week's figures; the month's name under the rings, as the meter.
 //
 // data.js works the weeks out and hands them over with update().
 
@@ -24,13 +27,11 @@ function _injectWeekRingsCSS() {
     .week-rings { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
     .week-rings[hidden] { display: none; }
     .wr-svg { width: 100%; max-width: 280px; }
-    .wr-svg circle { fill: none; }
-    .wr-track { stroke: var(--track-light); }
-    .wr-fill { stroke-linecap: round; transition: stroke-dasharray 0.3s ease; }
+    .wr-svg path { fill: none; stroke-linecap: round; }
     .wr-fill.met { stroke: var(--green); }
     .wr-fill.current { stroke: var(--gold); }
     .wr-fill.missed { stroke: var(--red); }
-    .wr-value { fill: var(--ink); font-size: 24px; font-weight: 700; font-family: inherit; }
+    .wr-value { fill: var(--ink); font-size: 26px; font-weight: 700; font-family: inherit; }
     .wr-of, .wr-note { fill: var(--ink-dim); font-size: 12px; font-family: inherit; }
 
     .wr-key { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-dim); min-width: 220px; }
@@ -40,16 +41,25 @@ function _injectWeekRingsCSS() {
     .wr-dot.current { background: var(--gold); }
     .wr-dot.missed { background: var(--red); }
     .wr-key b { color: var(--ink); font-weight: 600; }
-    .wr-period { margin-top: 6px; font-size: 14px; font-weight: 600; color: var(--ink-dim); text-align: center; }
   `;
   document.head.appendChild(s);
 }
 _injectWeekRingsCSS();
 
-const _WR_SIZE = 300;
-const _WR_INNER = 62;  // Week 1's radius
-const _WR_STEP = 17;   // each later week's ring sits this much further out
-const _WR_WIDTH = 12;
+// The same frame and space as the PCR meter (pcr-meter.js _renderSingle):
+// its ring is 20 thick at radius 100, so its outer edge is 110. The week
+// rings share the space inside that edge: one week is drawn exactly like
+// the meter; each added week goes round the outside and they all get
+// thinner, down to what fits between _WR_BAND_INNER and the edge. 0, the
+// target, "PCR's" and the month sit where the meter has them.
+const _WR_SIZE = 280;
+const _WR_OUTER_EDGE = 110;
+const _WR_BAND_INNER = 64;   // inner edge with the most weeks (the centre text sits inside)
+const _WR_MAX_WIDTH = 20;    // the meter's thickness
+const _WR_RING_GAP = 3;      // between rings
+const _WR_GAP = 60;    // the opening at the bottom, in degrees, as the meter's
+const _WR_START = 180 + _WR_GAP / 2;
+const _WR_END = 180 - _WR_GAP / 2 + 360;
 
 class WeekRings {
   constructor(container) {
@@ -73,16 +83,30 @@ class WeekRings {
   render() {
     const { weeks, target, centre, periodLabel } = this.config;
     const c = _WR_SIZE / 2;
+    // n rings fill the band from the outer edge inward, Week 1 innermost.
+    const n = Math.max(weeks.length, 1);
+    const width = Math.min(_WR_MAX_WIDTH, (_WR_OUTER_EDGE - _WR_BAND_INNER - _WR_RING_GAP * (n - 1)) / n);
+    const radius = i => _WR_OUTER_EDGE - width / 2 - (n - 1 - i) * (width + _WR_RING_GAP);
+    const arc = (r, a1, a2, cls) =>
+      (a2 - a1 > 0.05 ? `<path class="${cls}" d="${pcrDescribeArc(c, c, r, a1, a2)}" stroke-width="${width.toFixed(1)}" />` : '');
     const rings = weeks.map((w, i) => {
-      const r = _WR_INNER + i * _WR_STEP;
-      const circ = 2 * Math.PI * r;
+      const r = radius(i);
       const frac = target ? Math.min(w.pcr / target, 1) : 0;
-      const fill = frac > 0
-        ? `<circle class="wr-fill ${w.state}" cx="${c}" cy="${c}" r="${r}" stroke-width="${_WR_WIDTH}"
-             stroke-dasharray="${(circ * frac).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${c} ${c})" />`
-        : '';
-      return `<circle class="wr-track" cx="${c}" cy="${c}" r="${r}" stroke-width="${_WR_WIDTH}" />${fill}`;
+      return arc(r, _WR_START, _WR_END, 'pcr-track')
+        + arc(r, _WR_START, _WR_START + (_WR_END - _WR_START) * frac, `wr-fill ${w.state}`);
     }).join('');
+
+    // 0 and the target sit just outside the ring ends, and "PCR's" in the
+    // opening — the meter's places (its radius 100).
+    const tickR = _WR_OUTER_EDGE + 16;
+    const t0 = pcrPolarToCartesian(c, c, tickR, _WR_START);
+    const t1 = pcrPolarToCartesian(c, c, tickR, _WR_END);
+    const ticks = weeks.length ? `
+      <text x="${t0.x}" y="${t0.y}" class="pcr-tick" text-anchor="middle">0</text>
+      <text x="${t1.x}" y="${t1.y}" class="pcr-tick" text-anchor="middle">${target ? pcrFormatCompact(target) : '–'}</text>
+    ` : '';
+    const headingY = c + 100 * 0.92;
+
     const tick = w => (w.state === 'met' ? ' ✓' : '');
     const key = weeks.map(w => `
       <div class="wr-key-row">
@@ -91,16 +115,18 @@ class WeekRings {
       </div>
     `).join('');
     this.container.innerHTML = `
-      <svg viewBox="0 0 ${_WR_SIZE} ${_WR_SIZE}" class="wr-svg" role="img" aria-label="Submitted PCR's by week">
+      <svg viewBox="0 0 ${_WR_SIZE} ${_WR_SIZE + 46}" class="wr-svg" role="img" aria-label="Submitted PCR's by week">
         ${rings}
+        ${ticks}
         ${centre ? `
-          <text x="${c}" y="${c - 6}" class="wr-value" text-anchor="middle">${_escHtml(centre.value)}</text>
-          <text x="${c}" y="${c + 14}" class="wr-of" text-anchor="middle">${_escHtml(centre.of || '')}</text>
-          <text x="${c}" y="${c + 30}" class="wr-note" text-anchor="middle">${_escHtml(centre.note || '')}</text>
+          <text x="${c}" y="${c - 10}" class="wr-value" text-anchor="middle">${_escHtml(centre.value)}</text>
+          <text x="${c}" y="${c + 12}" class="wr-of" text-anchor="middle">${_escHtml(centre.of || '')}</text>
+          <text x="${c}" y="${c + 28}" class="wr-note" text-anchor="middle">${_escHtml(centre.note || '')}</text>
         ` : ''}
+        <text x="${c}" y="${headingY}" class="pcr-heading" text-anchor="middle">PCR&#8217;s</text>
+        ${periodLabel ? `<text x="${c}" y="${_WR_SIZE + 4}" class="pcr-period" text-anchor="middle">${_escHtml(periodLabel)}</text>` : ''}
       </svg>
       ${key ? `<div class="wr-key">${key}</div>` : ''}
-      ${periodLabel ? `<div class="wr-period">${_escHtml(periodLabel)}</div>` : ''}
     `;
   }
 }
