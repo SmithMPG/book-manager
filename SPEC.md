@@ -86,7 +86,7 @@ Nav: Dashboard / Clients / Prospects / Not Moved Forward &middot; Commission Tra
    - Live pipeline (count of clients mid-funnel, expands to stage breakdown — this is what replaced the monthly pledge)
    - Cases submitted MTD vs minimum standard
    - Only one detail panel open at a time.
-3. **Leaderboard** — the team, ranked by Accepted PCR's MTD (replaces the daily production email). Shows the main five columns: **Prospects, Meetings, Cases submitted, Submitted PCR's, Accepted PCR's**; **Show all** on its title line adds Referrals, Wills Leads, FNAs and Quotes.
+3. **Leaderboard** — the team, ranked by Accepted PCR's MTD (replaces the daily production email). Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures. Shows the main five columns: **Prospects, Meetings, Cases submitted, Submitted PCR's, Accepted PCR's**; **Show all** on its title line adds Referrals, Wills Leads, FNAs and Quotes.
 
 **Admin view's stats column** (the team, or the FA picked on the leaderboard), each case row a count and its PCR: **Open cases** and **Submitted cases** — the pipeline right now (open but not yet submitted; submitted, waiting to be accepted), not affected by the month bar — then **Cases Accepted** this month (or the picked days), **Wills Leads** and **Referrals**. (The FA's own column keeps commission in the Pot, PCR's in the Pot and expected commission.) The admin's **PCR meter** shows the PCR on the team's **submitted cases waiting to be accepted** (the Submitted cases row) against the fixed team target (10m); with an FA picked, it's their meter (Accepted PCR's against Validation).
 

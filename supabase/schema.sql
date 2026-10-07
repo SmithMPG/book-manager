@@ -63,6 +63,9 @@ create table users (
   is_admin    boolean not null default false, -- sees everyone's data, not just their own
   is_super_admin boolean not null default false, -- an admin who can also use the Test Book
   is_active   boolean not null default true,  -- false = "left", data retained
+  on_leaderboard boolean not null default true, -- false for a manager who doesn't
+                                                -- sell (Ameeth): left off the
+                                                -- leaderboard and team figures
   branch      text,                           -- open-ended, not a fixed list — the
                                                 -- office (e.g. "Bryanston"), plus
                                                 -- "Test group" for the Test Book,
@@ -497,7 +500,7 @@ as $$
       coalesce((select (a.details->>'noActivity')::boolean from public.activities a
         where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date), false) as "noActivity"
     from public.users u
-    where u.is_active and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
+    where u.is_active and u.on_leaderboard and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
   ) t;
 $$;
 
