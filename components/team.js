@@ -414,41 +414,47 @@ async function acceptTeamCase(caseId, btn) {
   const fa = c && _pipelineFas.find(f => f.id === c.faId);
   if (!canAcceptFor(fa)) return;
   const lastOpen = !_teamCases.some(k => k.id !== c.id && k.clientId === c.clientId);
-  const ok = await showChoiceDialog({
-    title: 'Accept this case?',
-    message: `Accept ${c.clientName}'s ${c.type} case for ${_faName(fa)}?`
+  // The final PCR: what it was accepted at — the PCR worked out from its
+  // premiums unless the manager changes it.
+  btn.disabled = true;
+  const accepted = await _faFormDialog({
+    title: `Accept ${c.clientName}'s ${c.type}`,
+    message: `For ${_faName(fa)}. The final PCR starts as the one worked out from the premiums; change it if the case was accepted at a different value.`
       + (lastOpen ? ` It's ${c.clientName}'s last open case, so they'll move to ${fa.name}'s Clients tab.` : '')
       + " This can't be undone.",
-    choices: [{ label: 'Cancel', value: null }, { label: 'Accept', value: true, primary: true }],
+    fields: [{ key: 'finalPcr', label: 'Final PCR', money: true, value: Math.round(casePcr(c)) }],
+    submitLabel: 'Accept',
+    onSubmit: async v => {
+      if (v.finalPcr === null) throw new Error('Enter the final PCR (0 if there is none).');
+      await dbSetCaseStage(c.id, 'accepted', _todayIso(), v.finalPcr);
+    },
   });
-  if (!ok) return;
-  btn.disabled = true;
-  try {
-    await dbSetCaseStage(c.id, 'accepted', _todayIso());
-    _teamCases = _teamCases.filter(k => k.id !== c.id);
-    _renderTeam(); // the Submitted tab redraws too ('team:changed')
-    await refreshDashboard();
-  } catch (err) {
+  if (!accepted) {
     btn.disabled = false;
-    showSaveError(err);
+    return;
   }
+  _teamCases = _teamCases.filter(k => k.id !== c.id);
+  _renderTeam(); // the Submitted tab redraws too ('team:changed')
+  await refreshDashboard().catch(showSaveError);
 }
 
 // ---------- edit / add ----------
 
 // A popup with a form (also the Products tab's, products.js). fields:
 // [{key, label, type?, money?, options?: [{value, label}], value?,
-// placeholder?}] — options makes it a dropdown. onSubmit(values) saves and returns nothing, or throws
+// placeholder?}] — options makes it a dropdown. message: optional text
+// above the fields. onSubmit(values) saves and returns nothing, or throws
 // to show its message and stay open. extra: an optional link at the
 // bottom left, {label, className, onClick(values, close)}. Resolves true
 // once saved (or extra finished), false if cancelled.
-function _faFormDialog({ title, fields, submitLabel, onSubmit, extra }) {
+function _faFormDialog({ title, message, fields, submitLabel, onSubmit, extra }) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'cd-overlay';
     overlay.innerHTML = `
       <div class="cd-modal" role="dialog" aria-modal="true">
         <h3 class="cd-title">${_escHtml(title)}</h3>
+        ${message ? `<p class="cd-message">${_escHtml(message)}</p>` : ''}
         <form class="fa-form" novalidate>
           ${fields.map(f => `
             <label>${_escHtml(f.label)}

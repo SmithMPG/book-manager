@@ -56,6 +56,7 @@ function _injectCardItemsCSS() {
     .cc-next { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .cc-body { display: none; }
     .cc.expanded .cc-body { display: block; }
+    .cc-closed { font-size: 13px; color: var(--ink); }
     .cc-check-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); margin-bottom: 8px; }
     .cc-badge {
       flex-shrink: 0;
@@ -413,7 +414,12 @@ function _caseEntryText(c, details, { withoutType = false } = {}) {
     if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
     if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% upfront advice fee`);
   }
-  parts.push(`PCR ${formatNumber(casePcr(c))}`, `Commission ${formatRand(caseUpfrontCommission(c))}`);
+  if (event === 'accepted' && details.finalPcr != null) {
+    parts.push(`Final PCR ${formatNumber(details.finalPcr)}`);
+  } else {
+    parts.push(`PCR ${formatNumber(casePcr(c))}`);
+  }
+  parts.push(`Commission ${formatRand(caseUpfrontCommission(c))}`);
   return parts.join(' · ');
 }
 
@@ -518,16 +524,21 @@ function _caseChecklistHTML(data, c, editable) {
   `).join('')}</div>`;
 }
 
-// Opened up: the checklist (to tick while open; read-only once closed)
-// and Delete case while it's open.
+// Opened up: while open, the checklist to tick and Delete case. Closed,
+// just what it was closed with — its premiums and PCRs (the one worked
+// out from the premiums, and the final PCR it was accepted at).
 function _caseBodyHTML(data, c) {
-  const open = isOpenCase(c);
+  if (!isOpenCase(c)) {
+    const figures = [_caseAmountsText(c), `PCR worked out ${formatNumber(casePcr(c))}`];
+    if (c.finalPcr != null) figures.push(`Final PCR ${formatNumber(c.finalPcr)}`);
+    return `<div class="cc-closed">${_escHtml(figures.filter(Boolean).join(' · '))}</div>`;
+  }
   const done = caseChecklistDone(c);
   const total = caseChecklistItems(c).length;
   return `
-    <div class="cc-check-title">Checklist ${done}/${total}${open ? '' : ' · as it was when it closed'}</div>
-    ${_caseChecklistHTML(data, c, open)}
-    ${open ? `<div class="cb-actions"><button type="button" class="cb-link danger" data-action="delete-case" data-client="${data.id}" data-case="${c.id}">Delete case</button></div>` : ''}
+    <div class="cc-check-title">Checklist ${done}/${total}</div>
+    ${_caseChecklistHTML(data, c, true)}
+    <div class="cb-actions"><button type="button" class="cb-link danger" data-action="delete-case" data-client="${data.id}" data-case="${c.id}">Delete case</button></div>
   `;
 }
 
@@ -573,7 +584,7 @@ function caseCardHTML(data, c, inCaseView) {
       <div class="cc-head" data-action="toggle-case" data-case="${c.id}">
         <span class="cc-name">${_escHtml(c.type)}</span>
         <span class="cc-amounts">${_escHtml(_caseAmountsText(c))}</span>
-        <span class="cc-pcr">PCR ${formatNumber(casePcr(c))}</span>
+        <span class="cc-pcr">${c.stage === 'accepted' ? `Final PCR ${formatNumber(caseAcceptedPcr(c))}` : `PCR ${formatNumber(casePcr(c))}`}</span>
         ${edit}
         <span class="cc-next">${_caseNextHTML(data, c)}</span>
       </div>
@@ -843,8 +854,8 @@ async function _saveAddForm(form) {
     saveBtn.disabled = true;
     const d = getClientData(clientId);
     const choice = await showChoiceDialog({
-      title: 'Move to Business?',
-      message: `Opening this case will move ${d.firstName} ${d.lastName} to the Business tab.`,
+      title: 'Move to Open Cases?',
+      message: `Opening this case will move ${d.firstName} ${d.lastName} to the Open Cases tab.`,
       choices: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'move', primary: true }],
     });
     saveBtn.disabled = false;
@@ -1020,7 +1031,7 @@ async function syncTabAfterCaseChange(clientId) {
   } else if (!open && tab === 'business') {
     const next = await showChoiceDialog({
       title: 'No open cases left',
-      message: `${d.firstName} ${d.lastName} has no open cases, so they're leaving the Business tab. Where should they go?`,
+      message: `${d.firstName} ${d.lastName} has no open cases, so they're leaving the Open Cases tab. Where should they go?`,
       choices: [
         { label: 'Prospects', value: 'prospects' },
         { label: 'Not Moved Forward', value: 'not-moved' },

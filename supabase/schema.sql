@@ -160,9 +160,12 @@ create table months (
 -- {"id": true, "bankProof": true}.
 -- While open, case_type (the product's name) and product_type follow
 -- the product (_product_change_follows_open_cases). On closing they're
--- frozen, and closed_snapshot keeps the checklist as it was:
--- {checklist: [{key, label}…]} — so editing or
--- deleting the product afterwards never changes a closed case.
+-- frozen, so editing or deleting the product afterwards never changes a
+-- closed case — which keeps just that: its product, its premiums and
+-- its PCRs (the one worked out from the premiums, and final_pcr).
+-- final_pcr: set by the manager when accepting — what the case was
+-- actually accepted at, which can differ from the PCR worked out from
+-- its premiums (casePcr in constants.js). Accepted PCR counts this.
 -- ---------------------------------------------------------------------
 create table cases (
   id                  uuid primary key default gen_random_uuid(),
@@ -180,7 +183,7 @@ create table cases (
   monthly             numeric,
   advice_fee_percent  numeric,
   checklist           jsonb not null default '{}'::jsonb,
-  closed_snapshot     jsonb,
+  final_pcr           numeric check (final_pcr is null or final_pcr >= 0),
   created_at          timestamptz not null default now()
 );
 create index cases_fa_id_idx on cases(fa_id);
@@ -468,7 +471,8 @@ as $$
       (select coalesce(jsonb_agg(jsonb_build_object(
           'productType', x.product_type, 'submitted', x.submitted,
           'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
-          'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly)), '[]'::jsonb)
+          'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly,
+          'acceptedFinalPcr', x.accepted_final_pcr)), '[]'::jsonb)
         from (
           select c.product_type,
             count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
@@ -476,8 +480,12 @@ as $$
             -- has happened to it since.
             coalesce(sum(c.lump_sum) filter (where c.submitted_at = any(p_dates)), 0) as submitted_lump_sum,
             coalesce(sum(c.monthly)  filter (where c.submitted_at = any(p_dates)), 0) as submitted_monthly,
-            coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_monthly
+            -- Accepted PCR: the final PCR where the manager set one; the
+            -- premiums (PCR worked out in the app) for cases accepted
+            -- before there was one.
+            coalesce(sum(c.final_pcr) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_final_pcr,
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates) and c.final_pcr is null), 0) as accepted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates) and c.final_pcr is null), 0) as accepted_monthly
           from public.cases c where c.fa_id = u.id
           group by c.product_type
         ) x) as cases,
@@ -509,9 +517,11 @@ grant execute on function public.leaderboard(date[], date, uuid) to authenticate
 -- never the FA's own; every other change is the FA's (can_act_as).
 -- set_case_stage runs as definer so a manager can do that for an FA whose
 -- rows RLS won't let them write — it checks who may do what itself.
--- Accepting the client's last open case also moves them to Clients, the
--- only place an accepted client goes. The timeline entry stays the FA's
--- (fa_id), with who accepted it in details.acceptedBy.
+-- Accepting takes the final PCR (p_final_pcr — the app offers the PCR
+-- worked out from the premiums, which the manager can change) and the
+-- client's last open case also moves them to Clients, the only place an
+-- accepted client goes. The timeline entry stays the FA's (fa_id), with
+-- who accepted it and the final PCR in details (acceptedBy, finalPcr).
 -- ---------------------------------------------------------------------
 drop function if exists public.open_case(uuid, text, numeric, numeric, numeric, date);
 create or replace function public.open_case(
@@ -542,7 +552,8 @@ begin
 end;
 $$;
 
-create or replace function public.set_case_stage(p_case_id uuid, p_stage text, p_date date)
+drop function if exists public.set_case_stage(uuid, text, date);
+create or replace function public.set_case_stage(p_case_id uuid, p_stage text, p_date date, p_final_pcr numeric default null)
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $$
@@ -563,21 +574,20 @@ begin
        or (c.stage = 'submitted' and p_stage in ('accepted', 'not-taken-up'))) then
     raise exception 'A case that is % can''t be marked %.', c.stage, p_stage;
   end if;
+  if p_stage = 'accepted' and (p_final_pcr is null or p_final_pcr < 0) then
+    raise exception 'Accepting a case needs its final PCR.';
+  end if;
 
   update public.cases set
     stage        = p_stage,
     submitted_at = case when p_stage = 'submitted' then p_date else submitted_at end,
     accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end,
-    -- Closing: keep the product's checklist as it is now.
-    closed_snapshot = case when p_stage in ('accepted', 'not-taken-up') then jsonb_build_object(
-      'checklist', coalesce((select jsonb_agg(jsonb_build_object('key', i.key, 'label', i.label) order by i.sort_order)
-                             from public.product_checklist_items i where i.product_id = c.product_id), '[]'::jsonb)
-    ) else closed_snapshot end
+    final_pcr    = case when p_stage = 'accepted' then p_final_pcr else final_pcr end
   where id = p_case_id
   returning * into c;
   v_details := jsonb_build_object('event', p_stage);
   if p_stage = 'accepted' then
-    v_details := v_details || jsonb_build_object('acceptedBy', auth.uid());
+    v_details := v_details || jsonb_build_object('acceptedBy', auth.uid(), 'finalPcr', p_final_pcr);
     if not exists (select 1 from public.cases
                    where client_id = c.client_id and stage in ('opened', 'submitted')) then
       update public.clients set tab = 'clients' where id = c.client_id;
@@ -657,5 +667,5 @@ grant execute on function public.amend_case(uuid, numeric, numeric, numeric, dat
 
 revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) from public, anon;
 grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) to authenticated;
-revoke execute on function public.set_case_stage(uuid, text, date) from public, anon;
-grant execute on function public.set_case_stage(uuid, text, date) to authenticated;
+revoke execute on function public.set_case_stage(uuid, text, date, numeric) from public, anon;
+grant execute on function public.set_case_stage(uuid, text, date, numeric) to authenticated;

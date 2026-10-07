@@ -213,7 +213,7 @@ function clientCardHTML(data) {
 const CLIENT_STORE = new Map();
 const CLIENT_TAB_LABELS = {
   prospects: 'Prospects',
-  business: 'Business',
+  business: 'Open Cases', // the "business" tab, shown as Open Cases
   clients: 'Clients',
   'not-moved': 'Not Moved Forward',
 };

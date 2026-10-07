@@ -259,10 +259,10 @@ function getProduct(id) {
   return _products.find(p => p.id === id) || null;
 }
 
-// A case's checklist: what was saved when it closed, or (while open) its
-// product's as it is now. [{key, label}]
+// A case's checklist: its product's as it is now. (Only open cases show
+// one — a closed case keeps just its product, premiums and PCRs.)
+// [{key, label}]
 function caseChecklistItems(c) {
-  if (c.closedSnapshot?.checklist) return _alphabetical(c.closedSnapshot.checklist);
   return getProduct(c.productId)?.checklist || _alphabetical(CASE_CHECKLIST);
 }
 
@@ -278,7 +278,7 @@ function caseItem(c) {
     type: c.case_type,          // the product's name
     productId: c.product_id,
     productType: c.product_type,
-    closedSnapshot: c.closed_snapshot,
+    finalPcr: c.final_pcr == null ? null : Number(c.final_pcr), // set when accepted
     stage: c.stage,
     openedAt: c.opened_at,
     submittedAt: c.submitted_at,
@@ -406,9 +406,12 @@ async function dbOpenCase(clientId, fields, date) {
 }
 
 // Moves a case to its next stage ('submitted', 'accepted' or
-// 'not-taken-up') and adds that to the timeline. Returns {case, activity}.
-async function dbSetCaseStage(caseId, stage, date) {
-  const r = _dbOk(await supabaseClient.rpc('set_case_stage', { p_case_id: caseId, p_stage: stage, p_date: date }));
+// 'not-taken-up') and adds that to the timeline. finalPcr: accepting
+// only — the PCR it was accepted at. Returns {case, activity}.
+async function dbSetCaseStage(caseId, stage, date, finalPcr = null) {
+  const r = _dbOk(await supabaseClient.rpc('set_case_stage', {
+    p_case_id: caseId, p_stage: stage, p_date: date, p_final_pcr: finalPcr,
+  }));
   return { case: caseItem(r.case), activity: activityItem(r.activity) };
 }
 
@@ -559,7 +562,10 @@ function _repFromLeaderboardRow(row) {
   const m = row.meetings || {};
   const cases = row.cases || [];
   const sum = (pred, fn) => cases.filter(pred).reduce((t, c) => t + fn(c), 0);
-  const pcrOf = c => casePcr({ productType: c.productType, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
+  // Accepted PCR: final PCRs as set on accepting, plus the PCR worked out
+  // from the premiums of cases accepted before there was one.
+  const pcrOf = c => (Number(c.acceptedFinalPcr) || 0)
+    + casePcr({ productType: c.productType, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
   const submittedPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
@@ -659,9 +665,9 @@ function onDashboardPeriodChange() {
 
 function _businessCasesHTML(rep) {
   const open = (_dash?.teamCases || []).filter(c => c.faId === rep.id && isOpenCase(c) && c.tab === 'business');
-  if (!open.length) return '<div class="lb-detail-empty">No open cases in Business.</div>';
+  if (!open.length) return '<div class="lb-detail-empty">No open cases.</div>';
   return `
-    <div class="lb-detail-title">Business tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
+    <div class="lb-detail-title">Open Cases tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
     ${open.map(c => `
       <div class="lb-detail-row">
         <span class="lb-detail-client">${_escHtml(c.clientName)}</span>

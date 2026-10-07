@@ -3,8 +3,8 @@
 // carries on (moving a client between tabs, mainly).
 //
 //   const choice = await showChoiceDialog({
-//     title: 'Move to Business?',
-//     message: 'Saving this case will move the client to the Business tab.',
+//     title: 'Move to Open Cases?',
+//     message: 'Saving this case will move the client to the Open Cases tab.',
 //     choices: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'move', primary: true }],
 //     dismissable: true,   // Esc / clicking outside resolves null; default true
 //   });

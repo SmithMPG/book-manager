@@ -85,6 +85,13 @@ function casePcr(item) {
   }
 }
 
+// The PCR a case counts once accepted: the final PCR the manager set on
+// accepting it, or (accepted before there was one) the PCR worked out
+// from its premiums.
+function caseAcceptedPcr(c) {
+  return c.finalPcr != null ? Number(c.finalPcr) : casePcr(c);
+}
+
 // Leaderboard/PCR split: Risk products vs everything else.
 function caseIsRisk(productType) {
   return productType === 'risk';

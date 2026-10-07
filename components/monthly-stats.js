@@ -43,7 +43,7 @@ function caseStats(cases, days) {
     expectedCommission: sum(accepted, caseUpfrontCommission),
     opened: { count: opened.length, pcr: sum(opened, casePcr) },
     submitted: { count: submitted.length, pcr: sum(submitted, casePcr) },
-    accepted: { count: accepted.length, pcr: sum(accepted, casePcr) },
+    accepted: { count: accepted.length, pcr: sum(accepted, caseAcceptedPcr) },
   };
 }
 
