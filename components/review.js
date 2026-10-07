@@ -10,7 +10,7 @@
 //                     card's "+" — a note with "Same as last", a call, a
 //                     meeting…) and Had activity (anything logged on the
 //                     review day or since). Next waits until No activity
-//                     is empty. Cases move on through the case chips as
+//                     is empty. Cases move on through their case cards as
 //                     usual; a nudge shows after 3 identical updates.
 //   3. Activities     the cards of everyone else worked with that day,
 //                     plus "+ Another client" for anyone else, or someone

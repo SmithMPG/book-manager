@@ -11,8 +11,7 @@
 //
 // Grouped by FA, the biggest PCR first; FAs with nothing in that pipeline
 // are left out. The FA's line has their case count and PCR total; each
-// case under it: client · product · where it's at (an Open case's case
-// pack progress; a Submitted case's own stage, if it's moved on to one) ·
+// case under it: client · product · its checklist progress (4/7) ·
 // how long it's been waiting (since it was opened / submitted) · PCR.
 // Cases waiting longer than _PIPELINE_SLOW_DAYS are highlighted, oldest
 // first.
@@ -99,9 +98,7 @@ function _daysSince(iso) {
 function _pipelineCaseHTML(c, part, canAccept) {
   const days = _daysSince(part === 'open' ? c.openedAt : c.submittedAt);
   const slow = days > _PIPELINE_SLOW_DAYS[part];
-  const where = part === 'open'
-    ? `Case pack ${caseChecklistDone(c)}/${caseChecklistItems(c).length}`
-    : caseStageLabel(c);
+  const where = `Checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}`;
   const since = part === 'open' ? 'since opened' : 'since submitted';
   return `
     <div class="pl-case">

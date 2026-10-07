@@ -1,10 +1,12 @@
 // Client card: one consistent card, used in every tab (Prospects,
 // Business, Clients, Not Moved Forward). Collapsed row: the client's
-// name, their latest timeline entry, a chip per open case (its type),
-// and a "+" at the end. Clicking the row opens the
-// client's timeline; clicking a case chip opens it with that case's
-// checklist at the top; "+" picks something to add (Contact, Note,
-// Meeting, FNA, Quote, Case) and opens the card ready to fill it in.
+// name, their latest timeline entry, a chip per group of cases they
+// have — "2 open", "1 submitted", "3 closed" — and a "+" at the end.
+// Clicking the row opens the client view (open case cards, then the
+// timeline); clicking a chip opens the case view on those cases; "+"
+// picks something
+// to add (Contact, Note, Meeting, FNA, Quote, Case) and opens the card
+// ready to fill it in.
 // What's inside the open card lives in card-items.js.
 
 function _injectClientCardCSS() {
@@ -81,8 +83,8 @@ function _injectClientCardCSS() {
       cursor: pointer;
     }
     .case-chip:hover { border-color: var(--gold); }
-    .case-chip.focused { background: var(--gold); border-color: var(--gold); color: var(--navy); }
-    .list-row.active .case-chip:not(.focused) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.25); color: var(--text); }
+    .list-row.active .case-chip { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.25); color: var(--text); }
+    .list-row.active .case-chip.active { background: var(--gold); border-color: var(--gold); color: var(--navy); }
 
     .row-add {
       width: 26px;
@@ -178,15 +180,15 @@ function _cardLastStatusHTML(data) {
   return `<div class="card-last-status" title="${_escHtml(last)}">${_escHtml(last)}</div>`;
 }
 
-// One chip per open case, showing its type.
+// A chip per group of cases the client has (CASE_GROUPS, card-items.js):
+// "2 open", "1 submitted", "3 closed". Each opens the case view on it.
 function _caseChipsHTML(data) {
-  const open = (data.cases || []).filter(isOpenCase);
-  if (!open.length) return '';
-  return `<div class="case-chips">${open.map(c => `
-    <button type="button" class="case-chip${caseIsFocused(data.id, c.id) ? ' focused' : ''}" data-case-chip="${c.id}" title="Show this case's checklist">
-      ${_escHtml(c.type)}
-    </button>
-  `).join('')}</div>`;
+  const chips = CASE_GROUPS.map(g => {
+    const n = (data.cases || []).filter(g.has).length;
+    const active = caseViewOf(data.id) === g.key ? ' active' : '';
+    return n ? `<button type="button" class="case-chip${active}" data-case-chip="${g.key}" title="See ${_escHtml(data.firstName)}'s ${g.word} cases">${n} ${g.word}</button>` : '';
+  }).join('');
+  return chips ? `<div class="case-chips">${chips}</div>` : '';
 }
 
 // Only the row itself is draggable, so text in the open card's inputs can
@@ -322,13 +324,12 @@ function _openCard(row) {
   return detail;
 }
 
-// Closing a card also lets go of its selected case, so the chip doesn't
-// stay highlighted on a collapsed row.
+// A closed card opens on the client view next time.
 function _closeCard(row) {
   const detail = row.parentElement.querySelector('.row-detail');
   detail.classList.remove('open');
   row.classList.remove('active');
-  focusCase(detail, row.dataset.cardId, null);
+  if (resetCaseView(row.dataset.cardId)) detail.innerHTML = clientDetailHTML(CLIENT_STORE.get(row.dataset.cardId));
 }
 
 // Opens one client's card (closing any other) and scrolls
@@ -387,15 +388,18 @@ function initClientCards(root) {
       _openAddMenu(addBtn, row);
       return;
     }
+    // A chip shows that group of cases; the one already showing (or the
+    // row, while cases are showing) goes back to the client view.
+    const clientId = row.dataset.cardId;
     const chip = e.target.closest('[data-case-chip]');
     if (chip) {
-      const clientId = row.dataset.cardId;
-      const caseId = chip.dataset.caseChip;
-      const detail = _openCard(row);
-      focusCase(detail, clientId, caseIsFocused(clientId, caseId) ? null : caseId);
+      const group = chip.dataset.caseChip;
+      showCaseView(_openCard(row), clientId, caseViewOf(clientId) === group ? null : group);
       return;
     }
-    if (row.parentElement.querySelector('.row-detail').classList.contains('open')) _closeCard(row);
-    else focusCase(_openCard(row), row.dataset.cardId, null);
+    const detail = row.parentElement.querySelector('.row-detail');
+    if (detail.classList.contains('open') && caseViewOf(clientId)) showCaseView(detail, clientId, null);
+    else if (detail.classList.contains('open')) _closeCard(row);
+    else _openCard(row);
   });
 }

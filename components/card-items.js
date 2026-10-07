@@ -1,24 +1,31 @@
 // Client detail: what's inside an open client card (see SPEC.md,
-// "Client timeline"). Top to bottom:
+// "The client row and open card"). Two views:
 //
-//   Case panel  shown when one of the row's case chips is clicked: that
-//               case's case pack (its product's checklist,
-//               caseChecklistItems) and its next steps — Mark submitted,
-//               or Not taken up — and Delete case. Only the FA's
-//               manager accepts a case, from their FA list (team.js).
+// The client view, top to bottom:
+//   Case cards  one per open case, stacked (caseCardHTML): product,
+//               amounts, PCR, status (Opened / Submitted), ✎ for the
+//               amounts, Opened ── Submitted ── Accepted with dates, its
+//               checklist and next steps — Mark submitted, Not taken up,
+//               Delete case. Only the FA's manager accepts a case, from
+//               the Submitted tab (pipeline.js).
 //   Add form    opened from the row's "+" menu: the event on the left
 //               (Contact, Note, Meeting, FNA, Quote, Case), its own
 //               fields on the right. Dated today — or, for a card shown
 //               inside the Review, the day being reviewed (entryDateFor).
 //   Timeline    everything that's happened with the client, newest
 //               first — one line each: date (Today / Yesterday) · kind ·
-//               details — ending with "Client added". When a day has
-//               more than one line (and always for "Client added"),
-//               hovering the date shows the time. The
-//               add form uses the same columns. Hovering a
-//               line shows its ×; a case goes (with its entries) from its
-//               "Opened" line.
+//               details — ending with "Client added". Case lines are
+//               written by what happens to the case (opened, amended,
+//               submitted, accepted, not taken up); their product is a
+//               chip to the case view. When a day has more than one line
+//               (and always for "Client added"), hovering the date shows
+//               the time. Hovering a line shows its × (not case lines).
 //
+// The case view (showCaseView, from the row's chips): the client's cases
+// in one group — Open, Submitted or Closed (accepted / not taken up —
+// read-only) — each card with its own timeline lines. The row's chip for
+// the group is highlighted; clicking it again, or the row, goes back.
+
 // Saves go through data.js; the card is then updated in place and the
 // dashboard numbers refreshed.
 //
@@ -33,25 +40,71 @@ function _injectCardItemsCSS() {
   const s = document.createElement('style');
   s.id = 'card-items-styles';
   s.textContent = `
-    /* ---- cases box ---- */
-    .cb { margin-bottom: 16px; }
-    .cb-case {
-      display: none;
+    /* ---- case cards ---- */
+    .cc {
       background: #f7f7f5;
-      border: 1px solid rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(0, 0, 0, 0.1);
       border-radius: 8px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      transition: box-shadow 0.3s ease;
     }
-    .cb-case.focused { display: block; border-color: rgba(0, 0, 0, 0.16); }
-    .cb-row { display: flex; align-items: center; gap: 20px; padding: 11px 16px; }
-    .cb-close { background: none; border: none; padding: 0 2px; font-size: 18px; line-height: 1; color: var(--ink-dim); cursor: pointer; }
-    .cb-close:hover { color: var(--ink); }
-    .cb-type { flex: 1; min-width: 0; font-weight: 600; color: var(--ink); }
-    .cb-stage { flex-shrink: 0; color: var(--ink); }
-    .cb-check { flex-shrink: 0; color: var(--ink-dim); white-space: nowrap; }
-    .cb-check.complete { color: #1f7a52; font-weight: 600; }
-    .cb-pcr { flex-shrink: 0; color: var(--ink-dim); white-space: nowrap; }
-    .cb-panel { padding: 12px 16px 14px; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+    .cc.flash { box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.6); }
+    .cc-head { display: flex; align-items: center; gap: 16px; padding: 10px 16px; cursor: pointer; }
+    .cc-name { font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+    .cc-amounts { color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .cc-pcr { flex-shrink: 0; color: var(--ink); white-space: nowrap; }
+    .cc-next { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .cc-body { display: none; }
+    .cc.expanded .cc-body { display: block; }
+    .cc-check-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); margin-bottom: 8px; }
+    .cc-badge {
+      flex-shrink: 0;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: #e8e8e5;
+      color: var(--ink-dim);
+    }
+    .cc-badge.opened { background: #e3ecfb; color: #2557b8; }
+    .cc-badge.submitted { background: #fbf1d6; color: #8a6d0a; }
+    .cc-badge.accepted { background: #dcf3e8; color: #1f7a52; }
+    .cc-badge.not-taken-up { background: #f7dede; color: #a33a3a; }
+    .cc-edit { background: none; border: none; padding: 0 2px; font-size: 14px; color: var(--ink-dim); cursor: pointer; }
+    .cc-edit:hover { color: #8a6d0a; }
+
+    /* Opened ── Submitted ── Accepted (or Not taken up), dated as reached. */
+    .cc-crumbs { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; color: var(--ink-dim); }
+    .cc-step { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .cc-step::before { content: ''; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #c4c7cc; box-sizing: border-box; }
+    .cc-step.done { color: var(--ink); }
+    .cc-step.done::before { background: var(--green); border-color: var(--green); }
+    .cc-step.lost::before { background: var(--red); border-color: var(--red); }
+    .cc-step b { font-weight: 600; }
+    .cc-line { flex: 0 1 40px; height: 2px; background: #d9dce0; }
+
+    .cc.expanded .cc-body { padding: 12px 16px 14px; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+    .cc-history { margin-top: 10px; padding-top: 6px; border-top: 1px dashed rgba(0, 0, 0, 0.1); }
+    .cc-history .tl-entry { padding: 4px 0; font-size: 12px; }
+
+    .cv-empty { color: var(--ink-dim); font-size: 13px; padding: 8px 0 4px; }
+
+    /* A case line's product, on the timeline: opens the case view. */
+    .tl-case-chip {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      border-radius: 999px;
+      padding: 1px 9px;
+      margin-right: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .tl-case-chip:hover { border-color: var(--gold); }
+
     .cb-checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 16px; margin-bottom: 14px; }
     .cb-checklist .item-check { color: var(--ink); }
     .cb-actions { display: flex; align-items: center; gap: 10px; }
@@ -286,20 +339,50 @@ const TIMELINE_KINDS = {
 // What the row's "+" menu offers, in order.
 const ADD_KINDS = ['contact', 'note', 'meeting', 'fna', 'quote', 'case'];
 
-// Per-client view state that survives the card re-rendering.
-const _focusedCase = new Map();       // client id → the case whose checklist is showing
+// The case view's groups (and the client row's chips): open (not yet
+// submitted), submitted (waiting to be accepted), closed (accepted or
+// not taken up).
+const CASE_GROUPS = [
+  { key: 'open', word: 'open', label: 'Open', has: c => c.stage === 'opened' },
+  { key: 'submitted', word: 'submitted', label: 'Submitted', has: c => c.stage === 'submitted' },
+  { key: 'closed', word: 'closed', label: 'Closed', has: c => !isOpenCase(c) },
+];
 
-function caseIsFocused(clientId, caseId) {
-  return _focusedCase.get(clientId) === caseId;
+function _caseGroupOf(c) {
+  return CASE_GROUPS.find(g => g.has(c))?.key || 'open';
 }
 
-// Shows one case's panel (or none, caseId null) and marks its row chip.
-function focusCase(detail, clientId, caseId) {
-  if (caseId) _focusedCase.set(clientId, caseId); else _focusedCase.delete(clientId);
-  detail.querySelectorAll('.cb-case').forEach(p => p.classList.toggle('focused', p.dataset.case === caseId));
-  detail.previousElementSibling.querySelectorAll('[data-case-chip]').forEach(c => {
-    c.classList.toggle('focused', c.dataset.caseChip === caseId);
+// Per-client view state that survives the card re-rendering: which open
+// cards show the case view instead of the client view, on which group.
+const _caseView = new Map();          // client id → a CASE_GROUPS key
+
+// Switches an open card to the case view (filter: a CASE_GROUPS key),
+// scrolled to caseId if given; filter null goes back to the client view.
+function showCaseView(detail, clientId, filter, caseId) {
+  if (filter) _caseView.set(clientId, filter); else _caseView.delete(clientId);
+  if (caseId) _openCaseCards.add(caseId); // land on it opened up
+  const data = getClientData(clientId);
+  if (data) detail.innerHTML = clientDetailHTML(data);
+  detail.previousElementSibling?.querySelectorAll('[data-case-chip]').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.caseChip === filter);
   });
+  const card = caseId && detail.querySelector(`.cc[data-case="${caseId}"]`);
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 1200);
+  }
+}
+
+// The group a card's case view is on, or null on the client view.
+function caseViewOf(clientId) {
+  return _caseView.get(clientId) || null;
+}
+
+// A collapsed card goes back to the client view next time it opens.
+// True if it was on the case view (so it needs redrawing).
+function resetCaseView(clientId) {
+  return _caseView.delete(clientId);
 }
 
 function _findCase(data, caseId) {
@@ -319,11 +402,12 @@ function timelineEntryText(data, entry) {
 // "Investment Builder · Opened · R500 000 lump sum · R2 000 pm · 3%
 //  upfront advice fee · PCR 500 000 · Commission R15 000"
 // An amended line says what changed, before → after (_amendedText).
-function _caseEntryText(c, details) {
+// withoutType: leave the product's name off (it's shown as a chip).
+function _caseEntryText(c, details, { withoutType = false } = {}) {
   const event = details.event;
-  if (event === 'amended') return _amendedText(c, details);
+  if (event === 'amended') return _amendedText(c, details, withoutType);
   if (!c) return `Case · ${CASE_STAGE_LABELS[event] || ''}`;
-  const parts = [c.type, CASE_STAGE_LABELS[event] || ''];
+  const parts = [withoutType ? '' : c.type, CASE_STAGE_LABELS[event] || ''].filter(Boolean);
   if (event === 'opened') {
     if (c.lumpSum) parts.push(`${formatRand(c.lumpSum)} lump sum`);
     if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
@@ -336,8 +420,8 @@ function _caseEntryText(c, details) {
 // "Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040" — only
 // the amounts that changed. from / to: {lumpSum, monthly,
 // adviceFeePercent}, as saved by amend_case.
-function _amendedText(c, { from = {}, to = {} }) {
-  const parts = [c?.type || 'Case', 'Amended'];
+function _amendedText(c, { from = {}, to = {} }, withoutType = false) {
+  const parts = [withoutType && c ? '' : c?.type || 'Case', 'Amended'].filter(Boolean);
   const changed = key => Number(from[key] || 0) !== Number(to[key] || 0);
   const rand = n => formatRand(Number(n) || 0);
   if (changed('lumpSum')) parts.push(`${rand(from.lumpSum)} → ${rand(to.lumpSum)} lump sum`);
@@ -377,35 +461,151 @@ function _entryTime(entry) {
   return _timeOf(entry.createdAt);
 }
 
-// ---------- cases box ----------
+// ---------- case cards ----------
+//
+// One card per case: product (opens the case view), amounts, PCR, its
+// status badge and ✎ (amounts, while open); then where it's got to —
+// Opened ── Submitted ── Accepted (or Not taken up), dated as reached —
+// and its checklist:
+//   Opened     the checklist to tick, Mark submitted, Not taken up,
+//              Delete case
+//   Submitted  the checklist folded ("Checklist 7/7 ▸"), waiting for the
+//              manager to accept, Not taken up, Delete case
+//   closed     read-only: the checklist folded, as it was when it closed
+// In the case view each card also lists its own timeline lines.
 
-function _caseRowHTML(c) {
-  const done = caseChecklistDone(c);
-  const total = caseChecklistItems(c).length;
+function _shortDate(iso) {
+  if (!iso) return '';
+  const [, m, d] = iso.split('-').map(Number);
+  return `${d} ${_STATUS_MONTHS[m - 1]}`;
+}
+
+// "R1 600 000 lump sum · R1 000 pm · 3% advice fee" — whatever it has.
+function _caseAmountsText(c) {
+  const parts = [];
+  if (c.lumpSum) parts.push(`${formatRand(c.lumpSum)} lump sum`);
+  if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
+  if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% advice fee`);
+  return parts.join(' · ');
+}
+
+// The day a case was marked not taken up (only on its timeline line).
+function _notTakenUpDate(data, c) {
+  return (data.timeline || []).find(e => e.caseId === c.id && e.details?.event === 'not-taken-up')?.date || null;
+}
+
+function _caseCrumbsHTML(data, c) {
+  const step = (label, date, cls) => `<span class="cc-step ${cls}">${label}${date ? ` <b>${_shortDate(date)}</b>` : ''}</span>`;
+  const line = '<span class="cc-line"></span>';
+  const end = c.stage === 'not-taken-up'
+    ? step(CASE_STAGE_LABELS['not-taken-up'], _notTakenUpDate(data, c), 'lost')
+    : step(CASE_STAGE_LABELS.accepted, c.acceptedAt, c.acceptedAt ? 'done' : '');
   return `
-    <span class="cb-type">${_escHtml(c.type)}</span>
-    <span class="cb-stage">${CASE_STAGE_LABELS[c.stage]}</span>
-    <span class="cb-check${done === total ? ' complete' : ''}" title="Checklist">&#10003; ${done}/${total}</span>
-    <span class="cb-pcr">PCR ${formatNumber(casePcr(c))}</span>
+    <div class="cc-crumbs">
+      ${step(CASE_STAGE_LABELS.opened, c.openedAt, 'done')}${line}
+      ${step(CASE_STAGE_LABELS.submitted, c.submittedAt, c.submittedAt ? 'done' : '')}${line}
+      ${end}
+    </div>
   `;
 }
 
-function _casePanelHTML(data, c) {
-  const checks = caseChecklistItems(c).map(item => `
+function _caseChecklistHTML(data, c, editable) {
+  return `<div class="cb-checklist">${caseChecklistItems(c).map(item => `
     <label class="item-check">
-      <input type="checkbox" data-action="check" data-client="${data.id}" data-case="${c.id}" data-item="${item.key}"${c.checklist?.[item.key] ? ' checked' : ''}>
+      <input type="checkbox" data-action="check" data-client="${data.id}" data-case="${c.id}" data-item="${item.key}"${c.checklist?.[item.key] ? ' checked' : ''}${editable ? '' : ' disabled'}>
       ${_escHtml(item.label)}
     </label>
-  `).join('');
+  `).join('')}</div>`;
+}
+
+// Opened up: the checklist (to tick while open; read-only once closed)
+// and Delete case while it's open.
+function _caseBodyHTML(data, c) {
+  const open = isOpenCase(c);
+  const done = caseChecklistDone(c);
+  const total = caseChecklistItems(c).length;
+  return `
+    <div class="cc-check-title">Checklist ${done}/${total}${open ? '' : ' · as it was when it closed'}</div>
+    ${_caseChecklistHTML(data, c, open)}
+    ${open ? `<div class="cb-actions"><button type="button" class="cb-link danger" data-action="delete-case" data-client="${data.id}" data-case="${c.id}">Delete case</button></div>` : ''}
+  `;
+}
+
+// The right end of the collapsed card: what can happen next.
+//   Opened     Mark submitted · Not taken up
+//   Submitted  Awaiting acceptance · Not taken up
+//   closed     its badge: Accepted / Not taken up
+function _caseNextHTML(data, c) {
   const stageBtn = (stage, label, primary) =>
     `<button type="button" class="cb-btn${primary ? ' primary' : ''}" data-action="stage" data-client="${data.id}" data-case="${c.id}" data-stage="${stage}">${label}</button>`;
+  if (c.stage === 'opened') return stageBtn('submitted', 'Mark submitted', true) + stageBtn('not-taken-up', 'Not taken up');
+  if (c.stage === 'submitted') {
+    return `<span class="cc-badge submitted" title="Waiting for your manager to accept">Awaiting acceptance</span>${stageBtn('not-taken-up', 'Not taken up')}`;
+  }
+  return `<span class="cc-badge ${c.stage}">${CASE_STAGE_LABELS[c.stage]}</span>`;
+}
+
+// The case's own timeline lines, oldest first (the case view).
+function _caseHistoryHTML(data, c) {
+  const lines = (data.timeline || []).filter(e => e.caseId === c.id).slice().reverse();
+  if (!lines.length) return '';
+  return `<div class="cc-history">${lines.map(e => _timelineLineHTML({
+    date: _dayLabel(e.date),
+    kind: '',
+    text: _escHtml(_caseEntryText(c, e.details, { withoutType: true })),
+  })).join('')}</div>`;
+}
+
+// A case card, collapsed by default like a client card: product ·
+// amounts · PCR · ✎ (while open), and what can happen next at the right
+// end. Clicking it opens the breadcrumb (Opened ── Submitted ── Accepted,
+// dated) and the checklist — plus, in the case view, its own timeline
+// lines.
+const _openCaseCards = new Set(); // case ids opened up; survives re-rendering
+
+function caseCardHTML(data, c, inCaseView) {
+  const expanded = _openCaseCards.has(c.id);
+  const edit = isOpenCase(c)
+    ? `<button type="button" class="cc-edit" data-action="edit-case" data-client="${data.id}" data-case="${c.id}" title="Change this case's amounts">&#9998;</button>`
+    : '';
   return `
-    <div class="cb-checklist">${checks}</div>
-    <div class="cb-actions">
-      ${c.stage === 'opened' ? stageBtn('submitted', 'Mark submitted', true) : ''}
-      ${c.stage === 'submitted' ? '<span class="cb-waiting">Waiting for your manager to accept</span>' : ''}
-      ${stageBtn('not-taken-up', 'Not taken up')}
-      <button type="button" class="cb-link danger" data-action="delete-case" data-client="${data.id}" data-case="${c.id}">Delete case</button>
+    <div class="cc${expanded ? ' expanded' : ''}" data-case="${c.id}">
+      <div class="cc-head" data-action="toggle-case" data-case="${c.id}">
+        <span class="cc-name">${_escHtml(c.type)}</span>
+        <span class="cc-amounts">${_escHtml(_caseAmountsText(c))}</span>
+        <span class="cc-pcr">PCR ${formatNumber(casePcr(c))}</span>
+        ${edit}
+        <span class="cc-next">${_caseNextHTML(data, c)}</span>
+      </div>
+      <div class="cc-body">
+        ${_caseCrumbsHTML(data, c)}
+        ${_caseBodyHTML(data, c)}
+        ${inCaseView ? _caseHistoryHTML(data, c) : ''}
+      </div>
+    </div>
+  `;
+}
+
+// The client view: the open cases (opened or submitted), stacked. The
+// row's chips open the case view.
+function _openCasesHTML(data) {
+  return (data.cases || []).filter(isOpenCase).map(c => caseCardHTML(data, c, false)).join('');
+}
+
+// The case view: the client's cases in one group — Open, Submitted or
+// Closed — newest first. The row's chips switch group (the one showing is
+// highlighted); clicking it again, or the row, goes back to the client
+// view (client-card.js).
+function _caseViewHTML(data, filter) {
+  const cases = data.cases || [];
+  const group = CASE_GROUPS.find(g => g.key === filter) || CASE_GROUPS[0];
+  const latest = c => c.acceptedAt || c.submittedAt || c.openedAt;
+  const shown = cases.filter(group.has).sort((a, b) => latest(b).localeCompare(latest(a)));
+  return `
+    <div class="cv">
+      ${shown.length
+        ? shown.map(c => caseCardHTML(data, c, true)).join('')
+        : `<div class="cv-empty">No ${group.word} cases.</div>`}
     </div>
   `;
 }
@@ -421,21 +621,6 @@ function entryDateFor(el) {
 // last" in a note box.
 function lastUpdateOf(data) {
   return (data?.timeline || []).find(e => e.type === 'contact' || e.type === 'note') || null;
-}
-
-// A panel per open case, only the focused one shown.
-function _casesBoxHTML(data) {
-  const open = (data.cases || []).filter(isOpenCase);
-  if (!open.length) return '';
-  return `<div class="cb">${open.map(c => `
-    <div class="cb-case${caseIsFocused(data.id, c.id) ? ' focused' : ''}" data-case="${c.id}">
-      <div class="cb-row">
-        ${_caseRowHTML(c)}
-        <button type="button" class="cb-close" data-action="unfocus-case" title="Hide checklist">&times;</button>
-      </div>
-      <div class="cb-panel">${_casePanelHTML(data, c)}</div>
-    </div>
-  `).join('')}</div>`;
 }
 
 // ---------- timeline ----------
@@ -469,23 +654,22 @@ function _timelineHTML(data) {
 
   const lines = (data.timeline || []).map(e => {
     const kind = TIMELINE_KINDS[e.type] || { label: e.type };
-    // An open case's amounts can be changed from its Opened line (✎);
-    // once it's closed they're fixed.
-    const openCase = e.type === 'case' && e.details.event === 'opened' && isOpenCase(_findCase(data, e.caseId) || {});
-    const edit = openCase
-      ? `<button type="button" class="tl-del tl-edit" data-action="edit-case" data-client="${data.id}" data-case="${e.caseId}" title="Change this case's amounts">&#9998;</button>`
-      : '';
+    // Case lines are written by what happens to the case, so they're not
+    // deleted here (a case goes with Delete case, on its card). Their
+    // product is a chip to the case view.
     const del = e.type !== 'case'
       ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
-      : e.details.event === 'opened'
-        ? `${edit}<button type="button" class="tl-del" data-action="delete-case" data-client="${data.id}" data-case="${e.caseId}" title="Delete this case">&times;</button>`
-        : '';
+      : '';
+    const c = e.type === 'case' ? _findCase(data, e.caseId) : null;
+    const text = c
+      ? `<button type="button" class="tl-case-chip" data-action="show-case" data-case="${c.id}" title="See this case">${_escHtml(c.type)}</button>${_escHtml(_caseEntryText(c, e.details, { withoutType: true }))}`
+      : _escHtml(timelineEntryText(data, e));
     return _timelineLineHTML({
       date: _dayLabel(e.date),
       time: busy(e.date) ? _entryTime(e) : '',
       kind: kind.label,
       key: kind.key,
-      text: _escHtml(timelineEntryText(data, e)),
+      text,
       del,
     });
   });
@@ -500,17 +684,23 @@ function _timelineHTML(data) {
   return `<div class="tl">${lines.join('')}</div>`;
 }
 
-// Everything inside an open card.
+// Everything inside an open card: the client view (open case cards,
+// then the add form and the timeline), or the case view.
 function clientDetailHTML(data) {
+  const filter = _caseView.get(data.id);
+  if (filter) return _caseViewHTML(data, filter);
   return `
-    ${_casesBoxHTML(data)}
+    ${_openCasesHTML(data)}
     <div class="item-add-form" data-client="${data.id}"></div>
     ${_timelineHTML(data)}
   `;
 }
 
-// From the row's "+" menu: the add form for one kind of entry.
+// From the row's "+" menu: the add form for one kind of entry (back on
+// the client view, if the card was showing its cases).
 function openAddEntry(detail, kind) {
+  const clientId = detail.id.replace('row-', '');
+  if (_caseView.has(clientId)) showCaseView(detail, clientId, null);
   _openAddForm(detail.querySelector('.item-add-form'), kind);
 }
 
@@ -866,8 +1056,15 @@ function initCardItems(root) {
     const action = btn.dataset.action;
     const clientId = detail.id.replace('row-', '');
 
-    if (action === 'unfocus-case') {
-      focusCase(detail, clientId, null);
+    if (action === 'toggle-case') {
+      // Buttons on the card's line (✎, Mark submitted…) do their own thing.
+      if (e.target.closest('button')) return;
+      const id = btn.dataset.case;
+      if (_openCaseCards.has(id)) _openCaseCards.delete(id); else _openCaseCards.add(id);
+      btn.closest('.cc').classList.toggle('expanded', _openCaseCards.has(id));
+    } else if (action === 'show-case') {
+      const c = _findCase(getClientData(clientId) || {}, btn.dataset.case);
+      showCaseView(detail, clientId, c ? _caseGroupOf(c) : 'open', btn.dataset.case);
     } else if (action === 'cancel-add') {
       _closeAddForm(btn.closest('.item-add-form'));
     } else if (action === 'save-add') {

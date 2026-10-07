@@ -166,9 +166,9 @@ function _syncNoMonthStrip() {
 
 // ---------- products ----------
 //
-// The New Case dropdown, each product with its own stages and case pack
-// (products, product_stages, product_checklist_items). Loaded with
-// everything else; the Products tab (products.js) shows them.
+// The New Case dropdown, each product with its checklist (products,
+// product_checklist_items). Loaded with everything else; the Products
+// tab (products.js) shows them.
 
 let _products = [];
 
@@ -176,26 +176,22 @@ function _byName(a, b) {
   return a.localeCompare(b, undefined, { sensitivity: 'base' });
 }
 
-// Case packs are alphabetical; stages keep the order admins put them in.
+// Checklists are alphabetical.
 function _alphabetical(items) {
   return [...items].sort((a, b) => _byName(a.label, b.label));
 }
 
 async function loadProducts() {
-  const [products, stages, items] = await Promise.all([
+  const [products, items] = await Promise.all([
     supabaseClient.from('products').select('id, name, type'),
-    supabaseClient.from('product_stages').select('id, product_id, label, standard, sort_order').order('sort_order'),
-    supabaseClient.from('product_checklist_items').select('id, product_id, key, label, sort_order').order('sort_order'),
+    supabaseClient.from('product_checklist_items').select('id, product_id, key, label'),
   ].map(async q => _dbOk(await q)));
-  const of = (rows, id) => rows.filter(r => r.product_id === id);
   products.sort((a, b) => _byName(a.name, b.name));
   _products = products.map(p => ({
     id: p.id,
     name: p.name,
     type: p.type,
-    // Between Opened and Accepted: its own stages and Submitted (standard).
-    stages: of(stages, p.id).map(r => ({ id: r.id, label: r.label, standard: r.standard, sortOrder: r.sort_order })),
-    checklist: _alphabetical(of(items, p.id).map(r => ({ id: r.id, key: r.key, label: r.label }))),
+    checklist: _alphabetical(items.filter(r => r.product_id === p.id).map(r => ({ id: r.id, key: r.key, label: r.label }))),
   }));
   document.dispatchEvent(new CustomEvent('products:changed'));
 }
@@ -208,14 +204,12 @@ function _productError(err, name) {
   return err;
 }
 
-// A new product gets the standard case pack (CASE_CHECKLIST) and the
-// standard stages — its Submitted row is added by the database — and no
-// stages of its own.
+// A new product starts with the standard checklist (CASE_CHECKLIST).
 async function dbAddProduct({ name, type }) {
   const { data: p, error } = await supabaseClient.from('products').insert({ name, type }).select().single();
   if (error) throw _productError(error, name);
   _dbOk(await supabaseClient.from('product_checklist_items').insert(
-    CASE_CHECKLIST.map((item, i) => ({ product_id: p.id, key: item.key, label: item.label, sort_order: i + 1 }))));
+    CASE_CHECKLIST.map(item => ({ product_id: p.id, key: item.key, label: item.label }))));
   await loadProducts();
 }
 
@@ -238,37 +232,21 @@ async function dbCountOpenCases(productId) {
   return count || 0;
 }
 
-// A product's own stages and its case pack are lists edited the same
-// way. part: 'stages' (product_stages) or 'checklist'
-// (product_checklist_items). Case pack items get a key of their own,
-// which ticks on cases are stored under.
-const _PRODUCT_PART_TABLES = { stages: 'product_stages', checklist: 'product_checklist_items' };
-
-async function dbAddProductItem(part, productId, label) {
-  const row = { product_id: productId, label };
-  if (part === 'stages') row.sort_order = Math.max(0, ...getProduct(productId).stages.map(x => x.sortOrder)) + 1;
-  if (part === 'checklist') row.key = `c${crypto.randomUUID().slice(0, 8)}`; // alphabetical, so no sort_order
-  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).insert(row));
+// A product's checklist items. Each new one gets a key of its own, which
+// ticks on cases are stored under.
+async function dbAddChecklistItem(productId, label) {
+  _dbOk(await supabaseClient.from('product_checklist_items')
+    .insert({ product_id: productId, label, key: `c${crypto.randomUUID().slice(0, 8)}` }));
   await loadProducts();
 }
 
-async function dbRenameProductItem(part, id, label) {
-  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).update({ label }).eq('id', id));
+async function dbRenameChecklistItem(id, label) {
+  _dbOk(await supabaseClient.from('product_checklist_items').update({ label }).eq('id', id));
   await loadProducts();
 }
 
-// Removing a stage is refused by the database while open cases are at it.
-async function dbRemoveProductItem(part, id) {
-  _dbOk(await supabaseClient.from(_PRODUCT_PART_TABLES[part]).delete().eq('id', id));
-  await loadProducts();
-}
-
-// ids: the stages' ids in their new order. (Case packs are alphabetical.)
-async function dbReorderProductItems(part, ids) {
-  const table = _PRODUCT_PART_TABLES[part];
-  const results = await Promise.all(ids.map((id, i) =>
-    supabaseClient.from(table).update({ sort_order: i + 1 }).eq('id', id)));
-  results.forEach(_dbOk);
+async function dbRemoveChecklistItem(id) {
+  _dbOk(await supabaseClient.from('product_checklist_items').delete().eq('id', id));
   await loadProducts();
 }
 
@@ -281,21 +259,11 @@ function getProduct(id) {
   return _products.find(p => p.id === id) || null;
 }
 
-// A case's case pack: what was saved when it closed, or (while open) its
+// A case's checklist: what was saved when it closed, or (while open) its
 // product's as it is now. [{key, label}]
 function caseChecklistItems(c) {
   if (c.closedSnapshot?.checklist) return _alphabetical(c.closedSnapshot.checklist);
   return getProduct(c.productId)?.checklist || _alphabetical(CASE_CHECKLIST);
-}
-
-// Where a case is at: its product's own stage if it's moved on to one
-// ("Underwriting"), else its standard stage.
-function caseStageLabel(c) {
-  if (isOpenCase(c) && c.stageId) {
-    const own = getProduct(c.productId)?.stages.find(s => s.id === c.stageId);
-    if (own) return own.label;
-  }
-  return CASE_STAGE_LABELS[c.stage] || '';
 }
 
 function caseChecklistDone(c) {
@@ -310,7 +278,6 @@ function caseItem(c) {
     type: c.case_type,          // the product's name
     productId: c.product_id,
     productType: c.product_type,
-    stageId: c.stage_id,
     closedSnapshot: c.closed_snapshot,
     stage: c.stage,
     openedAt: c.opened_at,

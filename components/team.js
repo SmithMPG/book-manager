@@ -228,7 +228,7 @@ function _faCaseHTML(c) {
     <div class="fa-case">
       <span class="fa-case-client">${_escHtml(c.clientName)}</span>
       <span class="fa-case-type">${_escHtml(c.type)}</span>
-      <span class="fa-case-stage">${_escHtml(caseStageLabel(c))} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
+      <span class="fa-case-stage">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
       <span class="fa-case-pcr">PCR ${formatNumber(casePcr(c))}</span>
     </div>
   `;

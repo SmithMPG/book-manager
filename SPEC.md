@@ -108,7 +108,7 @@ Clients/prospects with no activity in X days — visibility only for now (auto-d
 ### Admin-only: Open and Submitted
 Two tabs after Home, for what's coming in and from whom: **the whole team**, like Home's figures, and all their open cases — not tied to a month.
 - **Open** — cases opened but not yet submitted. **Submitted** — cases submitted and waiting to be accepted.
-- **Grouped by FA**, the biggest PCR first (FAs with nothing there are left out). The FA's line: case count · PCR total. Each case: client · product · where it's at (Open: case pack progress, e.g. 4/7; Submitted: its own stage if it's at one, e.g. Underwriting) · **days waiting** (since opened / submitted — highlighted past 30 days open or 14 days submitted, oldest first) · PCR.
+- **Grouped by FA**, the biggest PCR first (FAs with nothing there are left out). The FA's line: case count · PCR total. Each case: client · product · checklist progress (e.g. 4/7) · **days waiting** (since opened / submitted — highlighted past 30 days open or 14 days submitted, oldest first) · PCR.
 - **Accept** is on each Submitted case of an FA on the admin's own list — **the only place a case is accepted.** Other FAs' groups say who accepts them ("Accepted by Ameeth Maharaj"). Accepting the client's last open case moves them to the FA's Clients tab (the confirmation says so).
 - Home's **Open cases** and **Submitted cases** rows open these tabs. The tab counts are cases.
 - Refreshed whenever the admin comes back to the app.
@@ -124,16 +124,15 @@ Each FA has a **manager** (`users.manager_id`): the admin whose list they're on.
 - **Add FA** — the floating **+** in the bottom-right corner (name, surname, email, phone, Validation target) — creates their login with a temporary password, shown once to the admin to hand over (no email is sent). They're on that admin's list and branch, and choose their own password on first sign-in. Runs in the `add-fa` Edge Function, since creating a login needs the secret key.
 
 ### Admin-only: Products
-**Why:** what it takes to get a case over the line changes, and differs by product. Admins keep that up to date here, rather than it being fixed in the app.
+**Why:** what has to be in place before a case is submitted changes, and differs by product. Admins keep that up to date here, rather than it being fixed in the app.
 
-The products are the New Case dropdown. Each one has its own **stages** (the case's status list, see [Cases](#cases)) and its own **case pack** (the checklist that has to be complete before submitting). They're stored in the database (`products`), one list shared by every admin. **Only admins change it**; FAs just use it.
+The products are the New Case dropdown. Each has a **product type** and a **checklist** (what has to be ticked before submitting). Every case has the same stages whatever its product (see [Cases](#cases)), so there's nothing else to set. They're stored in the database (`products`), one list shared by every admin. **Only admins change it**; FAs just use it.
 
-- **Rows:** one per product, alphabetical (the New Case dropdown too), like a client list. Collapsed row: product · **product type** · number of stages · case pack size · an **edit** button at the far right.
-- **Clicking a row** opens its stages and case pack side by side, read-only. Each list has an **Edit** button on its heading; while editing (until **Done**): rename an item in place (Enter or clicking away saves, Esc undoes), **×** removes it (after a confirmation), drag **⋮⋮** to reorder stages, and the box under each list adds one. **The case pack is always alphabetical** (on cases too), so it isn't reordered. **Opened** is fixed at the top and **Accepted / Not taken up** (one row: the two ways a case ends) at the bottom. **Submitted** sits in the list and is dragged like the product's own stages, so they can go before or after submission (it can't be renamed or removed).
+- **Rows:** one per product, alphabetical (the New Case dropdown too), like a client list. Collapsed row: product · **product type** · what a case records · checklist size · an **edit** button at the far right.
+- **Clicking a row** opens its **checklist**, read-only, with an **Edit** button; while editing (until **Done**): rename an item in place (Enter or clicking away saves, Esc undoes), **×** removes it (after a confirmation), and the box under the list adds one. **Always alphabetical** (on cases too).
 - **Changing a product's type** while it has open cases asks first, since what those cases record and earn changes too.
 - **Edit:** the product's name and type, and **Delete product**.
-- **Add product** — the floating **+** in the bottom-right corner: name and type. A new product starts with the standard stages and the standard 7-item case pack, which the admin then edits.
-- **Starting point:** today's 22 products, each with the standard stages and the standard case pack. They get edited from there as requirements change.
+- **Add product** — the floating **+** in the bottom-right corner: name and type. A new product starts with the standard 7-item checklist, which the admin then edits.
 
 **Product types** are the hard-coded part. There are three, and a product's type decides what its cases record and how commission and PCR are worked out (rates in `constants.js`):
 
@@ -143,13 +142,11 @@ The products are the New Case dropdown. Each one has its own **stages** (the cas
 | **RA Builder** | Lump sum, monthly premium, advice fee | 4× monthly premium | Annual premium × 15 |
 | **Investment** | Lump sum, monthly premium, advice fee | Advice fee % of the lump sum | Lump sum |
 
-Today's products: Risk and Educator are **Risk**; RA Builder is **RA Builder**; everything else is **Investment**, including RA Liberty (its own PCR rule, annual premium × 5, goes).
+Today's products: Risk and Educator are **Risk**; RA Builder is **RA Builder**; everything else is **Investment**, including RA Liberty.
 
 **Rules**
-- **Delete, not archive.** A deleted product leaves the dropdown for good. Its closed cases keep everything they had (see below) and still count in every figure. A product with **open** cases can't be deleted; the app says which cases they are.
-- **The standard stages stay on every product.** Opened, Submitted, Accepted and Not taken up can't be removed or renamed, since the numbers hang on them (see Cases). **Opened is always first and Accepted / Not taken up always last.** The admin's own stages can go anywhere between them, before or after **Submitted**, which they place among them (e.g. Quote signed before it; Underwriting, Medicals after).
-- **A custom stage with open cases sitting in it can't be removed** until they've moved on.
-- **Open cases follow the product; closed cases keep what they had.** Editing a product (stages, case pack, name or type) changes its **open** cases straight away: a new case pack item shows up unticked, and a removed one stops counting (4/7 can become 4/6). When a case closes (Accepted or Not taken up), its product name, type, stages and case pack, with what was ticked, are **saved onto the case** as they were at that moment. Nothing done to the product afterwards changes it.
+- **Delete, not archive.** A deleted product leaves the dropdown for good. Its closed cases keep everything they had (see below) and still count in every figure. A product with **open** cases can't be deleted; the app says how many.
+- **Open cases follow the product; closed cases keep what they had.** Editing a product (checklist, name or type) changes its **open** cases straight away: a new checklist item shows up unticked, and a removed one stops counting (4/7 can become 4/6). When a case closes (Accepted or Not taken up), its product name, type and checklist, with what was ticked, are **saved onto the case** as they were at that moment. Nothing done to the product afterwards changes it.
 
 ### Admin-only: Calendar
 **Why:** close-off dates used to be typed into the app's code, so a new month needed a developer. Admins should set them, along with the team's **weekly submission target** for each month, and Home should show week by week whether the team is hitting it.
@@ -230,27 +227,27 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 
 ### The client row and open card
 - **Adding someone:** a floating **+** in the bottom-right corner of the **Prospects** and **Clients** tabs (no button in the top bar). First name and surname; they're added to the tab whose + was pressed.
-- **Collapsed row:** name · latest timeline entry · a **chip per open case** (e.g. `Risk · Opened · 2/7`) · **+** at the end. No count chips.
-- **Clicking the row** opens the timeline. **Clicking a case chip** opens the client with that case's checklist and next steps at the top (again to hide it).
+- **Collapsed row:** name · latest timeline entry · **a chip per group of cases** the client has — **"2 open"** (not yet submitted), **"1 submitted"** (waiting to be accepted), **"3 closed"** (accepted or not taken up); only the groups they have · **+** at the end.
+- **Clicking the row** opens the **client view**; **clicking a chip** opens the **case view** on those cases.
+- **Client view**, top to bottom:
+  - **A case card per open case**, stacked. Like a client card, it's **collapsed** by default: product · amounts · PCR · **✎** (change amounts), and at the right end what can happen next — **Mark submitted** · **Not taken up** (Opened), or **Awaiting acceptance** · **Not taken up** (Submitted). **Clicking the card** opens it: the breadcrumb **Opened ── Submitted ── Accepted**, each step dated once reached, the **checklist** to tick, and **Delete case**.
+  - The timeline.
+- **Case view** (from a chip on the row, or a case line's product chip on the timeline): just that group's cases — **Open**, **Submitted** or **Closed** — no bar of its own. The row's chip for the group showing is highlighted; another chip switches group; clicking the highlighted chip again, or the row, goes back to the client view. The cases as cards. Opened up, each card also lists its own timeline lines. Closed cards are read-only: their line ends in a badge (Accepted / Not taken up); opened up, the breadcrumb ends in Accepted or Not taken up with its date, and the checklist is as it was when it closed. Opening a case line's chip lands on that case's group, opened up, scrolled to it and highlighted. The row's **+** goes back to the client view too; a card closed and reopened starts on the client view.
 - **+** opens a menu — Contact, Note, Meeting, FNA, Quote, Case — and opens the card with that entry ready to fill in: **the event on the left, its own fields on the right**, dated today.
 - **Case fields depend on the type:** Risk and Educator take the monthly premium; everything else takes lump sum, monthly premium and upfront advice fee.
-- **Timeline:** newest first, grouped by day, ending with "Client added". Delete mode removes entries one at a time; a case (with its entries) is deleted from its "Opened" entry.
+- **Timeline:** newest first, grouped by day, ending with "Client added". Entries can be deleted one at a time (×), except **case lines**: they're added automatically by whatever happens to the case — opened, amounts changed (before → after), submitted, accepted, not taken up — and each starts with the case's **product chip** (to the case view). A case goes, with its lines, by **Delete case** on its card.
 
 ### Cases
-- **Stages are the case's status list**, set per product by admins ([Products](#admin-only-products)). Every product has the standard stages, with its own between Opened and Accepted, and Submitted wherever the admin puts it among them:
-  **Opened** → *e.g. Quote signed* → **Submitted** → *e.g. Underwriting, Medicals* → **Accepted** or **Not taken up**.
-  A case is **open** until Accepted or Not taken up. (Reopening is left out for now.)
-- **Case update:** one box, like a contact's outcome: pick a **stage** from its arrow (the product's stages, standard and its own), or type **your own status** (e.g. "Waiting on the GP's report"). Picking a stage moves the case there; your own status records an update and leaves the case where it is. Every update is a Case entry on the timeline: `Risk · Underwriting` or `Risk · Waiting on the GP's report`.
-  - A case update counts as the client's daily update in the Review, like any other entry; a plain note on the client still counts too.
-  - The product's own stages can be picked in any order (real cases don't always go in a straight line), and none has to be used: a case can go straight from Opened to Submitted, and from Submitted to Accepted.
-- **Case pack:** the product's checklist, visible from the moment the case is opened. Every product starts with the standard 7:
+- **Stages — the same for every case and product:** **Opened** → **Submitted** → **Accepted** or **Not taken up**.
+  A case is **open** until Accepted or Not taken up. (Reopening is left out for now.) FAs keep a case up to date with notes and contacts on the client's timeline.
+- **Checklist:** the product's, visible from the moment the case is opened. Every product starts with the standard 7:
   ID · Proof of residence · Proof of bank account · Signed FAIS intro letter · Signed application form · Signed quote · Signed risk profile analyser.
   Ticks save instantly; the case shows progress (4/7).
-- **Changing amounts:** while a case is open, the **✎** on its Opened line (beside the ×) changes its amounts — the fields its product type records — e.g. R1 000 pm becomes R800. It adds a Case entry to the timeline with what changed, before → after (`Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040`), which counts as the client's update for the day like any entry. The Opened line, PCR and commission show the new amounts. Saving without changing anything adds nothing. Once Accepted or Not taken up, amounts are fixed (the database refuses).
-- **The standard stages keep their rules:**
-  - **Submitted** — the FA picks it. Allowed with case pack items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway). Once Submitted, the FA can only pick the stages below Submitted (and Not taken up); stages above it are done.
-  - **Accepted** — only once Submitted, and only by the FA's manager, from the [Submitted tab](#admin-only-open-and-submitted). The FA sees "Waiting for your manager to accept".
-  - **Not taken up** — any time while open; the client can back out before submission.
+- **Changing amounts:** while a case is open, the **✎** on its case card changes its amounts — the fields its product type records — e.g. R1 000 pm becomes R800. It adds a Case entry to the timeline with what changed, before → after (`Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040`), which counts as the client's update for the day like any entry. The case card, its Opened line, PCR and commission show the new amounts. Saving without changing anything adds nothing. Once Accepted or Not taken up, amounts are fixed (the database refuses).
+- **Moving a case on:**
+  - **Submitted** — the FA marks it. Allowed with checklist items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway).
+  - **Accepted** — only once Submitted, and **only by the FA's manager**, from the [Submitted tab](#admin-only-open-and-submitted). The FA sees "Waiting for your manager to accept".
+  - **Not taken up** — **only the FA**, any time while open; the client can back out before or after submission.
 - Tab rules: an open case puts the client in Business. Accepting the last open case moves them to **Clients** (the database does this as part of accepting). Closing the last one any other way (not taken up, deleted) asks the FA where they go.
 - **Numbers:** "Cases submitted" (funnel, leaderboard) counts the **Submitted** date. PCR counts on **Accepted** (the leaderboard's **Accepted PCR's**, and an FA's PCR meter); the leaderboard's **Submitted PCR's** counts PCR on the **Submitted** date, whatever happened to the case since. Commission and PCR's in the Pot count every **open** case of a Business client.
 
@@ -272,7 +269,7 @@ The Review is the day's work, **client first** — the same way of working as th
 "Review — Friday 25 Sep", as three steps (Next / Back, or click a step's name; everything saves as you go, so they can be visited in any order):
 
 1. **Prospecting** — counts by channel (Phoned, Emailed, WhatsApp / SMS, LinkedIn, Other), with a total. Only people who **aren't** clients in the app; contact with a client is a Contact entry.
-2. **Open case updates** (required, so it comes first) — the **client cards** of everyone with an open case, in two groups: **No activity** and **Had activity**. A client in No activity needs something logged, using the card as usual — its **+** (a note, with **Same as last** on its arrow; a call; a meeting…) — and moves to Had activity as soon as it is. Anything logged on the review day **or since** counts (a client already worked today doesn't need another update). Cases move on through their chips (checklist, Mark submitted / accepted / Not taken up). **Next is blocked** until every one has an update (it names who's missing).
+2. **Open case updates** (required, so it comes first) — the **client cards** of everyone with an open case, in two groups: **No activity** and **Had activity**. A client in No activity needs something logged, using the card as usual — its **+** (a note, with **Same as last** on its arrow; a call; a meeting…) — and moves to Had activity as soon as it is. Anything logged on the review day **or since** counts (a client already worked today doesn't need another update). Cases move on through their case cards (checklist, Mark submitted, Not taken up). **Next is blocked** until every one has an update (it names who's missing).
    - **Follow-up nudge:** above a card whose last 3 updates were the same: "Same update for 3 days — follow up?". A nudge, not a block.
 3. **Activities** — the **client cards** of everyone **else** worked with that day (no open case). **+ Another client** finds anyone else, or adds someone new (lands in Prospects), and adds their card. No client appears in both steps.
 
@@ -290,10 +287,9 @@ Built as if the app had always worked this way — the old case status logs and 
 
 ## Data model changes (for Products)
 - **products** — `name` (unique), `type` (`risk` / `ra-builder` / `investment`). Listed alphabetically. Readable by everyone signed in; only admins write.
-- **product_stages** — everything between Opened and the end, in order: the product's own stages and its **Submitted** (`standard = 'submitted'`, exactly one per product, added by the database with the product, movable but not renamed or removed). `product_id`, `label`, `standard`, `sort_order`. Opened, Accepted and Not taken up aren't rows.
-- **product_checklist_items** — the case pack: `product_id`, `key`, `label`. Shown alphabetically (`sort_order` is unused). The standard 7 keep today's keys (`id`, `bankProof`, …), so ticks already saved on cases still match.
-- **cases** gains `product_id` (null once the product is deleted), `product_type` (what the rates and fields go by) and `stage_id` (the custom stage it's at, or null at a standard one). `case_type` stays as the product's name. While a case is open these follow the product. On closing, they're frozen, along with a `closed_snapshot` of its stages and case pack (labels and ticks).
-- A case update is a `case` activity: `{event: 'stage', stageId, stageLabel}` for moving to a custom stage, `{event: 'status', text}` for the FA's own status, or the standard events as now. Labels are copied, so the timeline still reads right after a stage is renamed or removed.
+- **product_checklist_items** — the checklist: `product_id`, `key`, `label`. Shown alphabetically. The standard 7 keep their keys (`id`, `bankProof`, …), so ticks saved on cases still match.
+- **cases** gains `product_id` (null once the product is deleted) and `product_type` (what the rates and fields go by). `case_type` stays as the product's name. While a case is open these follow the product. On closing they're frozen, along with a `closed_snapshot` of its checklist (`{checklist: [{key, label}]}`; the ticks stay in `checklist`).
+- Per-product stages were tried and dropped (`supabase/remove-stages.sql`).
 
 ## Roles and Test mode
 - **FA** — their own book; no toggle.

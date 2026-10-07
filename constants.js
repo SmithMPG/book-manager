@@ -107,9 +107,11 @@ const PROSPECT_CHANNELS = [
   { key: 'other', label: 'Other' },
 ];
 
-// Case stages: opened → submitted → accepted, or not taken up (from
-// opened or submitted). A case is open while opened or submitted. See
-// open_case / set_case_stage in supabase/schema.sql.
+// Case stages — the same for every case and product: opened → submitted
+// → accepted, or not taken up (from opened or submitted). Accepted is the
+// FA's manager's alone (the Submitted tab); not taken up the FA's. A case
+// is open while opened or submitted. See open_case / set_case_stage in
+// supabase/schema.sql.
 const CASE_STAGE_LABELS = {
   opened: 'Opened',
   submitted: 'Submitted',
@@ -121,8 +123,8 @@ function isOpenCase(c) {
   return c.stage === 'opened' || c.stage === 'submitted';
 }
 
-// The standard case pack: what every product starts with (dbAddProduct
-// in data.js). A case's own case pack comes from its product, or for a
+// The standard checklist: what every product starts with (dbAddProduct
+// in data.js). A case's own checklist comes from its product, or for a
 // closed case, from what was saved when it closed — see
 // caseChecklistItems in data.js. Ticks are stored on the case as
 // {key: true}.

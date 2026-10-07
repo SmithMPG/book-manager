@@ -1,27 +1,24 @@
-// Products: Admin mode's Products tab — one row per product in the New
-// Case dropdown (data.js getProducts, from the products tables), like a
-// client list, alphabetical.
+// Products: Admin mode's Products page (☰ → Products) — one row per
+// product in the New Case dropdown (data.js getProducts), like a client
+// list, alphabetical.
 //
 // Collapsed row: the product, its product type (what its cases record
 // and how commission and PCR are worked out — PRODUCT_TYPES in
-// constants.js), its number of own stages, its case pack size, and an
-// edit button at the far right (name, type, Delete product).
+// constants.js), its checklist size, and an edit button at the far right
+// (name, type, Delete product).
 //
-// Clicking a row opens its stages and its case pack, side by side (one
-// row open at a time). Each list is read-only until its Edit button is
-// clicked; then rename an item in place (Enter or clicking away saves,
-// Esc puts it back), × removes it, drag ⋮⋮ to reorder (stages only — the
-// case pack is alphabetical), and the box under the list adds one. Done
-// goes back to read-only. The standard stages are on every product:
-// Opened fixed first and Accepted / Not taken up — the two ways a case
-// ends — fixed last. Submitted sits in the list and is dragged like the
-// product's own stages, so they can go before or after submission; it
-// can't be renamed or removed.
+// Clicking a row opens its checklist (one row open at a time) — what has
+// to be in place before a case is submitted. Every case has the same
+// stages (Opened → Submitted → Accepted or Not taken up), so there's
+// nothing else to set per product. The checklist is read-only until its
+// Edit button is clicked; then rename an item in place (Enter or clicking
+// away saves, Esc puts it back), × removes it, and the box under the list
+// adds one. Done goes back to read-only. Always alphabetical.
 //
-// Open cases follow the product as it's edited; closed ones keep what
-// they had (SPEC.md, "Admin-only: Products"). The database refuses to
-// delete a product, or remove a stage, that open cases are using — its
-// message is shown as is.
+// Open cases follow the product as it's edited; closed ones keep the
+// checklist they had (SPEC.md, "Admin-only: Products"). The database
+// refuses to delete a product open cases are using — its message is
+// shown as is.
 //
 // Rows reuse the FA list's styles (team.js: .fa-wrapper, .fa-row, …), and
 // its popup form (_faFormDialog).
@@ -31,27 +28,21 @@ function _injectProductsCSS() {
   const s = document.createElement('style');
   s.id = 'products-styles';
   s.textContent = `
-    .pe { display: flex; gap: 40px; align-items: flex-start; }
-    .pe-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pe { max-width: 640px; display: flex; flex-direction: column; gap: 4px; }
     .pe-list { display: flex; flex-direction: column; gap: 4px; }
     .pe-list:empty { display: none; }
-    .pe-fixed,
     .pe-item {
       display: flex;
       align-items: center;
       gap: 8px;
       min-height: 34px;
-      padding: 0 8px;
+      padding: 0 8px 0 23px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
       border-radius: 6px;
+      background: #ffffff;
       color: var(--ink);
     }
-    .pe-fixed { background: #f2f2f0; color: var(--ink-dim); font-size: 13px; padding-left: 30px; }
-    .pe-fixed::after,
-    .pe-item.standard::after { content: 'Standard'; margin-left: auto; padding-right: 4px; font-size: 11px; color: var(--ink-dim); }
-    .pe-item.standard { background: #f2f2f0; color: var(--ink-dim); }
-    .pe-standard-label { flex: 1; padding: 5px 6px; font-size: 13px; }
     .pe-item.view { padding-left: 30px; font-size: 13px; }
-    .pe-list[data-part="checklist"] .pe-item:not(.view) { padding-left: 23px; } /* no handle: text lines up with view mode */
     .pe-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
     .pe-head .fa-detail-title { margin-bottom: 0; }
     .pe-edit {
@@ -67,17 +58,6 @@ function _injectProductsCSS() {
     }
     .pe-edit:hover { border-color: var(--gold); color: var(--ink); }
     .pe-edit.done { background: var(--gold); border-color: var(--gold); color: var(--navy); }
-    .pe-item { border: 1px solid rgba(0, 0, 0, 0.08); background: #ffffff; }
-    .pe-item.dragging { opacity: 0.4; }
-    .pe-handle {
-      width: 14px;
-      flex-shrink: 0;
-      color: var(--ink-dim);
-      cursor: grab;
-      user-select: none;
-      text-align: center;
-      letter-spacing: -2px;
-    }
     .pe-label {
       flex: 1;
       min-width: 0;
@@ -123,75 +103,39 @@ function _injectProductsCSS() {
 _injectProductsCSS();
 
 let _openProduct = null;   // the id of the product whose row is open
-let _refocusPart = null;   // after adding an item, put the cursor back in that list's add box
-const _editingParts = new Set(); // the open product's lists in edit mode: 'stages', 'checklist'
+let _editingChecklist = false; // the open product's checklist is in edit mode
+let _refocusAdd = false;   // after adding an item, put the cursor back in the add box
 
 function _productCaptures(type) {
   return productIsPremiumOnly(type) ? 'Monthly premium' : 'Lump sum, monthly premium & advice fee';
 }
 
-const _PART_NOUN = { stages: 'stage', checklist: 'case pack item' };
-
-function _peItemHTML(item, editing, part) {
-  if (!editing) {
-    return `<div class="pe-item view${item.standard ? ' standard' : ''}">${_escHtml(item.label)}</div>`;
-  }
-  if (item.standard) {
-    return `
-      <div class="pe-item standard" data-id="${item.id}">
-        <span class="pe-handle" draggable="true" title="Drag to set which stages come before submission">⋮⋮</span>
-        <span class="pe-standard-label">${_escHtml(item.label)}</span>
-      </div>
-    `;
-  }
+function _checklistItemHTML(item) {
+  if (!_editingChecklist) return `<div class="pe-item view">${_escHtml(item.label)}</div>`;
   return `
     <div class="pe-item" data-id="${item.id}">
-      ${part === 'stages' ? '<span class="pe-handle" draggable="true" title="Drag to reorder">⋮⋮</span>' : ''}
       <input class="pe-label" value="${_escHtml(item.label)}" data-original="${_escHtml(item.label)}" aria-label="Name">
       <button type="button" class="pe-remove" title="Remove">&times;</button>
     </div>
   `;
 }
 
-function _peHeadHTML(part, title) {
-  const editing = _editingParts.has(part);
-  return `
-    <div class="pe-head">
-      <span class="fa-detail-title">${title}</span>
-      <button type="button" class="pe-edit${editing ? ' done' : ''}" data-edit-part="${part}">${editing ? 'Done' : 'Edit'}</button>
-    </div>
-  `;
-}
-
-function _peListHTML(p, part, placeholder) {
-  const editing = _editingParts.has(part);
-  return `
-    <div class="pe-list" data-part="${part}">${p[part].map(item => _peItemHTML(item, editing, part)).join('')}</div>
-    ${editing ? `<input class="pe-add" data-part="${part}" placeholder="${placeholder}">` : ''}
-  `;
-}
-
 function _productDetailHTML(p) {
-  const fixed = label => `<div class="pe-fixed">${label}</div>`;
+  const n = p.checklist.length;
   return `
     <div class="pe" data-product-id="${p.id}">
-      <div class="pe-col">
-        ${_peHeadHTML('stages', 'Stages')}
-        ${fixed(CASE_STAGE_LABELS.opened)}
-        ${_peListHTML(p, 'stages', '+ Add a stage (Enter to save)')}
-        ${fixed(`${CASE_STAGE_LABELS.accepted} / ${CASE_STAGE_LABELS['not-taken-up']}`)}
+      <div class="pe-head">
+        <span class="fa-detail-title">Checklist · ${n} item${n === 1 ? '' : 's'}</span>
+        <button type="button" class="pe-edit${_editingChecklist ? ' done' : ''}" data-edit-checklist>${_editingChecklist ? 'Done' : 'Edit'}</button>
       </div>
-      <div class="pe-col">
-        ${_peHeadHTML('checklist', `Case pack · ${p.checklist.length} item${p.checklist.length === 1 ? '' : 's'}`)}
-        ${_peListHTML(p, 'checklist', '+ Add an item (Enter to save)')}
-      </div>
+      <div class="pe-list">${p.checklist.map(_checklistItemHTML).join('')}</div>
+      ${_editingChecklist ? '<input class="pe-add" placeholder="+ Add an item (Enter to save)">' : ''}
     </div>
   `;
 }
 
 function _productRowHTML(p) {
   const open = p.id === _openProduct;
-  const own = p.stages.filter(s => !s.standard).length;
   return `
     <div class="fa-wrapper">
       <div class="fa-row${open ? ' active' : ''}" data-product="${p.id}">
@@ -199,8 +143,7 @@ function _productRowHTML(p) {
         <span class="fa-meta">${PRODUCT_TYPE_LABELS[p.type] || ''}</span>
         <span class="fa-meta">${_productCaptures(p.type)}</span>
         <span class="spacer"></span>
-        <span class="fa-chip">${own ? `${own} own stage${own === 1 ? '' : 's'}` : 'Standard stages'}</span>
-        <span class="fa-chip">${p.checklist.length}-item case pack</span>
+        <span class="fa-chip">${p.checklist.length}-item checklist</span>
         <button type="button" class="fa-edit" data-product-edit title="Edit ${_escHtml(p.name)}">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
@@ -221,9 +164,9 @@ function _renderProducts() {
   container.innerHTML = products.length
     ? products.map(_productRowHTML).join('')
     : '<div class="fa-list-empty">No products yet. Use + (bottom right) to add one.</div>';
-  if (_refocusPart) {
-    container.querySelector(`.pe-add[data-part="${_refocusPart}"]`)?.focus();
-    _refocusPart = null;
+  if (_refocusAdd) {
+    container.querySelector('.pe-add')?.focus();
+    _refocusAdd = false;
   }
 }
 
@@ -292,7 +235,7 @@ async function _editProduct(p) {
     }
     const ok = await showChoiceDialog({
       title: `Delete ${p.name}?`,
-      message: `${p.name} leaves the New Case dropdown for good. Cases already closed on it keep their name, stages and case pack. This can't be undone.`,
+      message: `${p.name} leaves the New Case dropdown for good. Cases already closed on it keep their name and checklist. This can't be undone.`,
       choices: [{ label: 'Cancel', value: null }, { label: 'Delete product', value: true, primary: true }],
     });
     if (!ok) return false;
@@ -310,24 +253,22 @@ async function _editProduct(p) {
   });
 }
 
-// ---------- stages and case pack ----------
+// ---------- the checklist ----------
 
-function _peContext(el) {
-  const product = getProduct(el.closest('.pe')?.dataset.productId);
-  const part = el.closest('[data-part]')?.dataset.part;
-  return { product, part };
+function _checklistProduct(el) {
+  return getProduct(el.closest('.pe')?.dataset.productId);
 }
 
 async function _addItem(input) {
-  const { product, part } = _peContext(input);
+  const product = _checklistProduct(input);
   const label = input.value.trim();
   if (!product || !label) return;
   input.disabled = true;
   try {
-    _refocusPart = part;
-    await dbAddProductItem(part, product.id, label);
+    _refocusAdd = true;
+    await dbAddChecklistItem(product.id, label);
   } catch (err) {
-    _refocusPart = null;
+    _refocusAdd = false;
     input.disabled = false;
     _productProblem(err);
   }
@@ -338,9 +279,8 @@ async function _renameItem(input) {
   const original = input.dataset.original;
   if (!label) input.value = original;
   if (!label || label === original) return;
-  const { part } = _peContext(input);
   try {
-    await dbRenameProductItem(part, input.closest('.pe-item').dataset.id, label);
+    await dbRenameChecklistItem(input.closest('.pe-item').dataset.id, label);
   } catch (err) {
     input.value = original;
     _productProblem(err);
@@ -348,75 +288,21 @@ async function _renameItem(input) {
 }
 
 async function _removeItem(btn) {
-  const { product, part } = _peContext(btn);
+  const product = _checklistProduct(btn);
   const id = btn.closest('.pe-item').dataset.id;
-  const item = product?.[part].find(x => x.id === id);
+  const item = product?.checklist.find(x => x.id === id);
   if (!item) return;
-  const message = part === 'stages'
-    ? `Remove the "${item.label}" stage from ${product.name}? FAs won't be able to pick it any more. Closed cases keep it.`
-    : `Remove "${item.label}" from ${product.name}'s case pack? Open ${product.name} cases stop counting it; closed ones keep it.`;
   const ok = await showChoiceDialog({
-    title: `Remove this ${_PART_NOUN[part]}?`,
-    message,
+    title: 'Remove this checklist item?',
+    message: `Remove "${item.label}" from ${product.name}'s checklist? Open ${product.name} cases stop counting it; closed ones keep it.`,
     choices: [{ label: 'Cancel', value: null }, { label: 'Remove', value: true, primary: true }],
   });
   if (!ok) return;
   try {
-    await dbRemoveProductItem(part, id);
+    await dbRemoveChecklistItem(id);
   } catch (err) {
     _productProblem(err);
   }
-}
-
-// ---------- drag to reorder ----------
-
-let _peDragItem = null;
-let _peDragStartOrder = '';
-
-function _peOrder(list) {
-  return [...list.querySelectorAll('.pe-item')].map(el => el.dataset.id);
-}
-
-function _initProductDrag(root) {
-  root.addEventListener('dragstart', e => {
-    const handle = e.target.closest?.('.pe-handle');
-    if (!handle) return;
-    _peDragItem = handle.closest('.pe-item');
-    _peDragStartOrder = _peOrder(_peDragItem.parentElement).join();
-    _peDragItem.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', '');
-    e.dataTransfer.setDragImage(_peDragItem, 20, 17);
-  });
-  // Only within the list it came from: moves it above or below whichever
-  // item the pointer is over.
-  root.addEventListener('dragover', e => {
-    if (!_peDragItem) return;
-    const list = _peDragItem.parentElement;
-    const over = e.target.closest?.('.pe-item');
-    if (!over || over.parentElement !== list) return;
-    e.preventDefault();
-    if (over === _peDragItem) return;
-    const r = over.getBoundingClientRect();
-    list.insertBefore(_peDragItem, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
-  });
-  root.addEventListener('drop', e => {
-    if (_peDragItem) e.preventDefault();
-  });
-  root.addEventListener('dragend', async () => {
-    const item = _peDragItem;
-    if (!item) return;
-    _peDragItem = null;
-    item.classList.remove('dragging');
-    const ids = _peOrder(item.parentElement);
-    if (ids.join() === _peDragStartOrder) return;
-    try {
-      await dbReorderProductItems(_peContext(item).part, ids);
-    } catch (err) {
-      _renderProducts(); // back to the saved order
-      _productProblem(err);
-    }
-  });
 }
 
 // ---------- wiring ----------
@@ -427,14 +313,9 @@ function initProducts(root) {
       _addProduct().catch(_productProblem);
       return;
     }
-    const editBtn = e.target.closest('[data-edit-part]');
-    if (editBtn) {
-      const part = editBtn.dataset.editPart;
-      if (_editingParts.has(part)) _editingParts.delete(part);
-      else {
-        _editingParts.add(part);
-        _refocusPart = part;
-      }
+    if (e.target.closest('[data-edit-checklist]')) {
+      _editingChecklist = !_editingChecklist;
+      _refocusAdd = _editingChecklist;
       _renderProducts();
       return;
     }
@@ -452,7 +333,7 @@ function initProducts(root) {
       return;
     }
     _openProduct = _openProduct === p.id ? null : p.id;
-    _editingParts.clear();
+    _editingChecklist = false;
     _renderProducts();
   });
 
@@ -482,6 +363,5 @@ function initProducts(root) {
     if (e.target.matches?.('.pe-label')) _renameItem(e.target);
   });
 
-  _initProductDrag(root);
   document.addEventListener('products:changed', _renderProducts);
 }
