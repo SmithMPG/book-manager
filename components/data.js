@@ -567,6 +567,7 @@ function _repFromLeaderboardRow(row) {
   const pcrOf = c => (Number(c.acceptedFinalPcr) || 0)
     + casePcr({ productType: c.productType, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
   const submittedPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
+  const openPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.openLumpSum, monthly: c.openMonthly });
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;
@@ -585,6 +586,8 @@ function _repFromLeaderboardRow(row) {
     quotes: row.quotes || 0,
     cases: sum(() => true, c => c.submitted),
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
+    openPcr: Math.round(sum(() => true, openPcrOf)),
+    openPcrBreakdown: { risk: Math.round(sum(isRisk, openPcrOf)), investments: Math.round(sum(notRisk, openPcrOf)) },
     submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
     submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),

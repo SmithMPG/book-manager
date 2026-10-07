@@ -1,8 +1,10 @@
-// Team leaderboard: sortable by any funnel-stage column. Defaults to
-// Accepted PCR's, descending. Shows the main five columns (Prospects,
-// Meetings, Cases submitted, Submitted and Accepted PCR's); "Show all" on the title
-// line adds the rest (Referrals, Wills Leads, FNAs, Quotes). Clicking a header sorts by that column (largest first);
-// clicking the active header again flips to smallest first.
+// Team leaderboard, in two views, switched on the title line:
+//   PCR (default)  Cases submitted · Open case PCR's · Submitted PCR's ·
+//                  Accepted PCR's — sorted by Accepted PCR's
+//   Activity       Prospects · Referrals · Meetings · Wills Leads · FNAs ·
+//                  Quotes — sorted by Prospects
+// Clicking a header sorts by that column (largest first); clicking the
+// active header again flips to smallest first.
 //
 // Admin view (setReps with options): each name is clickable — it opens
 // a panel under that row (options.detailHTML) and calls
@@ -19,18 +21,20 @@ function _injectLeaderboardCSS() {
       padding: 20px 0 0;
       border-top: 1px solid rgba(0, 0, 0, 0.1);
     }
-    .lb-title { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
-    .lb-more {
+    .lb-title { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .lb-views { display: inline-flex; background: #d4d6d8; border-radius: 8px; padding: 3px; gap: 2px; }
+    .lb-view {
       background: none;
       border: none;
-      padding: 0;
+      border-radius: 6px;
+      padding: 5px 14px;
       font-size: 12px;
+      font-weight: 600;
       font-family: inherit;
-      color: var(--ink-dim);
-      text-decoration: underline;
+      color: #4b5563;
       cursor: pointer;
     }
-    .lb-more:hover { color: var(--ink); }
+    .lb-view.active { background: #ffffff; color: var(--navy); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
     .leaderboard h4 {
       margin: 0;
       font-size: 14px;
@@ -153,25 +157,36 @@ function _injectLeaderboardCSS() {
 }
 _injectLeaderboardCSS();
 
-const LEADERBOARD_COLUMNS = [
-  { key: "prospects", label: "Prospects" },
-  { key: "referrals", label: "Referrals", extra: true },
-  { key: "willsLeads", label: "Wills Leads", extra: true },
-  { key: "meetings", label: "Meetings" },
-  { key: "fnas", label: "FNAs", extra: true },
-  { key: "quotes", label: "Quotes", extra: true },
-  { key: "cases", label: "Cases submitted", wide: true }, // submitted in the period, like Submitted PCR's
-  // Submitted: PCR on cases submitted in the period, whatever's happened
-  // to them since. Accepted: PCR on cases accepted in the period (what
-  // counts towards Validation). Wide columns fit their two-word headings.
-  { key: "submittedPcr", label: "Submitted PCR’s", wide: true },
-  { key: "pcr", label: "Accepted PCR’s", wide: true },
-];
+// The two views' columns. Wide columns fit their two-word headings.
+const LEADERBOARD_VIEWS = {
+  pcr: {
+    label: "PCR",
+    sortKey: "pcr",
+    columns: [
+      { key: "cases", label: "Cases submitted", wide: true },       // submitted in the period
+      { key: "openPcr", label: "Open case PCR’s", wide: true },     // opened, not yet submitted — right now
+      { key: "submittedPcr", label: "Submitted PCR’s", wide: true }, // submitted in the period, whatever's happened since
+      { key: "pcr", label: "Accepted PCR’s", wide: true },          // accepted in the period, at the final PCR (Validation)
+    ],
+  },
+  activity: {
+    label: "Activity",
+    sortKey: "prospects",
+    columns: [
+      { key: "prospects", label: "Prospects" },
+      { key: "referrals", label: "Referrals" },
+      { key: "meetings", label: "Meetings" },
+      { key: "willsLeads", label: "Wills Leads" },
+      { key: "fnas", label: "FNAs" },
+      { key: "quotes", label: "Quotes" },
+    ],
+  },
+};
 
 // PCR in full with thousand separators (money.js); PCR is a score, not
 // rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (key === "pcr" || key === "submittedPcr") return formatNumber(value);
+  if (key === "pcr" || key === "submittedPcr" || key === "openPcr") return formatNumber(value);
   return value;
 }
 
@@ -182,6 +197,10 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "factFinder", label: "Fact Finder" },
     { key: "closing", label: "Closing" },
     { key: "relational", label: "Relational" },
+  ],
+  openPcr: [
+    { key: "risk", label: "Risk" },
+    { key: "investments", label: "Investments" },
   ],
   submittedPcr: [
     { key: "risk", label: "Risk" },
@@ -204,16 +223,14 @@ class Leaderboard {
     this.options = {};
     this.sortKey = "pcr";
     this.sortDir = "desc";
-    this.showAll = false; // the extra columns (LEADERBOARD_COLUMNS' extra: true)
+    this.view = "pcr"; // LEADERBOARD_VIEWS
     this.render();
     this.container.addEventListener("click", (e) => {
-      if (e.target.closest("[data-lb-toggle]")) {
-        this.showAll = !this.showAll;
-        // Hiding the column it's sorted by: back to the default.
-        if (!this.showAll && LEADERBOARD_COLUMNS.find((c) => c.key === this.sortKey)?.extra) {
-          this.sortKey = "pcr";
-          this.sortDir = "desc";
-        }
+      const viewBtn = e.target.closest("[data-lb-view]");
+      if (viewBtn) {
+        this.view = viewBtn.dataset.lbView;
+        this.sortKey = LEADERBOARD_VIEWS[this.view].sortKey;
+        this.sortDir = "desc";
         this.render();
         return;
       }
@@ -249,7 +266,7 @@ class Leaderboard {
     const { onSelect, selectedId, detailHTML, checkoutDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
-    const columns = LEADERBOARD_COLUMNS.filter((col) => this.showAll || !col.extra);
+    const columns = LEADERBOARD_VIEWS[this.view].columns;
 
     const headCells = columns.map((col) => {
       const active = col.key === this.sortKey;
@@ -303,7 +320,8 @@ class Leaderboard {
       <div class="leaderboard">
         <div class="lb-title">
           <h4>${title}</h4>
-          <button type="button" class="lb-more" data-lb-toggle>${this.showAll ? "Show fewer" : "Show all"}</button>
+          <div class="lb-views">${Object.entries(LEADERBOARD_VIEWS).map(([key, v]) =>
+            `<button type="button" class="lb-view${key === this.view ? " active" : ""}" data-lb-view="${key}">${v.label}</button>`).join("")}</div>
         </div>
         <div class="lb-row lb-head">
           <div class="lb-rank"></div>

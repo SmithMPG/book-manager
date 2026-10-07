@@ -475,7 +475,8 @@ as $$
           'productType', x.product_type, 'submitted', x.submitted,
           'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly,
-          'acceptedFinalPcr', x.accepted_final_pcr)), '[]'::jsonb)
+          'acceptedFinalPcr', x.accepted_final_pcr,
+          'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly)), '[]'::jsonb)
         from (
           select c.product_type,
             count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
@@ -488,7 +489,11 @@ as $$
             -- before there was one.
             coalesce(sum(c.final_pcr) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)), 0) as accepted_final_pcr,
             coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates) and c.final_pcr is null), 0) as accepted_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates) and c.final_pcr is null), 0) as accepted_monthly
+            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates) and c.final_pcr is null), 0) as accepted_monthly,
+            -- Open case PCR's: cases opened but not yet submitted, right
+            -- now (not tied to the days asked for).
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'opened'), 0) as open_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'opened'), 0) as open_monthly
           from public.cases c where c.fa_id = u.id
           group by c.product_type
         ) x) as cases,
