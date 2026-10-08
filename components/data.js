@@ -711,6 +711,8 @@ function _renderDashboard() {
     fnas: rep.fnas,
     quotes: rep.quotes,
     casesSubmitted: rep.cases,
+    willsLeads: rep.willsLeads,
+    referrals: rep.referrals,
   });
   // An FA's meter (their own, or one picked on the leaderboard): accepted
   // PCR against Validation and High Flyer (3x). The team: the week rings
@@ -725,12 +727,12 @@ function _renderDashboard() {
     _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
     _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
   }
+  const stats = caseStats(cases, d.days);
   _widgets.monthlyStats?.update({
-    ...caseStats(cases, d.days),
-    willsLeads: rep.willsLeads,
-    referrals: rep.referrals,
+    opened: stats.opened,
+    submitted: stats.submitted,
     admin: d.admin,
-    periodWord: d.admin && _adminDays.size ? 'Selected Days' : 'This Month',
+    periodWord: d.admin && _adminDays.size ? 'Selected days' : 'This month',
   });
 
   if (d.admin) {

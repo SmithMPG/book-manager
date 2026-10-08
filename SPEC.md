@@ -91,7 +91,11 @@ Nav: Dashboard / Clients / Prospects / Not Moved Forward &middot; Commission Tra
    - **Activity** (ranked by Prospects): **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 
-**Admin view's stats column** (the team, or the FA picked on the leaderboard), each case row a count and its PCR: **Open cases** and **Submitted cases** — the pipeline right now (open but not yet submitted; submitted, waiting to be accepted), not affected by the month bar — then **Cases Accepted** this month (or the picked days), **Wills Leads** and **Referrals**. (The FA's own column keeps commission in the Pot, PCR's in the Pot and expected commission.) The admin's **PCR meter** shows the PCR on the team's **submitted cases waiting to be accepted** (the Submitted cases row) against the fixed team target (10m); with an FA picked, it's their meter (Accepted PCR's against Validation).
+**The hero**, the same for FAs and admins (an FA's figures are their own; an admin's the team's, or the FA picked on the leaderboard), in three columns:
+- **Left — the pipeline, stacked, on the page itself (no cards):** **Open cases** (not yet submitted) and **Submitted cases** (waiting to be accepted), both **from any month**: the PCR large, then cases and commission. (Admin: they open the Cases tab.)
+- **Centre — the meter:** an FA's (or the picked FA's) Accepted PCR against Validation and High Flyer; the admin's team, the week rings ([Calendar](#admin-only-calendar)).
+- **Right — the funnel:** this month's prospects, meetings, FNAs, quotes and cases submitted as a list of labels and numbers (no bars, no conversion rate; hovering Meetings shows its three types), then a last row in the same type: "Wills 2 · Referrals 3".
+- The hero is as wide as the leaderboard: the pipeline on its left edge, the funnel on its right, the meter dead centre. Both side blocks are as tall as the meter: Open cases level with its top, Submitted cases with its bottom, and the funnel's rows spread evenly between.
 
 **FA view** = personal numbers. **Admin view** = team averages, plus an FA list (add/view individual FAs, each reusing the same dashboard component scoped to them).
 
