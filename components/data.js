@@ -286,6 +286,7 @@ function caseItem(c) {
     lumpSum: c.lump_sum,
     monthly: c.monthly,
     adviceFeePercent: c.advice_fee_percent,
+    term: c.term, // RA Builder: years (null: the cap)
     checklist: c.checklist || {},
   };
 }
@@ -390,8 +391,8 @@ async function dbDeleteActivity(id) {
 }
 
 // Opens a case: the case and its "opened" timeline entry, together.
-// fields: {productId, lumpSum, monthly, adviceFeePercent}; any amount left
-// blank counts as 0. Returns {case, activity} as card items.
+// fields: {productId, lumpSum, monthly, adviceFeePercent, term}; any
+// amount left blank counts as 0 (a blank term: none). Returns {case, activity} as card items.
 async function dbOpenCase(clientId, fields, date) {
   const amount = x => (x === '' || x == null || !isFinite(Number(x)) ? 0 : Number(x));
   const r = _dbOk(await supabaseClient.rpc('open_case', {
@@ -401,6 +402,7 @@ async function dbOpenCase(clientId, fields, date) {
     p_monthly: amount(fields.monthly),
     p_advice_fee_percent: amount(fields.adviceFeePercent),
     p_date: date,
+    p_term: Number(fields.term) || null,
   }));
   return { case: caseItem(r.case), activity: activityItem(r.activity) };
 }
@@ -418,13 +420,14 @@ async function dbSetCaseStage(caseId, stage, date, finalPcr = null) {
 // Changes an open case's amounts and adds the "Amended" timeline entry
 // (before → after), together. Refused by the database once it's closed.
 // Returns {case, activity} as card items.
-async function dbAmendCase(caseId, { lumpSum, monthly, adviceFeePercent }, date) {
+async function dbAmendCase(caseId, { lumpSum, monthly, adviceFeePercent, term }, date) {
   const r = _dbOk(await supabaseClient.rpc('amend_case', {
     p_case_id: caseId,
     p_lump_sum: lumpSum,
     p_monthly: monthly,
     p_advice_fee_percent: adviceFeePercent,
     p_date: date,
+    p_term: Number(term) || null,
   }));
   return { case: caseItem(r.case), activity: activityItem(r.activity) };
 }
@@ -565,9 +568,9 @@ function _repFromLeaderboardRow(row) {
   // Accepted PCR: final PCRs as set on accepting, plus the PCR worked out
   // from the premiums of cases accepted before there was one.
   const pcrOf = c => (Number(c.acceptedFinalPcr) || 0)
-    + casePcr({ productType: c.productType, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
-  const submittedPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
-  const openPcrOf = c => casePcr({ productType: c.productType, lumpSum: c.openLumpSum, monthly: c.openMonthly });
+    + casePcr({ productType: c.productType, term: c.term, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
+  const submittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
+  const openPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openLumpSum, monthly: c.openMonthly });
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;

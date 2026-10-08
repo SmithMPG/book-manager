@@ -137,19 +137,27 @@ The products are the New Case dropdown. Each has a **product type** and a **chec
 - **Edit:** the product's name and type, and **Delete product**.
 - **Add product** — the floating **+** in the bottom-right corner: name and type. A new product starts with the standard 7-item checklist, which the admin then edits.
 
-**Product types** are the hard-coded part. There are three, and a product's type decides what its cases record and how commission and PCR are worked out (rates in `constants.js`):
+**Product types** are the hard-coded part. There are four, and a product's type decides what its cases record and how commission and PCR are worked out — the same rules the **Commission Calculator** uses (`constants.js`), so it always shows what the case will:
 
-| Type | A case records | Commission | PCR |
+| Type | A case records | PCR | Commission |
 |---|---|---|---|
-| **Risk** | Monthly premium | 10× monthly premium | Annual premium × 26.15 |
-| **RA Builder** | Lump sum, monthly premium, advice fee | 4× monthly premium | Annual premium × 15 |
-| **Investment** | Lump sum, monthly premium, advice fee | Advice fee % of the lump sum | Lump sum |
+| **Risk** | Monthly premium | Annual premium × 26.15 | Year 1: 10× monthly premium · Year 2: a third of Year 1 |
+| **RA Builder** | Lump sum, monthly premium, advice fee, **term** | Annual premium × term (capped at 15; no term = 15) + the lump sum | 4× monthly premium + advice fee % of the lump sum |
+| **Liberty RA** | Lump sum, monthly premium, advice fee | Annual premium × 5 (its term is always 5) + the lump sum | Advice fee % of the lump sum |
+| **Investment** | Lump sum, monthly premium, advice fee | The lump sum | Advice fee % of the lump sum |
 
-Today's products: Risk and Educator are **Risk**; RA Builder is **RA Builder**; everything else is **Investment**, including RA Liberty.
+Today's case types: Risk and Educator are **Risk**; RA Builder is **RA Builder**; RA Liberty is **Liberty RA**; everything else is **Investment**.
 
 **Rules**
 - **Delete, not archive.** A deleted product leaves the dropdown for good. Its closed cases keep everything they had (see below) and still count in every figure. A product with **open** cases can't be deleted; the app says how many.
 - **Open cases follow the product; closed cases keep what they had.** Editing a product (checklist, name or type) changes its **open** cases straight away: a new checklist item shows up unticked, and a removed one stops counting (4/7 can become 4/6). When a case closes (Accepted or Not taken up), its product name and type are **frozen on the case**, with its premiums and PCRs. Nothing done to the product afterwards changes it.
+
+### Commission Calculator
+The $ in the top bar. No advanced view — three tabs, each worked out with exactly the case rules above:
+- **Risk:** monthly premium → PCR, Year 1 and Year 2 commission.
+- **Retirement annuity**, with a **Builder | Liberty** switch: lump sum, upfront advice fee %, monthly premium, term (Builder's own, PCR counting up to 15; Liberty's shown greyed out at 5) → PCR, upfront commission.
+- **Investment:** lump sum, upfront advice fee % → PCR, commission.
+Figures typed on one tab carry to the others; everything resets when it's opened.
 
 ### Admin-only: Calendar
 **Why:** close-off dates used to be typed into the app's code, so a new month needed a developer. Admins should set them, along with the team's **weekly submission target** for each month, and Home should show week by week whether the team is hitting it.

@@ -107,7 +107,9 @@ let _editingChecklist = false; // the open product's checklist is in edit mode
 let _refocusAdd = false;   // after adding an item, put the cursor back in the add box
 
 function _productCaptures(type) {
-  return productIsPremiumOnly(type) ? 'Monthly premium' : 'Lump sum, monthly premium & advice fee';
+  if (productIsPremiumOnly(type)) return 'Monthly premium';
+  if (productHasTerm(type)) return 'Lump sum, monthly premium, advice fee & term';
+  return 'Lump sum, monthly premium & advice fee';
 }
 
 function _checklistItemHTML(item) {

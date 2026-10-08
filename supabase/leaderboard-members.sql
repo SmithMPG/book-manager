@@ -10,6 +10,7 @@
 -- anything on the last weekday" (hadActivity), not "did the Review".
 
 alter table users add column if not exists on_leaderboard boolean not null default true;
+alter table cases add column if not exists term int;  -- (ra-term.sql; the leaderboard reads it)
 
 update users set on_leaderboard = false where email = 'ameeth.maharaj@liblink.co.za';
 
@@ -46,13 +47,17 @@ as $$
         from public.activities a
         where a.fa_id = u.id and a.type = 'meeting' and a.date = any(p_dates)) as meetings,
       (select coalesce(jsonb_agg(jsonb_build_object(
-          'productType', x.product_type, 'submitted', x.submitted,
+          'productType', x.product_type, 'term', x.term, 'submitted', x.submitted,
           'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly,
           'acceptedFinalPcr', x.accepted_final_pcr,
           'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly)), '[]'::jsonb)
         from (
+          -- Grouped by product type — and, for RA Builder, by the term its
+          -- PCR goes by (capped at 15; none = 15), so each group's PCR is
+          -- worked out from its sums.
           select c.product_type,
+            case when c.product_type = 'ra-builder' then least(coalesce(c.term, 15), 15) end as term,
             count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
             -- Submitted PCR's: every case submitted on these days, whatever
             -- has happened to it since.
@@ -69,7 +74,7 @@ as $$
             coalesce(sum(c.lump_sum) filter (where c.stage = 'opened'), 0) as open_lump_sum,
             coalesce(sum(c.monthly)  filter (where c.stage = 'opened'), 0) as open_monthly
           from public.cases c where c.fa_id = u.id
-          group by c.product_type
+          group by 1, 2
         ) x) as cases,
       -- Did they do anything on p_checkout_date (the last weekday — the
       -- ✓ / ✗ beside their name)? Anything logged for that day counts —

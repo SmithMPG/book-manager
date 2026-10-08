@@ -107,7 +107,8 @@ create index clients_fa_id_idx on clients(fa_id);
 -- type is the hard-coded part — it decides what a case records and how
 -- commission and PCR are worked out (PRODUCT_TYPES in constants.js):
 --   risk         monthly premium only
---   ra-builder   lump sum, monthly premium, advice fee
+--   ra-builder   lump sum, monthly premium, advice fee, term
+--   liberty-ra   lump sum, monthly premium, advice fee (term always 5)
 --   investment   lump sum, monthly premium, advice fee
 -- Every case has the same stages whatever its product (see cases).
 -- product_checklist_items: its checklist, what has to be ticked before
@@ -118,7 +119,7 @@ create index clients_fa_id_idx on clients(fa_id);
 create table products (
   id          uuid primary key default gen_random_uuid(),
   name        text not null unique,
-  type        text not null check (type in ('risk', 'ra-builder', 'investment')),
+  type        text not null check (type in ('risk', 'ra-builder', 'liberty-ra', 'investment')),
   sort_order  int not null default 0,
   created_at  timestamptz not null default now()
 );
@@ -175,7 +176,7 @@ create table cases (
   client_id           uuid not null references clients(id) on delete cascade,
   fa_id               uuid not null references users(id) on delete cascade, -- current servicing FA; moves on handover
   product_id          uuid references products(id) on delete set null, -- null once the product's deleted
-  product_type        text not null check (product_type in ('risk', 'ra-builder', 'investment')),
+  product_type        text not null check (product_type in ('risk', 'ra-builder', 'liberty-ra', 'investment')),
   case_type           text not null,
   stage               text not null default 'opened'
                         check (stage in ('opened', 'submitted', 'accepted', 'not-taken-up')),
@@ -185,6 +186,7 @@ create table cases (
   lump_sum            numeric,
   monthly             numeric,
   advice_fee_percent  numeric,
+  term                int check (term is null or term between 1 and 60), -- RA Builder: years (PCR caps it at 15)
   checklist           jsonb not null default '{}'::jsonb,
   final_pcr           numeric check (final_pcr is null or final_pcr >= 0),
   created_at          timestamptz not null default now()
@@ -270,8 +272,8 @@ create trigger client_fa_change_cascades_to_cases
 create or replace function _closed_case_amounts_fixed() returns trigger as $$
 begin
   if old.stage in ('accepted', 'not-taken-up')
-     and (new.lump_sum, new.monthly, new.advice_fee_percent)
-         is distinct from (old.lump_sum, old.monthly, old.advice_fee_percent) then
+     and (new.lump_sum, new.monthly, new.advice_fee_percent, new.term)
+         is distinct from (old.lump_sum, old.monthly, old.advice_fee_percent, old.term) then
     raise exception 'This case is closed, so its amounts can''t be changed.';
   end if;
   return new;
@@ -472,13 +474,17 @@ as $$
         from public.activities a
         where a.fa_id = u.id and a.type = 'meeting' and a.date = any(p_dates)) as meetings,
       (select coalesce(jsonb_agg(jsonb_build_object(
-          'productType', x.product_type, 'submitted', x.submitted,
+          'productType', x.product_type, 'term', x.term, 'submitted', x.submitted,
           'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly,
           'acceptedFinalPcr', x.accepted_final_pcr,
           'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly)), '[]'::jsonb)
         from (
+          -- Grouped by product type — and, for RA Builder, by the term its
+          -- PCR goes by (capped at 15; none = 15), so each group's PCR is
+          -- worked out from its sums.
           select c.product_type,
+            case when c.product_type = 'ra-builder' then least(coalesce(c.term, 15), 15) end as term,
             count(*) filter (where c.submitted_at = any(p_dates)) as submitted,
             -- Submitted PCR's: every case submitted on these days, whatever
             -- has happened to it since.
@@ -495,7 +501,7 @@ as $$
             coalesce(sum(c.lump_sum) filter (where c.stage = 'opened'), 0) as open_lump_sum,
             coalesce(sum(c.monthly)  filter (where c.stage = 'opened'), 0) as open_monthly
           from public.cases c where c.fa_id = u.id
-          group by c.product_type
+          group by 1, 2
         ) x) as cases,
       -- Did they do anything on p_checkout_date (the last weekday — the
       -- ✓ / ✗ beside their name)? Anything logged for that day counts —
@@ -533,9 +539,10 @@ grant execute on function public.leaderboard(date[], date, uuid) to authenticate
 -- who accepted it and the final PCR in details (acceptedBy, finalPcr).
 -- ---------------------------------------------------------------------
 drop function if exists public.open_case(uuid, text, numeric, numeric, numeric, date);
+drop function if exists public.open_case(uuid, uuid, numeric, numeric, numeric, date);
 create or replace function public.open_case(
   p_client_id uuid, p_product_id uuid, p_lump_sum numeric, p_monthly numeric,
-  p_advice_fee_percent numeric, p_date date)
+  p_advice_fee_percent numeric, p_date date, p_term int default null)
 returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
@@ -550,9 +557,9 @@ begin
     raise exception 'That product no longer exists.';
   end if;
   insert into public.cases (client_id, fa_id, product_id, product_type, case_type, stage, opened_at,
-                            lump_sum, monthly, advice_fee_percent)
+                            lump_sum, monthly, advice_fee_percent, term)
   values (p_client_id, v_fa, p.id, p.type, p.name, 'opened', p_date,
-          p_lump_sum, p_monthly, p_advice_fee_percent)
+          p_lump_sum, p_monthly, p_advice_fee_percent, case when p.type = 'ra-builder' then p_term end)
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
   values (v_fa, p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
@@ -644,8 +651,10 @@ grant execute on function public.update_fa(uuid, text, text, int, boolean) to au
 -- Changing an open case's amounts, and its "amended" timeline entry
 -- with the before and after, in one statement. The FA's own case (or the
 -- super admin's, in the Test Book). Returns {case, activity}.
+drop function if exists public.amend_case(uuid, numeric, numeric, numeric, date);
 create or replace function public.amend_case(
-  p_case_id uuid, p_lump_sum numeric, p_monthly numeric, p_advice_fee_percent numeric, p_date date)
+  p_case_id uuid, p_lump_sum numeric, p_monthly numeric, p_advice_fee_percent numeric, p_date date,
+  p_term int default null)
 returns jsonb
 language plpgsql security invoker set search_path = ''
 as $$
@@ -658,23 +667,24 @@ begin
   if was.stage not in ('opened', 'submitted') then
     raise exception 'This case is closed, so its amounts can''t be changed.';
   end if;
-  update public.cases set lump_sum = p_lump_sum, monthly = p_monthly, advice_fee_percent = p_advice_fee_percent
+  update public.cases set lump_sum = p_lump_sum, monthly = p_monthly, advice_fee_percent = p_advice_fee_percent,
+    term = case when was.product_type = 'ra-builder' then p_term else term end
   where id = p_case_id
   returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
   values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object(
     'event', 'amended',
-    'from', jsonb_build_object('lumpSum', was.lump_sum, 'monthly', was.monthly, 'adviceFeePercent', was.advice_fee_percent),
-    'to',   jsonb_build_object('lumpSum', c.lump_sum, 'monthly', c.monthly, 'adviceFeePercent', c.advice_fee_percent)))
+    'from', jsonb_build_object('lumpSum', was.lump_sum, 'monthly', was.monthly, 'adviceFeePercent', was.advice_fee_percent, 'term', was.term),
+    'to',   jsonb_build_object('lumpSum', c.lump_sum, 'monthly', c.monthly, 'adviceFeePercent', c.advice_fee_percent, 'term', c.term)))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
 $$;
 
-revoke execute on function public.amend_case(uuid, numeric, numeric, numeric, date) from public, anon;
-grant execute on function public.amend_case(uuid, numeric, numeric, numeric, date) to authenticated;
+revoke execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) from public, anon;
+grant execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) to authenticated;
 
-revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) from public, anon;
-grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date) to authenticated;
+revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) from public, anon;
+grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) to authenticated;
 revoke execute on function public.set_case_stage(uuid, text, date, numeric) from public, anon;
 grant execute on function public.set_case_stage(uuid, text, date, numeric) to authenticated;

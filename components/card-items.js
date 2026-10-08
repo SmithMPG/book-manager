@@ -466,6 +466,7 @@ function _amendedText(c, { from = {}, to = {} }, withoutType = false) {
   if (changed('lumpSum')) parts.push(`${rand(from.lumpSum)} → ${rand(to.lumpSum)} lump sum`);
   if (changed('monthly')) parts.push(`${rand(from.monthly)} → ${rand(to.monthly)} pm`);
   if (changed('adviceFeePercent')) parts.push(`${Number(from.adviceFeePercent) || 0}% → ${Number(to.adviceFeePercent) || 0}% advice fee`);
+  if ((from.term ?? null) !== (to.term ?? null)) parts.push(`${from.term || '–'} → ${to.term || '–'} year term`);
   if (c) {
     const pcr = amounts => formatNumber(casePcr({ productType: c.productType, ...amounts }));
     parts.push(`PCR ${pcr(from)} → ${pcr(to)}`);
@@ -525,6 +526,7 @@ function _caseAmountsText(c) {
   if (c.lumpSum) parts.push(`${formatRand(c.lumpSum)} lump sum`);
   if (c.monthly) parts.push(`${formatRand(c.monthly)} pm`);
   if (c.adviceFeePercent) parts.push(`${c.adviceFeePercent}% advice fee`);
+  if (productHasTerm(c.productType) || c.productType === 'liberty-ra') parts.push(`${caseTerm(c)}-year term`);
   return parts.join(' · ');
 }
 
@@ -785,6 +787,7 @@ function _addFormFieldsHTML(kind, last = '', preset = {}) {
       <label class="item-money" data-wrap="lumpSum"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="lumpSum" placeholder="Lump sum"></label>
       <label class="item-money" data-wrap="monthly"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="monthly" placeholder="Monthly"></label>
       <label class="item-money" data-wrap="adviceFeePercent"><input type="number" min="0" step="0.1" data-field="adviceFeePercent" placeholder="Upfront advice fee"><span>%</span></label>
+      <label class="item-money" data-wrap="term"><input type="number" min="1" max="60" step="1" data-field="term" placeholder="Term"><span>years</span></label>
     `;
   }
   return ''; // FNA, wills lead: nothing to fill in
@@ -816,9 +819,9 @@ function _closeAddForm(form) {
   delete form.dataset.kind;
 }
 
-// A case's own fields depend on its product's type, and appear once a
-// product's picked: Risk products take just the monthly premium;
-// everything else takes lump sum, monthly premium and upfront advice fee.
+// A case's own fields depend on its product's type: Risk takes just the
+// monthly premium; everything else lump sum, monthly premium and upfront
+// advice fee — and RA Builder its term (PCR caps it at 15).
 function _syncCaseFields(form) {
   if (form.dataset.kind !== 'case') return;
   const product = getProduct(form.querySelector('[data-field="productId"]').value);
@@ -831,6 +834,7 @@ function _syncCaseFields(form) {
   show('monthly', !!product);
   show('lumpSum', !!product && !premiumOnly);
   show('adviceFeePercent', !!product && !premiumOnly);
+  show('term', productHasTerm(product?.type));
 }
 
 function _formValues(form) {
@@ -854,6 +858,7 @@ function _validateAddForm(form, v) {
   if (kind === 'meeting' && !v.meetingType) { flag('meetingType'); return 'Pick the meeting type.'; }
   if (kind === 'quote' && !v.risk && !v.investment) return 'Tick Risk, Investment, or both.';
   if (kind === 'case' && !v.productId) { flag('productId'); return 'Pick the product.'; }
+  if (kind === 'case' && v.term && !(Number(v.term) >= 1 && Number(v.term) <= 60)) { flag('term'); return 'The term must be between 1 and 60 years.'; }
   return '';
 }
 
@@ -1001,10 +1006,12 @@ async function _editCaseAmounts(btn) {
   const c = _findCase(getClientData(clientId) || {}, caseId);
   if (!c || !isOpenCase(c)) return;
   const premiumOnly = productIsPremiumOnly(c.productType);
+  const hasTerm = productHasTerm(c.productType);
   const fields = [
     ...(premiumOnly ? [] : [{ key: 'lumpSum', label: 'Lump sum (R)', money: true, value: c.lumpSum }]),
     { key: 'monthly', label: 'Monthly premium (R)', money: true, value: c.monthly },
     ...(premiumOnly ? [] : [{ key: 'adviceFeePercent', label: 'Upfront advice fee (%)', type: 'number', value: c.adviceFeePercent }]),
+    ...(hasTerm ? [{ key: 'term', label: `Term (years — PCR counts up to ${BUILDER_MAX_TERM})`, type: 'number', value: c.term }] : []),
   ];
   await _faFormDialog({
     title: `Change ${c.type} amounts`,
@@ -1013,12 +1020,15 @@ async function _editCaseAmounts(btn) {
     onSubmit: async v => {
       const fee = v.adviceFeePercent === undefined || v.adviceFeePercent === '' ? 0 : Number(v.adviceFeePercent);
       if (!isFinite(fee) || fee < 0) throw new Error('The advice fee must be a number.');
+      const term = hasTerm && v.term !== '' ? Math.round(Number(v.term)) : null;
+      if (hasTerm && term !== null && !(term >= 1 && term <= 60)) throw new Error('The term must be between 1 and 60 years.');
       const amounts = {
         lumpSum: premiumOnly ? 0 : v.lumpSum || 0,
         monthly: v.monthly || 0,
         adviceFeePercent: premiumOnly ? 0 : fee,
+        term,
       };
-      const same = Object.keys(amounts).every(k => Number(amounts[k]) === Number(c[k] || 0));
+      const same = Object.keys(amounts).every(k => Number(amounts[k] || 0) === Number(c[k] || 0));
       if (same) return; // nothing changed: no Amended line
       const r = await dbAmendCase(caseId, amounts, entryDateFor(btn));
       _addToCard(clientId, { activity: r.activity, caseItem: r.case });

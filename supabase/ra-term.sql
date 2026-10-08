@@ -1,72 +1,103 @@
--- Final PCR on accepting — run once in the SQL editor (schema.sql
+-- RA term and Liberty RA — run once in the SQL editor (schema.sql
 -- already has this). Safe to re-run. Then reload the app.
 --
---   cases.final_pcr   what the manager accepted the case at (the app
---                     offers the PCR worked out from its premiums, which
---                     they can change). Accepted PCR counts this.
---   set_case_stage()  accepting now takes the final PCR
---   leaderboard()     Accepted PCR's use it
---   closed_snapshot   goes: a closed case keeps just its product, its
---                     premiums and its PCRs (all on the case itself)
+--   liberty-ra       a fourth product type: PCR = annual premium x 5
+--                    (its term is always 5); RA Liberty becomes one.
+--   cases.term       RA Builder cases record their term (years); PCR =
+--                    annual premium x term, capped at 15 (none = 15).
+--   open_case() / amend_case()   take the term
+--   leaderboard()    RA Builder's PCR by term
 
-alter table cases add column if not exists final_pcr numeric;
-alter table cases drop constraint if exists cases_final_pcr_check;
-alter table cases add constraint cases_final_pcr_check check (final_pcr is null or final_pcr >= 0);
-alter table cases drop column if exists closed_snapshot;
--- (The leaderboard below also reads users.on_leaderboard — leaderboard-members.sql.)
-alter table users add column if not exists on_leaderboard boolean not null default true;
-alter table cases add column if not exists term int;  -- (ra-term.sql; the leaderboard reads it)
+alter table products drop constraint if exists products_type_check;
+alter table products add constraint products_type_check
+  check (type in ('risk', 'ra-builder', 'liberty-ra', 'investment'));
+alter table cases drop constraint if exists cases_product_type_check;
+alter table cases add constraint cases_product_type_check
+  check (product_type in ('risk', 'ra-builder', 'liberty-ra', 'investment'));
 
-drop function if exists public.set_case_stage(uuid, text, date);
-create or replace function public.set_case_stage(p_case_id uuid, p_stage text, p_date date, p_final_pcr numeric default null)
-returns jsonb
-language plpgsql security definer set search_path = ''
-as $$
-declare c public.cases; a public.activities; v_details jsonb;
+alter table cases add column if not exists term int;
+alter table cases drop constraint if exists cases_term_check;
+alter table cases add constraint cases_term_check check (term is null or term between 1 and 60);
+
+-- RA Liberty is a Liberty RA (its open cases follow — the product trigger).
+update products set type = 'liberty-ra' where name = 'RA Liberty' and type <> 'liberty-ra';
+
+create or replace function _closed_case_amounts_fixed() returns trigger as $$
 begin
-  select * into c from public.cases where id = p_case_id for update;
-  if not found then
-    raise exception 'Case not found.';
+  if old.stage in ('accepted', 'not-taken-up')
+     and (new.lump_sum, new.monthly, new.advice_fee_percent, new.term)
+         is distinct from (old.lump_sum, old.monthly, old.advice_fee_percent, old.term) then
+    raise exception 'This case is closed, so its amounts can''t be changed.';
   end if;
-  if p_stage = 'accepted' then
-    if not public.manages(c.fa_id) then
-      raise exception 'Only the FA''s manager can accept a case.';
-    end if;
-  elsif not public.can_act_as(c.fa_id) then
-    raise exception 'Case not found.';
-  end if;
-  if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
-       or (c.stage = 'submitted' and p_stage in ('accepted', 'not-taken-up'))) then
-    raise exception 'A case that is % can''t be marked %.', c.stage, p_stage;
-  end if;
-  if p_stage = 'accepted' and (p_final_pcr is null or p_final_pcr < 0) then
-    raise exception 'Accepting a case needs its final PCR.';
-  end if;
+  return new;
+end;
+$$ language plpgsql set search_path = '';
 
-  update public.cases set
-    stage        = p_stage,
-    submitted_at = case when p_stage = 'submitted' then p_date else submitted_at end,
-    accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end,
-    final_pcr    = case when p_stage = 'accepted' then p_final_pcr else final_pcr end
-  where id = p_case_id
-  returning * into c;
-  v_details := jsonb_build_object('event', p_stage);
-  if p_stage = 'accepted' then
-    v_details := v_details || jsonb_build_object('acceptedBy', auth.uid(), 'finalPcr', p_final_pcr);
-    if not exists (select 1 from public.cases
-                   where client_id = c.client_id and stage in ('opened', 'submitted')) then
-      update public.clients set tab = 'clients' where id = c.client_id;
-    end if;
+drop function if exists public.open_case(uuid, text, numeric, numeric, numeric, date);
+drop function if exists public.open_case(uuid, uuid, numeric, numeric, numeric, date);
+create or replace function public.open_case(
+  p_client_id uuid, p_product_id uuid, p_lump_sum numeric, p_monthly numeric,
+  p_advice_fee_percent numeric, p_date date, p_term int default null)
+returns jsonb
+language plpgsql security invoker set search_path = ''
+as $$
+declare c public.cases; a public.activities; v_fa uuid; p public.products;
+begin
+  select fa_id into v_fa from public.clients where id = p_client_id;
+  if v_fa is null or not public.can_act_as(v_fa) then
+    raise exception 'Client not found.';
   end if;
+  select * into p from public.products where id = p_product_id;
+  if not found then
+    raise exception 'That product no longer exists.';
+  end if;
+  insert into public.cases (client_id, fa_id, product_id, product_type, case_type, stage, opened_at,
+                            lump_sum, monthly, advice_fee_percent, term)
+  values (p_client_id, v_fa, p.id, p.type, p.name, 'opened', p_date,
+          p_lump_sum, p_monthly, p_advice_fee_percent, case when p.type = 'ra-builder' then p_term end)
+  returning * into c;
   insert into public.activities (fa_id, client_id, case_id, type, date, details)
-  values (c.fa_id, c.client_id, c.id, 'case', p_date, v_details)
+  values (v_fa, p_client_id, c.id, 'case', p_date, jsonb_build_object('event', 'opened'))
   returning * into a;
   return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
 end;
 $$;
 
-revoke execute on function public.set_case_stage(uuid, text, date, numeric) from public, anon;
-grant execute on function public.set_case_stage(uuid, text, date, numeric) to authenticated;
+drop function if exists public.amend_case(uuid, numeric, numeric, numeric, date);
+create or replace function public.amend_case(
+  p_case_id uuid, p_lump_sum numeric, p_monthly numeric, p_advice_fee_percent numeric, p_date date,
+  p_term int default null)
+returns jsonb
+language plpgsql security invoker set search_path = ''
+as $$
+declare was public.cases; c public.cases; a public.activities;
+begin
+  select * into was from public.cases where id = p_case_id for update;
+  if not found or not public.can_act_as(was.fa_id) then
+    raise exception 'Case not found.';
+  end if;
+  if was.stage not in ('opened', 'submitted') then
+    raise exception 'This case is closed, so its amounts can''t be changed.';
+  end if;
+  update public.cases set lump_sum = p_lump_sum, monthly = p_monthly, advice_fee_percent = p_advice_fee_percent,
+    term = case when was.product_type = 'ra-builder' then p_term else term end
+  where id = p_case_id
+  returning * into c;
+  insert into public.activities (fa_id, client_id, case_id, type, date, details)
+  values (c.fa_id, c.client_id, c.id, 'case', p_date, jsonb_build_object(
+    'event', 'amended',
+    'from', jsonb_build_object('lumpSum', was.lump_sum, 'monthly', was.monthly, 'adviceFeePercent', was.advice_fee_percent, 'term', was.term),
+    'to',   jsonb_build_object('lumpSum', c.lump_sum, 'monthly', c.monthly, 'adviceFeePercent', c.advice_fee_percent, 'term', c.term)))
+  returning * into a;
+  return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a));
+end;
+$$;
+
+revoke execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) from public, anon;
+grant execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) to authenticated;
+
+revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) from public, anon;
+grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) to authenticated;
 
 drop function if exists public.leaderboard(date, date);
 drop function if exists public.leaderboard(date[], date);
