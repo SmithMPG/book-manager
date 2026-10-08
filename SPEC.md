@@ -108,19 +108,19 @@ Same list pattern, for contacts not yet converted to clients.
 ### Not Moved Forward
 Clients/prospects with no activity in X days — visibility only for now (auto-drop-off logic, no action required in MVP).
 
-### Admin-only: Open and Submitted
-Two tabs after Home, for what's coming in and from whom: **the whole team**, like Home's figures, and all their open cases — not tied to a month.
-- **Open** — cases opened but not yet submitted. **Submitted** — cases submitted and waiting to be accepted.
-- **Grouped by FA**, the biggest PCR first (FAs with nothing there are left out). The FA's line: case count · PCR total. Each case: client · product · checklist progress (e.g. 4/7) · **days waiting** (since opened / submitted — highlighted past 30 days open or 14 days submitted, oldest first) · PCR.
-- **Accept** is on each Submitted case of an FA on the admin's own list — **the only place a case is accepted.** It asks for the **final PCR**: pre-filled with the PCR worked out from the premiums, changed if the case was accepted at a different value. That's saved on the case and is what Accepted PCR counts. Other FAs' groups say who accepts them ("Accepted by Ameeth Maharaj"). Accepting the client's last open case moves them to the FA's Clients tab (the confirmation says so).
-- Home's **Open cases** and **Submitted cases** rows open these tabs. The tab counts are cases.
+### Admin-only: Cases
+One tab after Home, for what's coming in and from whom: **the whole team**, like Home's figures, and all their **open and submitted** cases — not tied to a month.
+- **One row per FA** with any, like a collapsed client card, in columns under headings: **name** · **Open** (its PCR, right-aligned; the case count on hover) · **Submitted** at the far right (the same; gold where the admin can accept them; "–" when none). Biggest total PCR first; FAs with none are left out.
+- **Clicking a row** opens their cases (one row open at a time), submitted first: client · product · stage · checklist progress (e.g. 4/7) · **days waiting** (since opened / submitted — red past 30 days open or 14 days submitted) · PCR.
+- **Accept** is on each submitted case of an FA on the admin's own list — **the only place a case is accepted.** It asks for the **final PCR**: pre-filled with the PCR worked out from the premiums, changed if the case was accepted at a different value. That's saved on the case and is what Accepted PCR counts. Other FAs' rows say who accepts them ("Only Ameeth Maharaj can accept these"). Accepting the client's last open case moves them to the FA's Clients tab (the confirmation says so).
+- Home's **Open cases** and **Submitted cases** rows open this tab. The tab's count is the cases.
 - Refreshed whenever the admin comes back to the app.
 
 ### Admin-only: FA list
-Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Open cases · Submitted cases**, all three the same width, then a **☰ menu** at the end with **Products**, **Financial Advisers** and **Calendar** (the menu's tab shows as active on either page). The Financial Advisers page has two views at the top: **Active** and **Left**, each with its count.
+Each FA has a **manager** (`users.manager_id`): the admin whose list they're on. In Admin mode the tab bar is **Home · Cases**, the same width, then a **☰ menu** at the end with **Products**, **Financial Advisers** and **Calendar** (the menu's tab shows as active on either page). The Financial Advisers page has two views at the top: **Active** and **Left**, each with its count.
 
 - **FAs** — the admin's active FAs, alphabetical, like a client list. Collapsed row: name · branch · Validation target · "Not signed in yet" (until they set their password) · open cases · **N submitted** · an **edit** button at the far right.
-- **Clicking a row** opens that FA's open cases, read-only (one row open at a time), submitted ones first. Accepting is on the [Submitted tab](#admin-only-open-and-submitted).
+- **Clicking a row** opens that FA's open cases, read-only (one row open at a time), submitted ones first. Accepting is on the [Cases tab](#admin-only-open-and-submitted).
 - **Edit** — name, surname, Validation target, and **Mark as left** (or **Bring back to Active** from Left).
 - **Search:** in Admin mode the top bar's search box finds the admin's FAs ("Search FAs…"), active or left; picking one opens Financial Advisers on the right view with their row open.
 - **Left** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
@@ -263,7 +263,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 - **Changing amounts:** while a case is open, the **✎** on its case card changes its amounts — the fields its product type records — e.g. R1 000 pm becomes R800. It adds a Case entry to the timeline with what changed, before → after (`Risk · Amended · R1 000 pm → R800 pm · PCR 313 800 → 251 040`), which counts as the client's update for the day like any entry. The case card, its Opened line, PCR and commission show the new amounts. Saving without changing anything adds nothing. Once Accepted or Not taken up, amounts are fixed (the database refuses).
 - **Moving a case on:**
   - **Submitted** — the FA marks it. Allowed with checklist items unticked, but it first warns and lists them: "3 items aren't ticked: … Submit anyway?" (Cancel / Submit anyway).
-  - **Accepted** — only once Submitted, and **only by the FA's manager**, from the [Submitted tab](#admin-only-open-and-submitted), with the case's **final PCR** (offered as the PCR worked out from the premiums; the manager can change it). The FA sees "Awaiting acceptance".
+  - **Accepted** — only once Submitted, and **only by the FA's manager**, from the [Cases tab](#admin-only-open-and-submitted), with the case's **final PCR** (offered as the PCR worked out from the premiums; the manager can change it). The FA sees "Awaiting acceptance".
   - **Not taken up** — **only the FA**, any time while open; the client can back out before or after submission.
 - Tab rules: an open case puts the client in **Open Cases** (the tab once called Business; `business` in the data). Accepting the last open case moves them to **Clients** (the database does this as part of accepting). Closing the last one any other way (not taken up, deleted) asks the FA where they go.
 - **A closed case keeps** just its product, its premiums and its PCRs (the one worked out from the premiums, and the final PCR) — no checklist.

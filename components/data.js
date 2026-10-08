@@ -444,7 +444,7 @@ async function dbDeleteCase(id) {
 // ---------- FA list (admins: team.js) ----------
 
 // Everyone (admins read every users row): the FA list filters to the
-// admin's own (manager_id), the Open and Submitted tabs show the team.
+// admin's own (manager_id), the Cases tab show the team.
 async function dbLoadFas() {
   return _dbOk(await supabaseClient.from('users')
     .select('id, name, surname, email, branch, pcr_target, is_active, password_set, manager_id, is_admin'));
@@ -867,7 +867,7 @@ document.addEventListener('appmodechange', async e => {
   _adminDays.clear();
   _adminFocusId = null;
   setMonthBarSelection(mode === 'admin' ? _adminSelection : null);
-  // Each mode has its own tabs (Admin: Home, Open and Submitted cases, and a menu), so start
+  // Each mode has its own tabs (Admin: Home, Cases, and a menu), so start
   // on Home.
   showTab('dashboard');
   if (!currentUser || !switched) return;

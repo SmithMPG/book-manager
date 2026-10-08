@@ -79,13 +79,13 @@ class MonthlyStats {
   render() {
     const c = this.config;
     if (c.admin) {
-      // The pipeline rows open their tab (pipeline.js).
+      // The pipeline rows open the Cases tab (pipeline.js).
       const cases = (label, x, tab) =>
         `<div class="stat-cell${tab ? ' stat-link' : ''}"${tab ? ` data-show-tab="${tab}" title="See them"` : ''}>${label}: <b>${x.count}</b> · PCR <b>${formatNumber(x.pcr)}</b></div>`;
       this.container.innerHTML = `
         <div class="stat-list">
-          ${cases('Open cases', c.opened, 'open')}
-          ${cases('Submitted cases', c.submitted, 'submitted')}
+          ${cases('Open cases', c.opened, 'cases')}
+          ${cases('Submitted cases', c.submitted, 'cases')}
           ${cases(`Cases Accepted ${c.periodWord}`, c.accepted)}
           <div class="stat-cell">Wills Leads ${c.periodWord}: <b>${c.willsLeads}</b></div>
           <div class="stat-cell">Referrals ${c.periodWord}: <b>${c.referrals}</b></div>

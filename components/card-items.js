@@ -7,7 +7,7 @@
 //               amounts, Opened ── Submitted ── Accepted with dates, its
 //               checklist and next steps — Mark submitted, Not taken up,
 //               Delete case. Only the FA's manager accepts a case, from
-//               the Submitted tab (pipeline.js).
+//               the Cases tab (pipeline.js).
 //   Add form    opened from the row's "+" menu: the event on the left
 //               (Contact, Note, Meeting, FNA, Quote, Case), its own
 //               fields on the right. Dated today — or, for a card shown

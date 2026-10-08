@@ -5,11 +5,11 @@
 // Collapsed row: name, branch, Validation target, how many open cases
 // they have and how many are submitted, and an edit button at the far
 // right. Clicking the row opens their open cases, read-only (one row open
-// at a time). Accepting is done on the Submitted tab (pipeline.js), with
+// at a time). Accepting is done on the Cases tab (pipeline.js), with
 // acceptTeamCase below — the manager's alone, FAs can't (set_case_stage
 // in supabase/schema.sql).
 //
-// This file also holds the admin's team for the Open and Submitted tabs
+// This file also holds the admin's team for the Cases tab
 // (getTeamFas, getTeamCases; 'team:changed' when they reload).
 //
 // Viewing as: the super admin can pick another admin from the picker
@@ -210,7 +210,7 @@ function _injectTeamCSS() {
 _injectTeamCSS();
 
 let _teamFas = [];        // users rows on the admin's list
-let _pipelineFas = [];    // everyone whose cases the Open and Submitted tabs show
+let _pipelineFas = [];    // everyone whose cases the Cases tab show
 let _teamCases = [];      // open cases of everyone in _pipelineFas (data.js dbLoadOpenCasesFor)
 let _teamOpenId = null;   // the FA whose row is open
 let _teamLoadRun = 0;
@@ -296,10 +296,10 @@ function _renderTeam() {
     const count = b.querySelector('.tab-count');
     if (count) count.textContent = (b.dataset.faView === 'active' ? active : left).length;
   });
-  document.dispatchEvent(new CustomEvent('team:changed'));  // the Open and Submitted tabs
+  document.dispatchEvent(new CustomEvent('team:changed'));  // the Cases tab
 }
 
-// For the Open and Submitted tabs (pipeline.js): the whole team, like
+// For the Cases tab (pipeline.js): the whole team, like
 // Home's figures — every FA (active and left), the Test Book only if
 // it's on the admin's own list — and their open cases.
 function getTeamFas() {
@@ -406,7 +406,7 @@ function openFaRow(id) {
 
 // ---------- accepting ----------
 
-// From the Submitted tab (pipeline.js): accepts a case for one of the
+// From the Cases tab (pipeline.js): accepts a case for one of the
 // admin's FAs, after confirming. btn is disabled while it saves.
 async function acceptTeamCase(caseId, btn) {
   if (isLookOnly()) return;
@@ -434,7 +434,7 @@ async function acceptTeamCase(caseId, btn) {
     return;
   }
   _teamCases = _teamCases.filter(k => k.id !== c.id);
-  _renderTeam(); // the Submitted tab redraws too ('team:changed')
+  _renderTeam(); // the Cases tab redraws too ('team:changed')
   await refreshDashboard().catch(showSaveError);
 }
 
@@ -636,7 +636,7 @@ function initTeam(root) {
     }
   });
   // Coming back to the app: pick up cases FAs have opened or submitted
-  // since (the Open and Submitted tabs).
+  // since (the Cases tab).
   window.addEventListener('focus', () => {
     if (currentUser && getAppMode() === 'admin') loadTeam().catch(console.error);
   });
