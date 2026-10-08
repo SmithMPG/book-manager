@@ -1,5 +1,5 @@
-// Products: Admin mode's Products page (☰ → Products) — one row per
-// product in the New Case dropdown (data.js getProducts), like a client
+// Case types (called products in the code): Admin mode's ☰ → Case
+// types — one row per case type in the "+" menu's Open a case list (data.js getProducts), like a client
 // list, alphabetical.
 //
 // Collapsed row: the product, its product type (what its cases record
@@ -163,7 +163,7 @@ function _renderProducts() {
   const products = getProducts();
   container.innerHTML = products.length
     ? products.map(_productRowHTML).join('')
-    : '<div class="fa-list-empty">No products yet. Use + (bottom right) to add one.</div>';
+    : '<div class="fa-list-empty">No case types yet. Use + (bottom right) to add one.</div>';
   if (_refocusAdd) {
     container.querySelector('.pe-add')?.focus();
     _refocusAdd = false;
@@ -185,17 +185,17 @@ function _productProblem(err) {
 const _TYPE_OPTIONS = PRODUCT_TYPES.map(t => ({ value: t.key, label: t.label }));
 
 function _checkProductName(v) {
-  if (!v.name) throw new Error('Give the product a name.');
+  if (!v.name) throw new Error('Give the case type a name.');
 }
 
 function _addProduct() {
   return _faFormDialog({
-    title: 'Add a product',
+    title: 'Add a case type',
     fields: [
       { key: 'name', label: 'Name' },
       { key: 'type', label: 'Product type', options: _TYPE_OPTIONS, value: 'investment' },
     ],
-    submitLabel: 'Add product',
+    submitLabel: 'Add case type',
     onSubmit: async v => {
       _checkProductName(v);
       await dbAddProduct(v);
@@ -235,8 +235,8 @@ async function _editProduct(p) {
     }
     const ok = await showChoiceDialog({
       title: `Delete ${p.name}?`,
-      message: `${p.name} leaves the New Case dropdown for good. Cases already closed on it keep their name and checklist. This can't be undone.`,
-      choices: [{ label: 'Cancel', value: null }, { label: 'Delete product', value: true, primary: true }],
+      message: `${p.name} leaves the Open a case list for good. Cases already closed on it keep their name, premiums and PCRs. This can't be undone.`,
+      choices: [{ label: 'Cancel', value: null }, { label: 'Delete case type', value: true, primary: true }],
     });
     if (!ok) return false;
     await dbDeleteProduct(p.id);
@@ -249,7 +249,7 @@ async function _editProduct(p) {
     ],
     submitLabel: 'Save',
     onSubmit: save,
-    extra: { label: 'Delete product', onClick: remove },
+    extra: { label: 'Delete case type', onClick: remove },
   });
 }
 

@@ -337,8 +337,41 @@ const TIMELINE_KINDS = {
   referral: { label: 'Referral', key: true },
   case: { label: 'Case', key: true },
 };
-// What the row's "+" menu offers, in order.
-const ADD_KINDS = ['contact', 'note', 'meeting', 'fna', 'quote', 'case'];
+// The row's "+" menu (client-card.js): each item is an entry to add, or
+// a section with its own list (opening to the side). Everything in
+// alphabetical order. Picking an option opens the add form
+// with what it chose already set (preset: the form's fields), so the form
+// only asks for the rest — a contact's outcome, a meeting's details, a
+// case's amounts.
+function addMenu() {
+  const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+  const items = [
+    {
+      label: 'Contact',
+      options: CONTACT_METHODS.filter(m => m.offered)
+        .map(m => ({ label: m.label, kind: 'contact', preset: { method: m.key } })),
+    },
+    { label: 'Note', kind: 'note' },
+    {
+      label: 'Meeting',
+      options: MEETING_TYPES.map(t => ({ label: t.label, kind: 'meeting', preset: { meetingType: t.key } })),
+    },
+    {
+      label: 'Activity',
+      options: [
+        { label: 'FNA', kind: 'fna' },
+        { label: 'Quote', kind: 'quote' },
+        { label: 'Wills lead submitted', kind: 'wills_lead' },
+      ],
+    },
+    {
+      label: 'Open a case',
+      options: getProducts().map(p => ({ label: p.name, kind: 'case', preset: { productId: p.id } })),
+    },
+  ];
+  items.forEach(it => it.options?.sort(byLabel));
+  return items.sort(byLabel);
+}
 
 // The case view's groups (and the client row's chips): open (not yet
 // submitted), submitted (waiting to be accepted), closed (accepted or
@@ -707,22 +740,25 @@ function clientDetailHTML(data) {
   `;
 }
 
-// From the row's "+" menu: the add form for one kind of entry (back on
-// the client view, if the card was showing its cases).
-function openAddEntry(detail, kind) {
+// From the row's "+" menu: the add form for one kind of entry, with what
+// the menu chose (preset, label — addMenu) — back on the client view, if
+// the card was showing its cases.
+function openAddEntry(detail, kind, preset = {}, label = '') {
   const clientId = detail.id.replace('row-', '');
   if (_caseView.has(clientId)) showCaseView(detail, clientId, null);
-  _openAddForm(detail.querySelector('.item-add-form'), kind);
+  _openAddForm(detail.querySelector('.item-add-form'), kind, preset, label);
 }
 
 // ---------- adding an entry ----------
 
 // last: the client's last update, offered as "Same as last" in a note.
-function _addFormFieldsHTML(kind, last = '') {
+// What the menu already chose (preset) goes in as hidden fields.
+function _addFormFieldsHTML(kind, last = '', preset = {}) {
+  const hidden = Object.entries(preset)
+    .map(([k, v]) => `<input type="hidden" data-field="${k}" value="${_escHtml(v)}">`).join('');
   if (kind === 'contact') {
-    const opts = CONTACT_METHODS.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
     return `
-      <select data-field="method"><option value="">How&hellip;</option>${opts}</select>
+      ${hidden}
       ${statusInputHTML({ options: CONTACT_OUTCOMES, attrs: 'data-field="outcome"', placeholder: 'Outcome — pick one or type your own…' })}
     `;
   }
@@ -730,9 +766,8 @@ function _addFormFieldsHTML(kind, last = '') {
     return statusInputHTML({ last, attrs: 'data-field="text"', placeholder: 'Note — or Same as last from the arrow…' });
   }
   if (kind === 'meeting') {
-    const opts = MEETING_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
     return `
-      <select data-field="meetingType"><option value="">Meeting type&hellip;</option>${opts}</select>
+      ${hidden}
       <label class="item-check"><input type="checkbox" data-field="joint"> Joint call</label>
       <label class="item-number">Referrals <input type="number" min="0" step="1" data-field="referrals" placeholder="0"></label>
       <label class="item-check"><input type="checkbox" data-field="willsLead"> Wills lead</label>
@@ -745,24 +780,25 @@ function _addFormFieldsHTML(kind, last = '') {
     `;
   }
   if (kind === 'case') {
-    const opts = getProducts().map(p => `<option value="${p.id}">${_escHtml(p.name)}</option>`).join('');
     return `
-      <select data-field="productId"><option value="">Product&hellip;</option>${opts}</select>
+      ${hidden}
       <label class="item-money" data-wrap="lumpSum"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="lumpSum" placeholder="Lump sum"></label>
       <label class="item-money" data-wrap="monthly"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="monthly" placeholder="Monthly"></label>
       <label class="item-money" data-wrap="adviceFeePercent"><input type="number" min="0" step="0.1" data-field="adviceFeePercent" placeholder="Upfront advice fee"><span>%</span></label>
     `;
   }
-  return ''; // FNA: nothing to fill in
+  return ''; // FNA, wills lead: nothing to fill in
 }
 
-function _openAddForm(form, kind) {
+// label: what was picked, beside the date ("Phone call", "Fact Finder",
+// "RA Builder"); the entry's kind if nothing more specific.
+function _openAddForm(form, kind, preset = {}, label = '') {
   form.dataset.kind = kind;
   const last = lastUpdateOf(getClientData(form.dataset.client))?.text || '';
   form.innerHTML = `
     <span class="tl-date">${_dayLabel(entryDateFor(form))}</span>
-    <span class="tl-kind">${TIMELINE_KINDS[kind].label}</span>
-    ${_addFormFieldsHTML(kind, last)}
+    <span class="tl-kind">${_escHtml(label || TIMELINE_KINDS[kind].label)}</span>
+    ${_addFormFieldsHTML(kind, last, preset)}
     <span class="item-form-actions">
       <button type="button" class="item-cancel" data-action="cancel-add">Cancel</button>
       <button type="button" class="item-save" data-action="save-add">Save ${TIMELINE_KINDS[kind].label.toLowerCase()}</button>

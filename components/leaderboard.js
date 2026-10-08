@@ -6,12 +6,14 @@
 // Clicking a header sorts by that column (largest first); clicking the
 // active header again flips to smallest first.
 //
-// Admin view (setReps with options): each name is clickable — it opens
-// a panel under that row (options.detailHTML) and calls
-// options.onSelect(id), or onSelect(null) when clicked again. Beside each
-// name, whether they had any activity on options.activityDayLabel (the
-// last weekday): ✓ something logged, ✗ nothing (rep.hadActivity) — the
-// Review on its own doesn't count.
+// Beside each name (FAs' and admins' view alike), whether they had any
+// activity on options.activityDayLabel (the last weekday): ✓ something
+// logged, ✗ nothing (rep.hadActivity) — the Review on its own doesn't
+// count.
+//
+// Admin view (options.onSelect): each name is clickable — it opens a
+// panel under that row (options.detailHTML) and calls
+// options.onSelect(id), or onSelect(null) when clicked again.
 
 function _injectLeaderboardCSS() {
   if (document.getElementById("leaderboard-styles")) return;
@@ -254,7 +256,7 @@ class Leaderboard {
   }
 
   // options (admin view): {onSelect, selectedId, detailHTML(rep),
-  // activityDayLabel, title}. Plain setReps(reps) is the FA view.
+  // activityDayLabel, title}. The FA view passes only activityDayLabel.
   setReps(reps, options = {}) {
     this.config.reps = reps;
     this.options = options;

@@ -148,10 +148,12 @@ const CASE_CHECKLIST = [
 // Timeline contact entries: how the client was contacted (a fixed list)
 // and what came of it — one of the standard outcomes, or the FA's own
 // words.
+// offered: in the "+" menu's Contact list. The others only label older
+// entries.
 const CONTACT_METHODS = [
-  { key: 'phone', label: 'Phone' },
-  { key: 'email', label: 'Email' },
-  { key: 'message', label: 'WhatsApp / SMS' },
+  { key: 'phone', label: 'Phone call', offered: true },
+  { key: 'email', label: 'Email', offered: true },
+  { key: 'message', label: 'Text', offered: true },
   { key: 'linkedin', label: 'LinkedIn' },
   { key: 'inPerson', label: 'In person' },
 ];

@@ -200,7 +200,7 @@ async function loadProducts() {
 // every dropdown and the Products tab redraw ('products:changed').
 
 function _productError(err, name) {
-  if (err?.code === '23505') return new Error(`There's already a product called ${name}.`);
+  if (err?.code === '23505') return new Error(`There's already a case type called ${name}.`);
   return err;
 }
 
@@ -741,7 +741,9 @@ function _renderDashboard() {
     });
   } else {
     // The Test Book's row only came back for the hero — never rank it.
-    _widgets.leaderboard?.setReps(d.reps.filter(r => !_testBook || r.id !== _testBook.id));
+    _widgets.leaderboard?.setReps(d.reps.filter(r => !_testBook || r.id !== _testBook.id), {
+      activityDayLabel: formatDaySelection([d.checkoutDay]),
+    });
   }
 }
 
@@ -791,9 +793,10 @@ async function refreshDashboard() {
   const admin = _isAdminView();
   const days = admin && _adminDays.size ? new Set(_adminDays)
     : _periodDays(admin ? (getMonthBarPeriod() || _currentPeriod()) : _currentPeriod());
-  // The ✓ / ✗ on the leaderboard is always the previous weekday's
-  // checkout, whatever days are picked.
-  const checkoutDay = admin ? _lastWeekday() : null;
+  // The ✓ / ✗ beside each name on the leaderboard — FAs' and admins'
+  // alike — is always whether they had activity on the previous weekday,
+  // whatever days are picked.
+  const checkoutDay = _lastWeekday();
 
   const [board, checkoutDates, teamCases, targets] = await Promise.all([
     _loadLeaderboard(days, checkoutDay),

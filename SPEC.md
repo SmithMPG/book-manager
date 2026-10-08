@@ -126,8 +126,8 @@ Each FA has a **manager** (`users.manager_id`): the admin whose list they're on.
 - **Left** — FAs who've left. They can't sign in or write anything and drop off the leaderboard; their clients and history are kept.
 - **Add FA** — the floating **+** in the bottom-right corner (name, surname, email, phone, Validation target) — creates their login with a temporary password, shown once to the admin to hand over (no email is sent). They're on that admin's list and branch, and choose their own password on first sign-in. Runs in the `add-fa` Edge Function, since creating a login needs the secret key.
 
-### Admin-only: Products
-**Why:** what has to be in place before a case is submitted changes, and differs by product. Admins keep that up to date here, rather than it being fixed in the app.
+### Admin-only: Case types
+(☰ → Case types; called *products* in the code and database.) **Why:** what has to be in place before a case is submitted changes, and differs by product. Admins keep that up to date here, rather than it being fixed in the app.
 
 The products are the New Case dropdown. Each has a **product type** and a **checklist** (what has to be ticked before submitting). Every case has the same stages whatever its product (see [Cases](#cases)), so there's nothing else to set. They're stored in the database (`products`), one list shared by every admin. **Only admins change it**; FAs just use it.
 
@@ -236,7 +236,13 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
   - **A case card per open case**, stacked. Like a client card, it's **collapsed** by default: product · amounts · PCR · **✎** (change amounts), and at the right end what can happen next — **Mark submitted** · **Not taken up** (Opened), or **Awaiting acceptance** · **Not taken up** (Submitted). **Clicking the card** opens it: the breadcrumb **Opened ── Submitted ── Accepted**, each step dated once reached, the **checklist** to tick, and **Delete case**.
   - The timeline.
 - **Case view** (from a chip on the row, or a case line's product chip on the timeline): just that group's cases — **Open**, **Submitted** or **Closed** — no bar of its own. The row's chip for the group showing is highlighted; another chip switches group; clicking the highlighted chip again, or the row, goes back to the client view. The cases as cards. Opened up, each card also lists its own timeline lines. Closed cards are read-only: their line ends in a badge (Accepted / Not taken up), and an accepted one shows its **final PCR**; opened up, the breadcrumb ends in Accepted or Not taken up with its date, then its premiums and PCRs. Opening a case line's chip lands on that case's group, opened up, scrolled to it and highlighted. The row's **+** goes back to the client view too; a card closed and reopened starts on the client view.
-- **+** opens a menu — Contact, Note, Meeting, FNA, Quote, Case — and opens the card with that entry ready to fill in: **the event on the left, its own fields on the right**, dated today.
+- **+** opens a menu, everything alphabetical; a ▸ section's list opens to the side on hover (tap on a touch screen), to the left when there's no room on the right:
+  - **Activity ▸** FNA · Quote · Wills lead submitted.
+  - **Contact ▸** Email · Phone call · Text → just the outcome.
+  - **Meeting ▸** Closing · Fact Finder · Relational → joint call, referrals, wills lead.
+  - **Note**.
+  - **Open a case ▸** every case type → its amounts.
+  Picking an option opens the card with that entry ready to fill in, the choice already made (beside the date: "Phone call", "Fact Finder", "RA Builder"), dated today. Older contacts logged as LinkedIn or In person keep their label.
 - **Case fields depend on the type:** Risk and Educator take the monthly premium; everything else takes lump sum, monthly premium and upfront advice fee.
 - **Timeline:** newest first, grouped by day, ending with "Client added". Entries can be deleted one at a time (×), except **case lines**: they're added automatically by whatever happens to the case — opened, amounts changed (before → after), submitted, accepted, not taken up — and each starts with the case's **product chip** (to the case view). A case goes, with its lines, by **Delete case** on its card.
 
@@ -281,7 +287,7 @@ The Review is the day's work, **client first** — the same way of working as th
 - Every entry saves the moment it's added or deleted, straight onto the client's timeline, dated the review day. Entries can be deleted (×), as on the timeline.
 - **Done** (on the last step) checks every open-case client has an update, then marks the day reviewed.
 - **No activity:** a day reviewed with **nothing at all** logged is recorded as **No activity**.
-- **The leaderboard's ✓ / ✗** (admin view, beside each name) is about **activity, not the Review**: ✓ if the FA logged anything for the last weekday — a contact, note, meeting, FNA, quote, case change, prospects contacted — ✗ if nothing. Doing the Review on its own doesn't earn a ✓.
+- **The leaderboard's ✓ / ✗** (beside each name — on FAs' leaderboard and the admin's alike) is about **activity, not the Review**: ✓ if the FA logged anything for the last weekday — a contact, note, meeting, FNA, quote, case change, prospects contacted — ✗ if nothing. Doing the Review on its own doesn't earn a ✓.
 - Internally the day is still recorded as a `checkout` activity, so the leaderboard needs no migration for the rename.
 
 ## Data model changes (for the timeline and Review)

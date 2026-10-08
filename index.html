@@ -173,18 +173,18 @@
         <span class="tab-count">0</span>
       </div>
       <!-- Admin mode: Home and the pipeline (pipeline.js), the same width;
-           then a menu for Products (products.js), Financial Advisers
+           then a menu for Case types (products.js), Financial Advisers
            (team.js) and the Calendar (calendar.js). The menu's tab shows as active on either page. -->
       <div class="tab admin-only" data-tab="open">Open cases <span class="tab-count">0</span></div>
       <div class="tab admin-only" data-tab="submitted">Submitted cases <span class="tab-count">0</span></div>
-      <div class="tab tab-icon admin-only tab-menu" data-menu="products team calendar" title="Products, Financial Advisers and Calendar">
+      <div class="tab tab-icon admin-only tab-menu" data-menu="products team calendar" title="Case types, Financial Advisers and Calendar">
         <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="4" y1="6" x2="20" y2="6" />
           <line x1="4" y1="12" x2="20" y2="12" />
           <line x1="4" y1="18" x2="20" y2="18" />
         </svg>
         <div class="tab-menu-list">
-          <button type="button" data-menu-tab="products">Products</button>
+          <button type="button" data-menu-tab="products">Case types</button>
           <button type="button" data-menu-tab="team">Financial Advisers</button>
           <button type="button" data-menu-tab="calendar">Calendar</button>
         </div>
@@ -266,10 +266,10 @@
         <div id="calendar-months"></div>
       </div>
 
-      <!-- ===== ADMIN: PRODUCTS (products.js) ===== -->
+      <!-- ===== ADMIN: CASE TYPES (products.js — called products in the code) ===== -->
       <div class="tab-content" id="tab-products">
         <div id="products-cards"></div>
-        <button type="button" class="fab btn-add-product" title="Add a product" aria-label="Add a product">+</button>
+        <button type="button" class="fab btn-add-product" title="Add a case type" aria-label="Add a case type">+</button>
       </div>
     </div>
 

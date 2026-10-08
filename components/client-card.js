@@ -114,7 +114,7 @@ function _injectClientCardCSS() {
       border-radius: 8px;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
       padding: 6px;
-      width: 170px;
+      width: 190px;
       display: flex;
       flex-direction: column;
       gap: 1px;
@@ -131,6 +131,35 @@ function _injectClientCardCSS() {
       cursor: pointer;
     }
     .add-menu button:hover { background: #f2f2f0; }
+    /* A section: its list opens to the side on hover (or tap), to the
+       left when there's no room on the right (.flip). */
+    .add-menu .am-section { position: relative; }
+    .add-menu .am-section > button { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+    .add-menu .am-section > button::after { content: '›'; color: var(--ink-dim); font-size: 15px; }
+    .add-menu .am-section:hover > button,
+    .add-menu .am-section.open > button { background: #f2f2f0; }
+    .add-menu .am-sub {
+      display: none;
+      position: absolute;
+      top: -6px;
+      left: calc(100% + 6px);
+      min-width: 190px;
+      max-height: 340px;
+      overflow-y: auto;
+      flex-direction: column;
+      gap: 1px;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+    }
+    .add-menu.flip .am-sub { left: auto; right: calc(100% + 6px); }
+    .add-menu .am-section:hover > .am-sub,
+    .add-menu .am-section.open > .am-sub { display: flex; }
+    /* A bridge over the gap, so moving across to the list doesn't close it. */
+    .add-menu .am-section::after { content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: 8px; }
+    .add-menu.flip .am-section::after { left: auto; right: 100%; }
 
     /* The date on an add-entry form (card-items.js). */
     .detail-date {
@@ -353,24 +382,50 @@ function _outsideAddMenuClick(e) {
   _closeAddMenu();
 }
 
+// The "+" menu (addMenu, card-items.js): Activity ▸, Contact ▸,
+// Meeting ▸, Note, Open a case ▸ — a section's list opens to the side on
+// hover (or tap); picking an entry opens the card's add form with that
+// choice made.
 function _openAddMenu(anchor, row) {
   _closeAddMenu();
+  const items = addMenu();
   const menu = document.createElement('div');
   menu.className = 'add-menu';
   menu.id = 'add-menu';
-  menu.innerHTML = ADD_KINDS.map(k => `<button type="button" data-kind="${k}">${TIMELINE_KINDS[k].label}</button>`).join('');
+  const entry = (it, ref) => `<button type="button" data-entry="${ref}">${_escHtml(it.label)}</button>`;
+  menu.innerHTML = items.map((it, i) => (it.options
+    ? `<div class="am-section">
+        <button type="button" data-section>${_escHtml(it.label)}</button>
+        <div class="am-sub">${it.options.length
+          ? it.options.map((o, j) => entry(o, `${i}.${j}`)).join('')
+          : '<button type="button" disabled>Nothing to pick yet</button>'}</div>
+      </div>`
+    : entry(it, `${i}`))).join('');
   document.body.appendChild(menu);
   const a = anchor.getBoundingClientRect();
   const m = menu.getBoundingClientRect();
   let top = a.bottom + 6;
-  if (top + m.height > window.innerHeight - 12) top = a.top - m.height - 6;
+  if (top + m.height > window.innerHeight - 12) top = Math.max(12, a.top - m.height - 6);
+  const left = Math.max(12, Math.min(a.right - m.width, window.innerWidth - m.width - 12));
   menu.style.top = `${top}px`;
-  menu.style.left = `${Math.max(12, Math.min(a.right - m.width, window.innerWidth - m.width - 12))}px`;
+  menu.style.left = `${left}px`;
+  // Lists open to the right unless that runs off the screen.
+  menu.classList.toggle('flip', left + m.width + 6 + 200 > window.innerWidth - 12);
   menu.addEventListener('click', e => {
-    const btn = e.target.closest('[data-kind]');
+    const section = e.target.closest('[data-section]');
+    if (section) {
+      // Tap (no hover): open this section's list, close the others.
+      const sec = section.parentElement;
+      menu.querySelectorAll('.am-section.open').forEach(s => { if (s !== sec) s.classList.remove('open'); });
+      sec.classList.toggle('open');
+      return;
+    }
+    const btn = e.target.closest('[data-entry]');
     if (!btn) return;
+    const [i, j] = btn.dataset.entry.split('.').map(Number);
+    const it = Number.isNaN(j) || j === undefined ? items[i] : items[i].options[j];
     _closeAddMenu();
-    openAddEntry(_openCard(row), btn.dataset.kind);
+    openAddEntry(_openCard(row), it.kind, it.preset || {}, it.options ? '' : it.label);
   });
   // Deferred so the click that opened it doesn't close it straight away.
   setTimeout(() => document.addEventListener('click', _outsideAddMenuClick, true), 0);
