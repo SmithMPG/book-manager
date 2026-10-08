@@ -9,8 +9,9 @@
 // Admin view (setReps with options): each name is clickable — it opens
 // a panel under that row (options.detailHTML) and calls
 // options.onSelect(id), or onSelect(null) when clicked again. Beside each
-// name, whether they did the Review for options.checkoutDayLabel: ✓, ✗,
-// or – when they did it with nothing logged (rep.noActivity).
+// name, whether they had any activity on options.activityDayLabel (the
+// last weekday): ✓ something logged, ✗ nothing (rep.hadActivity) — the
+// Review on its own doesn't count.
 
 function _injectLeaderboardCSS() {
   if (document.getElementById("leaderboard-styles")) return;
@@ -253,7 +254,7 @@ class Leaderboard {
   }
 
   // options (admin view): {onSelect, selectedId, detailHTML(rep),
-  // checkoutDayLabel, title}. Plain setReps(reps) is the FA view.
+  // activityDayLabel, title}. Plain setReps(reps) is the FA view.
   setReps(reps, options = {}) {
     this.config.reps = reps;
     this.options = options;
@@ -263,7 +264,7 @@ class Leaderboard {
   render() {
     const { reps } = this.config;
     const title = this.options.title || this.config.title;
-    const { onSelect, selectedId, detailHTML, checkoutDayLabel } = this.options;
+    const { onSelect, selectedId, detailHTML, activityDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
     const columns = LEADERBOARD_VIEWS[this.view].columns;
@@ -297,14 +298,12 @@ class Leaderboard {
           return `<div class="lb-value${col.wide ? " wide" : ""}${activeClass}">${value}</div>`;
         }).join("");
         const selected = selectedId === rep.id;
-        const day = _escHtml(checkoutDayLabel || "");
-        const checkout = rep.checkedOut === false
-          ? `<span class="lb-checkout no" title="No Review for ${day}">✗</span>`
-          : rep.checkedOut && rep.noActivity
-            ? `<span class="lb-checkout none" title="Reviewed ${day} — no activity">–</span>`
-            : rep.checkedOut
-              ? `<span class="lb-checkout yes" title="Reviewed ${day}">✓</span>`
-              : "";
+        const day = _escHtml(activityDayLabel || "");
+        const checkout = rep.hadActivity === true
+          ? `<span class="lb-checkout yes" title="Activity logged on ${day}">✓</span>`
+          : rep.hadActivity === false
+            ? `<span class="lb-checkout no" title="Nothing logged on ${day}">✗</span>`
+            : "";
         return `
           <div class="lb-row${onSelect ? " clickable" : ""}${selected ? " selected" : ""}" data-rep-id="${rep.id}">
             <div class="lb-rank">${rank}</div>

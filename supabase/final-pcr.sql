@@ -125,13 +125,14 @@ as $$
           from public.cases c where c.fa_id = u.id
           group by c.product_type
         ) x) as cases,
+      -- Did they do anything on p_checkout_date (the last weekday — the
+      -- ✓ / ✗ beside their name)? Anything logged for that day counts —
+      -- a contact, note, meeting, case change, prospects contacted… —
+      -- except the Review itself (a 'checkout' row).
       case when p_checkout_date is null then null
         else exists (select 1 from public.activities a
-          where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date)
-      end as "checkedOut",
-      -- Reviewed that day, but with nothing at all logged.
-      coalesce((select (a.details->>'noActivity')::boolean from public.activities a
-        where a.fa_id = u.id and a.type = 'checkout' and a.date = p_checkout_date), false) as "noActivity"
+          where a.fa_id = u.id and a.type <> 'checkout' and a.date = p_checkout_date)
+      end as "hadActivity"
     from public.users u
     where u.is_active and u.on_leaderboard and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
   ) t;

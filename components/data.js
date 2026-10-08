@@ -322,8 +322,8 @@ async function _loadMyCheckoutDates() {
   return rows.map(r => r.date);
 }
 
-// days: Set of ISO dates; checkoutDay: ISO date to report check-outs
-// for (admin view), or null.
+// days: Set of ISO dates; checkoutDay: the day to report whether each FA
+// had any activity on (admin view — the last weekday), or null.
 // In test mode the Test Book's own figures are asked for too (they're
 // left out otherwise) — they feed the hero, not the leaderboard.
 async function _loadLeaderboard(days, checkoutDay) {
@@ -575,8 +575,7 @@ function _repFromLeaderboardRow(row) {
     id: row.id,
     name: isYou ? `${row.name} (you)` : row.name,
     plainName: row.name,
-    checkedOut: row.checkedOut,
-    noActivity: !!row.noActivity,
+    hadActivity: row.hadActivity, // null when not asked
     prospects: row.prospects || 0,
     referrals: row.referrals || 0,
     willsLeads: row.willsLeads || 0,
@@ -736,7 +735,7 @@ function _renderDashboard() {
     _widgets.leaderboard?.setReps(d.reps, {
       title: `Team Leaderboard — ${when}`,
       selectedId: _adminFocusId,
-      checkoutDayLabel: formatDaySelection([d.checkoutDay]),
+      activityDayLabel: formatDaySelection([d.checkoutDay]),
       detailHTML: _businessCasesHTML,
       onSelect: id => { _adminFocusId = id; _renderDashboard(); },
     });

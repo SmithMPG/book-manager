@@ -264,7 +264,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 The Review is the day's work, **client first** — the same way of working as the client card, so there's one way to capture everything.
 
 ### When it appears
-- **Review day** = the last weekday before today (Monday, Saturday and Sunday all review Friday). Only ever that one day: a missed day **can't be reviewed later** — it stays ✗ for the team lead. No early reviews (today can't be reviewed).
+- **Review day** = the last weekday before today (Monday, Saturday and Sunday all review Friday). Only ever that one day: a missed day **can't be reviewed later**. No early reviews (today can't be reviewed).
 - From **00:00**, the next time the app is used (opened, refreshed, returned to, or in use as midnight passes), the Review opens and **can't be closed until done**. Signing out doesn't matter.
 - Not in Admin or Test mode, and never for a day before the FA was added.
 - The toolbar button opens the Review for the review day (closable once it's done).
@@ -279,8 +279,9 @@ The Review is the day's work, **client first** — the same way of working as th
 
 - The Review uses the app's own client cards — nothing new to learn. A card inside the Review records everything against the **review day** (its add form shows that date), and stays in step with the same card in its tab.
 - Every entry saves the moment it's added or deleted, straight onto the client's timeline, dated the review day. Entries can be deleted (×), as on the timeline.
-- **Done** (on the last step) checks every open-case client has an update, then marks the day reviewed (✓ on the leaderboard).
-- **No activity:** a day reviewed with **nothing at all** logged is recorded as **No activity**, and the leaderboard shows that instead of ✓. Every entry counts, including a repeated update.
+- **Done** (on the last step) checks every open-case client has an update, then marks the day reviewed.
+- **No activity:** a day reviewed with **nothing at all** logged is recorded as **No activity**.
+- **The leaderboard's ✓ / ✗** (admin view, beside each name) is about **activity, not the Review**: ✓ if the FA logged anything for the last weekday — a contact, note, meeting, FNA, quote, case change, prospects contacted — ✗ if nothing. Doing the Review on its own doesn't earn a ✓.
 - Internally the day is still recorded as a `checkout` activity, so the leaderboard needs no migration for the rename.
 
 ## Data model changes (for the timeline and Review)
