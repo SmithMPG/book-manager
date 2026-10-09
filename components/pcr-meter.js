@@ -117,6 +117,7 @@ class PcrMeter {
         currentCount: 0, // set by data.js refreshDashboard
         stageNote: null, // replaces "to Validation" etc. under the percentage
         showValue: false, // the PCR itself in the middle, not a percentage
+        tone: null, // 'missed': a single-target meter fills red (a past week that fell short)
         periodLabel: "", // e.g. "September 2026" — the live period, not whatever the month bar is navigated to
       },
       config,
@@ -214,7 +215,7 @@ class PcrMeter {
 // One target: a single ring, 0 -> target, green until it's reached, then
 // gold.
 PcrMeter.prototype._renderSingle = function () {
-  const { validationTarget: target, currentCount, periodLabel, stageNote, showValue } = this.config;
+  const { validationTarget: target, currentCount, periodLabel, stageNote, showValue, tone } = this.config;
   const size = 280;
   const viewBoxHeight = periodLabel ? size + 46 : size;
   const cx = size / 2;
@@ -238,7 +239,7 @@ PcrMeter.prototype._renderSingle = function () {
     <div class="pcr-meter">
       <svg viewBox="0 0 ${size} ${viewBoxHeight}" class="pcr-meter-svg">
         ${arcPath(start, end, "pcr-track")}
-        ${arcPath(start, fillEnd, `pcr-fill pcr-fill-${complete ? "gold" : "green"}`)}
+        ${arcPath(start, fillEnd, `pcr-fill pcr-fill-${complete ? "gold" : tone === "missed" ? "red" : "green"}`)}
         <text x="${tickStart.x}" y="${tickStart.y}" class="pcr-tick" text-anchor="middle">0</text>
         <text x="${tickEnd.x}" y="${tickEnd.y}" class="pcr-tick" text-anchor="middle">${pcrFormatCompact(target)}</text>
         <text x="${cx}" y="${showValue ? cy - 8 : cy - 4}" class="pcr-percent${showValue ? " pcr-value" : ""}${complete ? " gold" : ""}" text-anchor="middle">${showValue ? formatNumber(currentCount) : `${Math.round((currentCount / target) * 100)}%`}</text>

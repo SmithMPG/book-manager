@@ -4,8 +4,8 @@
 //   Close-off date            the business month's last day; it runs from
 //                             the day after the previous month's
 //   Weekly submission target  the PCR the whole team should submit in
-//                             each week of that month (the week rings on
-//                             Home, week-rings.js)
+//                             each week of that month (the week meters on
+//                             Home, week-meters.js)
 // There's always one empty month after the last one with a close-off
 // date, ready to fill in. The month bar only reaches months with one.
 //

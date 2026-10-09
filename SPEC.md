@@ -93,7 +93,7 @@ Nav: Dashboard / Clients / Prospects / Not Moved Forward &middot; Commission Tra
 
 **The hero**, the same for FAs and admins (an FA's figures are their own; an admin's the team's, or the FA picked on the leaderboard), in three columns:
 - **Left — the pipeline, stacked, on the page itself (no cards):** **Open cases** (not yet submitted) and **Submitted cases** (waiting to be accepted), both **from any month**: the PCR large, then cases and commission. (Admin: they open the Cases tab.)
-- **Centre — the meter:** an FA's (or the picked FA's) Accepted PCR against Validation and High Flyer; the admin's team, the week rings ([Calendar](#admin-only-calendar)).
+- **Centre — the meter:** an FA's (or the picked FA's) Accepted PCR against Validation and High Flyer; the admin's team, a meter per week ([Calendar](#admin-only-calendar)).
 - **Right — the funnel:** this month's prospects, meetings, FNAs, quotes and cases submitted as a list of labels and numbers (no bars, no conversion rate; hovering Meetings shows its three types), then a last row in the same type: "Wills 2 · Referrals 3".
 - The hero is as wide as the leaderboard: the pipeline on its left edge, the funnel on its right, the meter dead centre. Both side blocks are as tall as the meter: Open cases level with its top, Submitted cases with its bottom, and the funnel's rows spread evenly between.
 
@@ -183,17 +183,14 @@ Figures typed on one tab carry to the others; everything resets when it's opened
 
 **No close-off for today's month** (not set yet): the app keeps showing the last month it has, and admins see a strip under the top bar: "No close-off date for this month yet — set it under ☰ → Calendar."
 
-**Home (admin, the whole team): week rings** — replace the team PCR meter.
-- **Drawn like the PCR meter:** each ring is open at the bottom, with "PCR's" in the opening, **0** at the bottom left and the **weekly target** at the bottom right (beside the outermost ring), and the month's name underneath.
-- **Rings grow outward through the month.** Week 1 is the inner ring; at the start of each new week another ring is added around the outside for it. So in week 3 there are three rings, the outermost being this week. A past month shows all its weeks' rings.
-- Each ring fills with that week's **submitted PCR** against the month's **weekly submission target**:
-  - **Met** — full, green.
-  - **This week, not met yet** — filling, gold.
-  - **Past and missed** — filled as far as it got, red.
-- **Centre:** this week's submitted PCR against the target, e.g. "1 200 000 of 2 000 000 · Week 3". (For a past month: the month's total.)
-- **Under the rings:** a small key, one line per week so far: "W2 · 2 100 000 / 2 000 000 ✓", then the month.
+**Home (admin, the whole team): week meters** — replace the team PCR meter. One **PCR meter per week** of the business month so far (the same meter as an FA's, one target): Week 1 shows one, Week 2 two, and so on; a past month shows all its weeks. The layout follows the count:
+- **1 week:** one meter. **2 or 3:** a row. **4:** two by two. **5:** Weeks 1–4 two by two as with 4 (1 · 2 on top, 3 · 4 below), small, with Week 5 big in the middle. (6: rows of three.)
+- Each meter: that week's **submitted PCR** in the middle, "of <weekly target>" under it, **0** and the target at the ends, and "Week 1 · 1–7 Oct" underneath (this week's darker).
+  - **Filling** — green; **met** — gold (as the FA's meter on reaching its target).
+  - **Past and missed** — red, as far as it got.
+- The side blocks stretch from the top of the highest meter's ring to the bottom of the lowest one's labels, whatever the layout.
 - Follows the month on the month bar (‹ › to look at past months). Picking days on the bar doesn't change it.
-- No weekly target set for the month: the rings still show the PCR submitted each week, with "No target set".
+- No weekly target set for the month: each week's meter still shows the PCR submitted, with "No target set".
 - **Clicking an FA on the leaderboard** still shows that FA's own meter (Accepted PCR's against Validation). **The FA's own Home** is unchanged.
 
 **Data:**

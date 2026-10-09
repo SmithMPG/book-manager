@@ -25,17 +25,16 @@
 .hero-col-monthly { justify-self: start; }
 .hero-col-funnel { justify-self: end; }
 
-/* Both side blocks span exactly the meter's ring band: from the ring's
-   top to just under its 0 / 1.2m ticks (not the month under it). The
-   meter is drawn at a fixed 280px (pcr-meter.js: viewBox 280 × 326, 8px
-   padding, ring top at y 30, ticks down to ~y 258), so the band starts
-   38px down and is 228px tall. Open cases sits at its top, Submitted
-   cases at its bottom, the divider halfway; the funnel's rows share it
-   evenly. */
+/* Both side blocks span exactly the meters' ring band: from the top of
+   the highest ring to just under the lowest one's 0 / target labels (not
+   the period under it) — measured by home-hero.js, which sets the two
+   variables (the defaults: the FA's one meter at 280px). Open cases sits
+   at its top, Submitted cases at its bottom, the divider halfway; the
+   funnel's rows share it evenly. */
 .home-hero { align-items: start; }
-.home-hero .pcr-meter-svg { width: 280px; }
+#pcr-meter-container .pcr-meter-svg { width: 280px; }
 .hero-col-monthly,
-.hero-col-funnel { margin-top: 38px; height: 228px; }
+.hero-col-funnel { margin-top: var(--hero-band-top, 38px); height: var(--hero-band-height, 228px); }
 .hero-col > div { flex: 1; display: flex; flex-direction: column; }
 .home-hero .ms { flex: 1; gap: 0; }
 .home-hero .ms-card { flex: 1; justify-content: flex-start; }

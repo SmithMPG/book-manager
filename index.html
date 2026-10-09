@@ -92,7 +92,8 @@
     <script src="constants.js"></script>
     <script src="components/month-bar.js"></script>
     <script src="components/pcr-meter.js"></script>
-    <script src="components/week-rings.js"></script>
+    <script src="components/week-meters.js"></script>
+    <script src="components/home-hero.js"></script>
     <script src="components/client-funnel.js"></script>
     <script src="components/monthly-stats.js"></script>
     <script src="components/client-card.js"></script>
@@ -204,7 +205,7 @@
         </div>
         <div class="hero-center">
           <div id="pcr-meter-container"></div>
-          <div id="week-rings-container" hidden></div>
+          <div id="week-meters-container" hidden></div>
         </div>
         <div class="hero-col hero-col-funnel">
           <div id="client-funnel-container"></div>
@@ -278,7 +279,8 @@
       });
       const funnel = initClientFunnel("client-funnel-container");
       const monthlyStats = initMonthlyStats("monthly-stats-container");
-      const weekRings = initWeekRings("week-rings-container");
+      const weekMeters = initWeekMeters("week-meters-container");
+      initHomeHero();
       initClientCards(document);
       initCardItems(document);
       initCommissionCalculator("commission-calc-trigger");
@@ -293,7 +295,7 @@
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').
-      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard, weekRings });
+      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard, weekMeters });
 
       // Tab switching. tab: a tab element, or a page's name ('dashboard',
       // 'products', …). A page reached from the admin's menu (data-menu)

@@ -620,11 +620,11 @@ function _myCases() {
 // ---------- admin view ----------
 //
 // Home, with the whole team's figures: the funnel and monthly stats add
-// up every FA's, and in place of the PCR meter, the week rings
-// (week-rings.js) — the PCR submitted each week of the month on the
+// up every FA's, and in place of the PCR meter, the week meters
+// (week-meters.js) — the PCR submitted each week of the month on the
 // month bar against its weekly submission target (the Calendar). Month
 // to date by default; days picked on the month bar narrow the dated
-// figures to just those days (not the rings — always the whole month). Clicking a name on the leaderboard opens
+// figures to just those days (not the meters — always the whole month). Clicking a name on the leaderboard opens
 // that FA's Business-tab cases under their row and switches the hero to
 // their figures; clicking it again goes back to the team.
 
@@ -715,14 +715,14 @@ function _renderDashboard() {
     referrals: rep.referrals,
   });
   // An FA's meter (their own, or one picked on the leaderboard): accepted
-  // PCR against Validation and High Flyer (3x). The team: the week rings
-  // instead.
+  // PCR against Validation and High Flyer (3x). The team: a meter per
+  // week instead.
   const teamView = d.admin && !_adminFocusId;
   const period = getMonthBarPeriod() || _currentPeriod();
   if (_widgets.pcrMeter) _widgets.pcrMeter.container.hidden = teamView;
-  _widgets.weekRings?.show(teamView);
+  _widgets.weekMeters?.show(teamView);
   if (teamView) {
-    _widgets.weekRings?.update(_weekRingsFor(period, cases));
+    _widgets.weekMeters?.update(_weekMetersFor(period, cases));
   } else {
     _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
     _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
@@ -752,42 +752,30 @@ function _renderDashboard() {
   }
 }
 
-// The week rings for a month (week-rings.js): each week so far — every
-// week of a past month, none of a future one — with the PCR submitted in
-// it across these cases, against the month's weekly target.
-function _weekRingsFor(period, cases) {
+// The week meters for a month (week-meters.js): each week so far —
+// every week of a past month, none of a future one — with the PCR
+// submitted in it across these cases, against the month's weekly target,
+// and how it stands: met, this week (current), missed (past and short),
+// or none (no target set).
+function _weekMetersFor(period, cases) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const target = period?.weeklyTarget || null;
+  const day = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   const weeks = periodWeeks(period).filter(w => w.start <= today).map(w => {
     const from = isoDate(w.start);
     const to = isoDate(w.end);
     const pcr = Math.round(cases
       .filter(c => c.submittedAt && c.submittedAt >= from && c.submittedAt <= to)
       .reduce((t, c) => t + casePcr(c), 0));
-    const current = today >= w.start && today <= w.end;
-    const state = !target ? 'none' : pcr >= target ? 'met' : current ? 'current' : 'missed';
-    return { week: w.week, pcr, state, current };
+    const state = !target ? 'none'
+      : pcr >= target ? 'met'
+      : today <= w.end ? 'current' : 'missed';
+    const dates = w.start.getMonth() === w.end.getMonth()
+      ? `${w.start.getDate()}–${day(w.end)}` : `${day(w.start)} – ${day(w.end)}`;
+    return { week: w.week, pcr, state, label: `Week ${w.week} · ${dates}` };
   });
-  const thisWeek = weeks.find(w => w.current);
-  let centre;
-  if (thisWeek) {
-    centre = {
-      value: formatNumber(thisWeek.pcr),
-      of: target ? `of ${formatNumber(target)}` : 'No target set',
-      note: `Week ${thisWeek.week} · submitted`,
-    };
-  } else if (weeks.length) {
-    const total = weeks.reduce((t, w) => t + w.pcr, 0);
-    centre = {
-      value: formatNumber(total),
-      of: target ? `of ${formatNumber(target * weeks.length)}` : 'No target set',
-      note: 'submitted in the month',
-    };
-  } else {
-    centre = { value: '0', of: target ? `${formatNumber(target)} a week` : 'No target set', note: 'Not started yet' };
-  }
-  return { weeks, target, centre, periodLabel: period?.label || '' };
+  return { weeks, target };
 }
 
 // Funnel, PCR meter, monthly stats, leaderboard and the month bar's
