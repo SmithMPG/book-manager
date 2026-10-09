@@ -2,10 +2,9 @@
 // the db* functions to save, and loadAppData()/refreshDashboard() to pull
 // the signed-in FA's real clients and numbers back into the UI.
 //
-// Cards, checkouts and new rows belong to the book being worked on: the
-// signed-in person's own (fa_id = currentUser.id), or — in test mode —
-// the shared Test Book (a users row in 'Test group', left out of the
-// leaderboard). The admin view reads the whole team (see below).
+// Cards, checkouts and new rows belong to the signed-in person's own book
+// (fa_id = currentUser.id). The admin view reads the whole team (see
+// below).
 //
 // Card data shape (what client-card.js renders), from three tables:
 //   clients    one row per card
@@ -79,26 +78,10 @@ async function _fetchAll(buildQuery) {
   }
 }
 
-// The Test Book's users row, once loaded (test mode only).
-let _testBook = null;
-
-async function _loadTestBook() {
-  const rows = _dbOk(await supabaseClient.from('users').select('id, name, surname, pcr_target')
-    .eq('branch', 'Test group').eq('is_active', true).limit(1));
-  _testBook = rows[0] || null;
-  return _testBook;
-}
-
-// The book being worked on: the Test Book in test mode, else your own.
-function _actingFa() {
-  if (!currentUser) throw new Error('Not signed in.');
-  if (getAppMode() !== 'test') return currentUser;
-  if (!_testBook) throw new Error('The Test Book isn\'t loaded.');
-  return _testBook;
-}
-
+// The book being worked on: your own.
 function _faId() {
-  return _actingFa().id;
+  if (!currentUser) throw new Error('Not signed in.');
+  return currentUser.id;
 }
 
 // ---------- the Calendar ----------
@@ -325,13 +308,10 @@ async function _loadMyCheckoutDates() {
 
 // days: Set of ISO dates; checkoutDay: the day to report whether each FA
 // had any activity on (admin view — the last weekday), or null.
-// In test mode the Test Book's own figures are asked for too (they're
-// left out otherwise) — they feed the hero, not the leaderboard.
 async function _loadLeaderboard(days, checkoutDay) {
   return _dbOk(await supabaseClient.rpc('leaderboard', {
     p_dates: [...days],
     p_checkout_date: checkoutDay,
-    p_include: getAppMode() === 'test' ? _testBook?.id || null : null,
   }));
 }
 
@@ -691,7 +671,7 @@ function _renderDashboard() {
   if (!d) return;
   let rep, cases, target;
   if (!d.admin) {
-    const me = _actingFa();
+    const me = currentUser;
     rep = d.reps.find(r => r.id === me.id) || _repFromLeaderboardRow({ id: me.id, name: '' });
     cases = _myCases();
     target = me.pcr_target || null;
@@ -745,8 +725,7 @@ function _renderDashboard() {
       onSelect: id => { _adminFocusId = id; _renderDashboard(); },
     });
   } else {
-    // The Test Book's row only came back for the hero — never rank it.
-    _widgets.leaderboard?.setReps(d.reps.filter(r => !_testBook || r.id !== _testBook.id), {
+    _widgets.leaderboard?.setReps(d.reps, {
       activityDayLabel: formatDaySelection([d.checkoutDay]),
     });
   }
@@ -811,8 +790,8 @@ async function refreshDashboard() {
 // An FA can't use the app until the last weekday is reviewed: if it
 // isn't, its Review opens and can't be closed until it's done
 // (review.js). Checked on sign-in, on switching back to My book, and
-// whenever the app is used again after midnight — never in Admin or Test
-// mode, and never for a day before the person was added to the app.
+// whenever the app is used again after midnight — never in Admin mode,
+// and never for a day before the person was added to the app.
 function enforceReview() {
   if (!currentUser || getAppMode() !== 'fa') return;
   const day = reviewDay();
@@ -843,8 +822,8 @@ window.addEventListener('focus', _onAppUsed);
 setInterval(_onAppUsed, 60 * 1000);
 
 // Switching mode: start the admin view fresh (month to date, the whole
-// team), turn the month bar's day-picking on or off, and reload — the
-// cards too when the book changes (into or out of the Test Book).
+// team), turn the month bar's day-picking on or off, and reload the
+// dashboard.
 document.addEventListener('appmodechange', async e => {
   const mode = e.detail.mode;
   if (mode === _lastMode) return;
@@ -852,7 +831,6 @@ document.addEventListener('appmodechange', async e => {
   // the cards aren't loaded yet and the sign-in handler loads them and
   // enforces the checkout.
   const switched = _lastMode !== null;
-  const bookChanged = (_lastMode === 'test') !== (mode === 'test');
   _lastMode = mode;
   _adminDays.clear();
   _adminFocusId = null;
@@ -862,31 +840,16 @@ document.addEventListener('appmodechange', async e => {
   showTab('dashboard');
   if (!currentUser || !switched) return;
   try {
-    if (bookChanged) {
-      if (mode === 'test' && !await _ensureTestBook()) return;
-      await loadAppData();
-    } else {
-      await refreshDashboard();
-    }
+    await refreshDashboard();
     enforceReview();
   } catch (err) {
     showSaveError(err);
   }
 });
 
-// Test mode needs the Test Book; without one (not set up yet — see
-// supabase/test-mode.sql), fall back to My book.
-async function _ensureTestBook() {
-  if (_testBook || await _loadTestBook()) return true;
-  alert("There's no Test Book set up yet. Ask for supabase/test-mode.sql to be run — switching back to My book.");
-  setAppMode('fa');
-  return false;
-}
-
 // The cards in every tab, then the dashboard. Called on sign-in and after
 // anything that writes more than one card's worth (e.g. a checkout).
 async function loadAppData() {
-  if (getAppMode() === 'test' && !await _ensureTestBook()) return;
   await Promise.all([loadMonths(), loadProducts()]);
   const cards = await _loadMyCards();
   CLIENT_STORE.clear();

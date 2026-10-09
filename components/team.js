@@ -112,20 +112,43 @@ function _injectTeamCSS() {
     .fa-edit:disabled:hover { border-color: rgba(0, 0, 0, 0.15); color: var(--ink-dim); background: transparent; }
     .fab:disabled:hover { transform: none; }
 
-    /* The super admin's "Viewing as" picker, beside the mode toggle. */
-    .view-as {
-      background: var(--navy-lighter);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
+    /* The super admin's "view as" list, from the arrow on Admin. */
+    .view-as-menu {
+      position: fixed;
+      z-index: 1000;
+      min-width: 220px;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+    }
+    .view-as-menu-title {
+      padding: 6px 10px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+    }
+    .view-as-menu button {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      width: 100%;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
       font-size: 13px;
       font-family: inherit;
-      padding: 7px 10px;
+      color: var(--ink);
+      text-align: left;
       cursor: pointer;
-      max-width: 220px;
     }
-    .view-as.hidden { display: none; }
-    .view-as.looking { border-color: var(--gold); color: var(--gold-soft); }
+    .view-as-menu button:hover { background: #f2f2f0; }
+    .view-as-menu button.current { font-weight: 600; }
+    .view-as-menu .check { color: #8a6d0a; }
 
     .fa-detail {
       background: #ffffff;
@@ -300,8 +323,7 @@ function _renderTeam() {
 }
 
 // For the Cases tab (pipeline.js): the whole team, like
-// Home's figures — every FA (active and left), the Test Book only if
-// it's on the admin's own list — and their open cases.
+// Home's figures — every FA (active and left) — and their open cases.
 function getTeamFas() {
   return _pipelineFas;
 }
@@ -327,8 +349,7 @@ function isLookOnly() {
 // their list (the database's manages(), schema.sql). Look only still
 // shows the button, greyed out.
 function canAcceptFor(fa) {
-  return !!fa && (fa.manager_id === _viewerId()
-    || (!isLookOnly() && !!currentUser?.is_super_admin && fa.branch === 'Test group'));
+  return !!fa && fa.manager_id === _viewerId();
 }
 
 // fa's manager's name, for a case the signed-in admin can't accept.
@@ -343,39 +364,80 @@ async function loadTeam() {
   const everyone = await dbLoadFas();
   const viewer = _viewerId();
   const mine = everyone.filter(u => u.manager_id === viewer);
-  const pipeline = everyone.filter(u => u.branch !== 'Test group' || u.manager_id === viewer);
-  const cases = await dbLoadOpenCasesFor(pipeline.map(f => f.id));
+  const cases = await dbLoadOpenCasesFor(everyone.map(f => f.id));
   if (run !== _teamLoadRun) return;
   _teamFas = mine;
-  _pipelineFas = pipeline;
+  _pipelineFas = everyone;
   _teamCases = cases;
   if (!mine.some(f => f.id === _teamOpenId)) _teamOpenId = null;
-  _syncViewAs(everyone.filter(u => u.is_admin && u.is_active));
+  _admins = everyone.filter(u => u.is_admin && u.is_active);
+  _syncViewAs();
   _renderTeam();
 }
 
-// The picker: the super admin's own view first, then every other admin.
-// Also greys out + while looking.
-function _syncViewAs(admins) {
-  const select = document.getElementById('view-as');
-  if (!select) return;
-  const show = !!currentUser?.is_super_admin && getAppMode() === 'admin';
-  select.classList.toggle('hidden', !show);
-  if (show) {
-    const others = admins.filter(a => a.id !== currentUser.id).sort((a, b) => _faName(a).localeCompare(_faName(b)));
-    select.innerHTML = '<option value="">Viewing: my own</option>'
-      + others.map(a => `<option value="${a.id}"${a.id === _viewAs ? ' selected' : ''}>Viewing as ${_escHtml(_faName(a))}</option>`).join('');
-  }
-  select.classList.toggle('looking', isLookOnly());
+// Every active admin, for the view-as list (from the last load).
+let _admins = [];
+
+// The Admin button says whose view it is ("Admin · Ameeth" while viewing
+// as someone else). Also greys out + while looking.
+function _syncViewAs() {
+  const label = document.querySelector('#mode-toggle .mode-admin-label');
+  const other = isLookOnly() ? _admins.find(a => a.id === _viewAs) : null;
+  if (label) label.textContent = other ? `Admin · ${other.name}` : 'Admin';
   document.querySelectorAll('.btn-add-fa').forEach(b => {
     b.disabled = isLookOnly();
     b.title = isLookOnly() ? 'Look only while viewing as another admin' : 'Add an FA';
   });
 }
 
+function _closeViewAsMenu() {
+  document.getElementById('view-as-menu')?.remove();
+  document.removeEventListener('click', _outsideViewAsClick, true);
+}
+
+function _outsideViewAsClick(e) {
+  if (e.target.closest('#view-as-menu, #view-as-arrow')) return;
+  _closeViewAsMenu();
+}
+
+// The arrow on Admin (super admin only): a list of the admins to view
+// Admin mode as — your own view first, then the others by name; the one
+// showing is ticked. Picking one switches to Admin mode as them.
+async function _openViewAsMenu(anchor) {
+  _closeViewAsMenu();
+  if (!_admins.length) _admins = (await dbLoadFas()).filter(u => u.is_admin && u.is_active);
+  const others = _admins.filter(a => a.id !== currentUser.id).sort((a, b) => _faName(a).localeCompare(_faName(b)));
+  const showing = getAppMode() === 'admin' ? (_viewAs || '') : null;
+  const item = (id, label) => `<button type="button" data-view-as="${id}"${showing === id ? ' class="current"' : ''}>
+    <span>${_escHtml(label)}</span>${showing === id ? '<span class="check">✓</span>' : ''}</button>`;
+  const menu = document.createElement('div');
+  menu.className = 'view-as-menu';
+  menu.id = 'view-as-menu';
+  menu.innerHTML = `<div class="view-as-menu-title">View Admin as</div>
+    ${item('', 'Me')}${others.map(a => item(a.id, _faName(a))).join('')}`;
+  document.body.appendChild(menu);
+  const r = anchor.closest('button').getBoundingClientRect();
+  menu.style.top = `${r.bottom + 8}px`;
+  menu.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - menu.offsetWidth - 12))}px`;
+  menu.addEventListener('click', e => {
+    const btn = e.target.closest('[data-view-as]');
+    if (!btn) return;
+    _closeViewAsMenu();
+    _viewAs = btn.dataset.viewAs || null;
+    _teamOpenId = null;
+    // Already in Admin mode: reload as them; otherwise switching to it
+    // loads (appmodechange).
+    if (getAppMode() === 'admin') loadTeam().catch(showSaveError);
+    else setAppMode('admin');
+  });
+  setTimeout(() => document.addEventListener('click', _outsideViewAsClick, true), 0);
+}
+
 function _clearTeam() {
   _teamLoadRun++;
   _viewAs = null;
+  _admins = [];
+  _syncViewAs();
   _teamFas = [];
   _pipelineFas = [];
   _teamCases = [];
@@ -593,12 +655,11 @@ async function _addFa() {
 // ---------- wiring ----------
 
 function initTeam(root) {
-  document.querySelector('.topbar-left')?.insertAdjacentHTML('beforeend',
-    '<select class="view-as hidden" id="view-as" title="Super admin: see Admin mode as another admin does (look only)"></select>');
-  document.getElementById('view-as')?.addEventListener('change', e => {
-    _viewAs = e.target.value || null;
-    _teamOpenId = null;
-    loadTeam().catch(showSaveError);
+  // Its own click, not the Admin button's (which switches mode).
+  document.getElementById('view-as-arrow')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (document.getElementById('view-as-menu')) _closeViewAsMenu();
+    else _openViewAsMenu(e.currentTarget).catch(showSaveError);
   });
 
   root.addEventListener('click', e => {
@@ -632,7 +693,7 @@ function initTeam(root) {
     } else {
       // Leaving Admin mode: back to your own view next time.
       _viewAs = null;
-      document.getElementById('view-as')?.classList.add('hidden');
+      _syncViewAs();
     }
   });
   // Coming back to the app: pick up cases FAs have opened or submitted

@@ -4,12 +4,8 @@
 // Three roles: FAs (no toggle); admins (users.is_admin) toggle between
 //   My book  ('fa')    working as an FA, on their own clients
 //   Admin    ('admin') the whole team (Home view only)
-// and the super admin (users.is_super_admin) also gets
-//   Test     ('test')  the shared Test Book — exactly like My book, but
-//                      on a test user's clients that never show on the
-//                      leaderboard or in team figures (see data.js).
-// The database enforces the same: only the super admin can write to the
-// Test Book (can_act_as in supabase/schema.sql).
+// and the super admin (users.is_super_admin) also gets an arrow on Admin
+// to view it as another admin (team.js).
 // FAs never see it, and can't give themselves admin: is_admin isn't a
 // column they're granted update on (supabase/schema.sql).
 //
@@ -41,17 +37,6 @@ function _injectAppModeCSS() {
     /* Hidden but still taking its space, so the search box doesn't move. */
     body[data-app-mode="admin"] #checkout-trigger { visibility: hidden; }
 
-    .test-mode-strip {
-      display: none;
-      background: #f4e3a1;
-      color: #6b5208;
-      font-size: 12px;
-      font-weight: 600;
-      text-align: center;
-      padding: 5px 12px;
-    }
-    body[data-app-mode="test"] .test-mode-strip { display: block; }
-
     .mode-toggle {
       display: inline-flex;
       background: var(--navy-lighter);
@@ -73,6 +58,16 @@ function _injectAppModeCSS() {
     .mode-toggle button:hover { color: var(--text); }
     .mode-toggle button.hidden { display: none; }
     .mode-toggle button.active { background: var(--gold); color: var(--navy); font-weight: 600; }
+    .mode-toggle button[data-mode="admin"] { display: inline-flex; align-items: center; gap: 4px; }
+    .view-as-arrow {
+      display: inline-flex;
+      align-items: center;
+      margin: -4px -6px -4px 0;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .view-as-arrow.hidden { display: none; }
+    .view-as-arrow:hover { background: rgba(0, 0, 0, 0.12); }
   `;
   document.head.appendChild(s);
 }
@@ -84,7 +79,6 @@ function _storedMode() {
 
 function getAppMode() {
   const stored = _storedMode();
-  if (stored === 'test' && currentUser?.is_super_admin) return 'test';
   if (stored === 'admin' && currentUser?.is_admin) return 'admin';
   return 'fa';
 }
@@ -121,7 +115,7 @@ function setCurrentUser(user) {
   }
 
   document.getElementById('mode-toggle')?.classList.toggle('hidden', !user?.is_admin);
-  document.querySelector('#mode-toggle [data-mode="test"]')?.classList.toggle('hidden', !user?.is_super_admin);
+  document.getElementById('view-as-arrow')?.classList.toggle('hidden', !user?.is_super_admin);
   _applyAppMode();
   if (changed) document.dispatchEvent(new CustomEvent('currentuser:changed'));
 }

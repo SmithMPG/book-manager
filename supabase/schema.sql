@@ -61,15 +61,13 @@ create table users (
   phone       text,
   pcr_target  int,
   is_admin    boolean not null default false, -- sees everyone's data, not just their own
-  is_super_admin boolean not null default false, -- an admin who can also use the Test Book
+  is_super_admin boolean not null default false, -- an admin who can view Admin mode as any other admin
   is_active   boolean not null default true,  -- false = "left", data retained
   on_leaderboard boolean not null default true, -- false for a manager who doesn't
                                                 -- sell (Ameeth): left off the
                                                 -- leaderboard and team figures
   branch      text,                           -- open-ended, not a fixed list — the
-                                                -- office (e.g. "Bryanston"), plus
-                                                -- "Test group" for the Test Book,
-                                                -- which the leaderboard leaves out.
+                                                -- office (e.g. "Bryanston").
   academy     boolean not null default false, -- part of the Academy (yes / no)
   manager_id  uuid references users(id) on delete set null, -- the admin whose FA list
                                                 -- they're on (team.js). That admin
@@ -348,28 +346,20 @@ create or replace function is_admin() returns boolean as $$
   select coalesce((select is_admin from users where id = auth.uid()), false);
 $$ language sql security definer stable;
 
--- Who may write a row for FA p_fa: that FA themselves, or the super
--- admin writing to the Test Book: a users row in branch 'Test group', owned by
--- a login nobody signs in with (test@bookmanager.co.za). The Test Book is
--- left out of the leaderboard, so admins can try things there (the
--- app's Test mode) without touching real figures. Nobody who's resigned
--- (is_active = false) writes anything, even with a session left over.
+-- Who may write a row for FA p_fa: that FA themselves. Nobody who's
+-- resigned (is_active = false) writes anything, even with a session left
+-- over.
 create or replace function can_act_as(p_fa uuid) returns boolean as $$
   select exists (select 1 from public.users where id = auth.uid() and is_active)
-     and (p_fa = auth.uid()
-      or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
-          and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
+     and p_fa = auth.uid();
 $$ language sql security definer stable set search_path = '';
 
 -- Whether the caller manages FA p_fa: an admin with p_fa on their FA
--- list (users.manager_id), or the super admin for the Test Book (as in
--- can_act_as). Only a manager accepts a case, edits an FA or moves them
--- to Resigned.
+-- list (users.manager_id). Only a manager accepts a case, edits an FA or
+-- moves them to Resigned.
 create or replace function manages(p_fa uuid) returns boolean as $$
   select exists (select 1 from public.users me where me.id = auth.uid() and me.is_admin and me.is_active)
-     and (exists (select 1 from public.users where id = p_fa and manager_id = auth.uid())
-          or (exists (select 1 from public.users where id = auth.uid() and is_super_admin)
-              and exists (select 1 from public.users where id = p_fa and branch = 'Test group')));
+     and exists (select 1 from public.users where id = p_fa and manager_id = auth.uid());
 $$ language sql security definer stable set search_path = '';
 
 -- Products and the Calendar: everyone signed in reads them (the New
@@ -438,12 +428,11 @@ grant update (phone, password_set) on users to authenticated;
 -- to date, or the days an admin picks on the month bar). PCR is worked
 -- out in the app (casePcr in constants.js) from the per-product-type
 -- sums, so its rules live in one place. hadActivity: did they log
--- anything on p_checkout_date (null when not asked)? The Test Book is left out,
--- except when p_include names it (test mode needs its own figures).
+-- anything on p_checkout_date (null when not asked)?
 -- ---------------------------------------------------------------------
 drop function if exists public.leaderboard(date, date);
-drop function if exists public.leaderboard(date[], date);
-create or replace function public.leaderboard(p_dates date[], p_checkout_date date, p_include uuid default null)
+drop function if exists public.leaderboard(date[], date, uuid);
+create or replace function public.leaderboard(p_dates date[], p_checkout_date date)
 returns jsonb
 language sql stable security definer set search_path = ''
 as $$
@@ -512,19 +501,19 @@ as $$
           where a.fa_id = u.id and a.type <> 'checkout' and a.date = p_checkout_date)
       end as "hadActivity"
     from public.users u
-    where u.is_active and u.on_leaderboard and (coalesce(u.branch, '') <> 'Test group' or u.id = p_include)
+    where u.is_active and u.on_leaderboard
   ) t;
 $$;
 
-revoke execute on function public.leaderboard(date[], date, uuid) from public, anon;
-grant execute on function public.leaderboard(date[], date, uuid) to authenticated;
+revoke execute on function public.leaderboard(date[], date) from public, anon;
+grant execute on function public.leaderboard(date[], date) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- Opening a case, and moving it to its next stage. Each writes the case
 -- and its `case` timeline entry in one statement, so they can't
 -- disagree. open_case runs as the calling user (security invoker), for
--- the client's own FA — only if can_act_as allows it (their own book,
--- or the super admin in the Test Book). p_date is the FA's local
+-- the client's own FA — only if can_act_as allows it (their own book).
+-- p_date is the FA's local
 -- today (or the day being reviewed). Both return {case, activity}.
 -- Stage changes allowed: opened → submitted | not-taken-up,
 -- submitted → accepted | not-taken-up.
@@ -649,8 +638,8 @@ revoke execute on function public.update_fa(uuid, text, text, int, boolean) from
 grant execute on function public.update_fa(uuid, text, text, int, boolean) to authenticated;
 
 -- Changing an open case's amounts, and its "amended" timeline entry
--- with the before and after, in one statement. The FA's own case (or the
--- super admin's, in the Test Book). Returns {case, activity}.
+-- with the before and after, in one statement. The FA's own case.
+-- Returns {case, activity}.
 drop function if exists public.amend_case(uuid, numeric, numeric, numeric, date);
 create or replace function public.amend_case(
   p_case_id uuid, p_lump_sum numeric, p_monthly numeric, p_advice_fee_percent numeric, p_date date,

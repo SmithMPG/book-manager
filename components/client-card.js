@@ -195,12 +195,6 @@ function _todayIso() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// Newest first; same-date items keep the order they're inserted in, so a
-// fresh one lands on top of its day. Shared with the checkout wizard.
-function _addDatedItem(list, item) {
-  return [item, ...(list || [])].sort((a, b) => b.date.localeCompare(a.date));
-}
-
 // The latest timeline entry, shown on the collapsed row. Always rendered
 // so it soaks up the free space between name and metrics, even for a
 // client with nothing on their timeline yet.

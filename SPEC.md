@@ -195,7 +195,7 @@ Figures typed on one tab carry to the others; everything resets when it's opened
 
 **Data:**
 - **months** — `month` (first day, e.g. 2026-10-01, standing for October 2026; unique), `close_off_date`, `weekly_target` (PCR). Start = the previous month's close-off + 1 day; the first row is only the starting boundary, as today. Everyone reads; admins write.
-- The close-off dates that used to be written into `constants.js` were loaded in (`supabase/calendar.sql`); `CLOSE_OFF_DATES` is now filled from this table on sign-in.
+- The close-off dates that used to be written into `constants.js` were loaded into it; `CLOSE_OFF_DATES` is now filled from this table on sign-in.
 
 ---
 
@@ -281,7 +281,7 @@ The Review is the day's work, **client first** — the same way of working as th
 ### When it appears
 - **Review day** = the last weekday before today (Monday, Saturday and Sunday all review Friday). Only ever that one day: a missed day **can't be reviewed later**. No early reviews (today can't be reviewed).
 - From **00:00**, the next time the app is used (opened, refreshed, returned to, or in use as midnight passes), the Review opens and **can't be closed until done**. Signing out doesn't matter.
-- Not in Admin or Test mode, and never for a day before the FA was added.
+- Not in Admin mode, and never for a day before the FA was added.
 - The toolbar button opens the Review for the review day (closable once it's done).
 
 ### The screen
@@ -309,16 +309,16 @@ Built as if the app had always worked this way — the old case status logs and 
 - **products** — `name` (unique), `type` (`risk` / `ra-builder` / `investment`). Listed alphabetically. Readable by everyone signed in; only admins write.
 - **product_checklist_items** — the checklist: `product_id`, `key`, `label`. Shown alphabetically. The standard 7 keep their keys (`id`, `bankProof`, …), so ticks saved on cases still match.
 - **cases** gains `product_id` (null once the product is deleted) and `product_type` (what the rates and fields go by). `case_type` stays as the product's name. While a case is open these follow the product. On closing they're frozen. **`final_pcr`** is set on accepting (`supabase/final-pcr.sql`).
-- Per-product stages were tried and dropped (`supabase/remove-stages.sql`).
+- Per-product stages were tried and dropped.
 
-## Roles and Test mode
+## Roles
 - **FA** — their own book; no toggle.
 - **Admin** (Ameeth) — toggle **My book · Admin**. Manages the FAs on their list: accepts their cases, edits them, adds new ones.
-- **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin · Test**.
+- **Super admin** (Matthew, `users.is_super_admin`) — toggle **My book · Admin ▾**.
 
-**Viewing as** (super admin, Admin mode only): a picker beside the toggle — "Viewing: my own" or "Viewing as Ameeth Maharaj". It shows Admin mode as that admin sees it: their Financial Advisers (Active and Left), their search, which Submitted cases they can accept. **Look only:** Accept, edit and + are shown but greyed out. Products are shared, so they stay editable. Leaving Admin mode goes back to your own view.
+**Viewing as** (super admin): a small arrow on the **Admin** button opens a list, **View Admin as** — **Me**, then every other admin by name, the one showing ticked. Picking one switches to Admin mode as them, and the button reads **Admin · Ameeth**. It shows Admin mode as that admin sees it: their Financial Advisers (Active and Left), their search, which Submitted cases they can accept. **Look only:** Accept, edit and + are shown but greyed out. Products are shared, so they stay editable. Leaving Admin mode goes back to your own view.
 
-Test works exactly like My book, but on the shared **Test Book** — a test user in the 'Test group' branch, owned by a login nobody signs in with. It never appears on the leaderboard or in team figures, the Review is never forced there, and a strip under the top bar says you're in it. Only the super admin can write to the Test Book, enforced in the database — `can_act_as` in schema.sql.
+There's no Test Book any more: it and its data were removed (`supabase/remove-test-book.sql`).
 
 ## Deferred to v2+
 - Needs-follow-up list (clients with stalled activity, surfaced to the FA as a to-do)
