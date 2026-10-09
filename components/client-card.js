@@ -383,7 +383,7 @@ function _outsideAddMenuClick(e) {
 }
 
 // The "+" menu (addMenu, card-items.js): Activity ▸, Contact ▸,
-// Meeting ▸, Note, Open a case ▸ — a section's list opens to the side on
+// Meeting ▸, Note ▸, Open a case ▸ — a section's list opens to the side on
 // hover (or tap); picking an entry opens the card's add form with that
 // choice made.
 function _openAddMenu(anchor, row) {
@@ -425,7 +425,7 @@ function _openAddMenu(anchor, row) {
     const [i, j] = btn.dataset.entry.split('.').map(Number);
     const it = Number.isNaN(j) || j === undefined ? items[i] : items[i].options[j];
     _closeAddMenu();
-    openAddEntry(_openCard(row), it.kind, it.preset || {}, it.options ? '' : it.label);
+    openAddEntry(_openCard(row), it.kind, it.preset || {}, it.formLabel || (it.options ? '' : it.label));
   });
   // Deferred so the click that opened it doesn't close it straight away.
   setTimeout(() => document.addEventListener('click', _outsideAddMenuClick, true), 0);

@@ -40,6 +40,22 @@ function _injectCardItemsCSS() {
   const s = document.createElement('style');
   s.id = 'card-items-styles';
   s.textContent = `
+    /* ---- an open card's sections: Open cases, then Timeline ---- */
+    .detail-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+      margin-bottom: 10px;
+    }
+    .detail-cases {
+      padding-bottom: 22px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .detail-cases .cc:last-child { margin-bottom: 0; }
+
     /* ---- case cards ---- */
     .cc {
       background: #f7f7f5;
@@ -223,7 +239,13 @@ function _injectCardItemsCSS() {
     }
     .item-money input::-webkit-outer-spin-button,
     .item-money input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .item-money input[data-field="adviceFeePercent"] { width: 130px; }
+    /* A case's amounts: lump sum and monthly the same width, advice fee
+       and term the same smaller one, so they fit on one row. */
+    .item-money[data-wrap="lumpSum"],
+    .item-money[data-wrap="monthly"] { width: 150px; }
+    .item-money[data-wrap="adviceFeePercent"],
+    .item-money[data-wrap="term"] { width: 120px; }
+    .item-money[data-wrap] input { flex: 1; width: 0; min-width: 0; }
     .item-money:focus-within { border-color: var(--gold); }
     .item-money.disabled { opacity: 0.45; }
 
@@ -342,7 +364,9 @@ const TIMELINE_KINDS = {
 // alphabetical order. Picking an option opens the add form
 // with what it chose already set (preset: the form's fields), so the form
 // only asks for the rest — a contact's outcome, a meeting's details, a
-// case's amounts.
+// case's amounts. formLabel: what the form calls it, when that isn't the
+// option's own label (Note ▸ New / Same as last are both "Note"). Same
+// as last fills the note in with the client's last update.
 function addMenu() {
   const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
   const items = [
@@ -351,7 +375,13 @@ function addMenu() {
       options: CONTACT_METHODS.filter(m => m.offered)
         .map(m => ({ label: m.label, kind: 'contact', preset: { method: m.key } })),
     },
-    { label: 'Note', kind: 'note' },
+    {
+      label: 'Note',
+      options: [
+        { label: 'New', kind: 'note', formLabel: 'Note' },
+        { label: 'Same as last', kind: 'note', formLabel: 'Note', preset: { sameAsLast: true } },
+      ],
+    },
     {
       label: 'Meeting',
       options: MEETING_TYPES.map(t => ({ label: t.label, kind: 'meeting', preset: { meetingType: t.key } })),
@@ -634,8 +664,17 @@ function caseCardHTML(data, c, inCaseView) {
 
 // The client view: the open cases (opened or submitted), stacked. The
 // row's chips open the case view.
+// Under an "Open cases" heading, set apart from the timeline below; nothing
+// when there are none.
 function _openCasesHTML(data) {
-  return (data.cases || []).filter(isOpenCase).map(c => caseCardHTML(data, c, false)).join('');
+  const open = (data.cases || []).filter(isOpenCase);
+  if (!open.length) return '';
+  return `
+    <div class="detail-section detail-cases">
+      <div class="detail-section-title">Open cases</div>
+      ${open.map(c => caseCardHTML(data, c, false)).join('')}
+    </div>
+  `;
 }
 
 // The case view: the client's cases in one group — Open, Submitted or
@@ -663,8 +702,8 @@ function entryDateFor(el) {
   return el?.closest('[data-entry-date]')?.dataset.entryDate || _todayIso();
 }
 
-// A client's last update — their latest contact or note — for "Same as
-// last" in a note box.
+// A client's last update — their latest contact or note — for Note ▸
+// Same as last.
 function lastUpdateOf(data) {
   return (data?.timeline || []).find(e => e.type === 'contact' || e.type === 'note') || null;
 }
@@ -730,15 +769,18 @@ function _timelineHTML(data) {
   return `<div class="tl">${lines.join('')}</div>`;
 }
 
-// Everything inside an open card: the client view (open case cards,
-// then the add form and the timeline), or the case view.
+// Everything inside an open card: the client view (Open cases — the case
+// cards — then Timeline: the add form and the timeline), or the case view.
 function clientDetailHTML(data) {
   const filter = _caseView.get(data.id);
   if (filter) return _caseViewHTML(data, filter);
   return `
     ${_openCasesHTML(data)}
-    <div class="item-add-form" data-client="${data.id}"></div>
-    ${_timelineHTML(data)}
+    <div class="detail-section">
+      <div class="detail-section-title">Timeline</div>
+      <div class="item-add-form" data-client="${data.id}"></div>
+      ${_timelineHTML(data)}
+    </div>
   `;
 }
 
@@ -753,7 +795,7 @@ function openAddEntry(detail, kind, preset = {}, label = '') {
 
 // ---------- adding an entry ----------
 
-// last: the client's last update, offered as "Same as last" in a note.
+// last: the client's last update, filled in for Note ▸ Same as last.
 // What the menu already chose (preset) goes in as hidden fields.
 function _addFormFieldsHTML(kind, last = '', preset = {}) {
   const hidden = Object.entries(preset)
@@ -765,7 +807,7 @@ function _addFormFieldsHTML(kind, last = '', preset = {}) {
     `;
   }
   if (kind === 'note') {
-    return statusInputHTML({ last, attrs: 'data-field="text"', placeholder: 'Note — or Same as last from the arrow…' });
+    return statusInputHTML({ value: preset.sameAsLast ? last : '', attrs: 'data-field="text"', placeholder: 'Note' });
   }
   if (kind === 'meeting') {
     return `
@@ -786,7 +828,7 @@ function _addFormFieldsHTML(kind, last = '', preset = {}) {
       ${hidden}
       <label class="item-money" data-wrap="lumpSum"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="lumpSum" placeholder="Lump sum"></label>
       <label class="item-money" data-wrap="monthly"><span>R</span><input ${MONEY_INPUT_ATTRS} data-field="monthly" placeholder="Monthly"></label>
-      <label class="item-money" data-wrap="adviceFeePercent"><input type="number" min="0" step="0.1" data-field="adviceFeePercent" placeholder="Upfront advice fee"><span>%</span></label>
+      <label class="item-money" data-wrap="adviceFeePercent"><input type="number" min="0" step="0.1" data-field="adviceFeePercent" placeholder="Advice fee"><span>%</span></label>
       <label class="item-money" data-wrap="term"><input type="number" min="1" max="60" step="1" data-field="term" placeholder="Term"><span>years</span></label>
     `;
   }
