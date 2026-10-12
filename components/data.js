@@ -366,10 +366,28 @@ async function dbAddActivity(clientId, type, date, details) {
     .select().single());
 }
 
+// Changing a date. Each change is noted on the client's timeline,
+// dated today (a 'date_change' entry — log, null if nothing changed).
+
 // A timeline entry's new day (the date it happened, not when it was
-// logged).
+// logged). Returns {activity, log} as card items.
 async function dbSetActivityDate(id, date) {
-  _dbOk(await supabaseClient.from('activities').update({ date }).eq('id', id));
+  const r = _dbOk(await supabaseClient.rpc('set_activity_date', { p_activity_id: id, p_date: date, p_today: _todayIso() }));
+  return { activity: activityItem(r.activity), log: r.log ? activityItem(r.log) : null };
+}
+
+// A case line's new day, and the case's own date with it (opened,
+// submitted, accepted). Returns {case, activity, log} as card items.
+async function dbSetCaseEventDate(activityId, date) {
+  const r = _dbOk(await supabaseClient.rpc('set_case_event_date', { p_activity_id: activityId, p_date: date, p_today: _todayIso() }));
+  return { case: caseItem(r.case), activity: activityItem(r.activity), log: r.log ? activityItem(r.log) : null };
+}
+
+// The same from the case's side (the admin's Cases tab): event is
+// 'opened', 'submitted' or 'accepted'.
+async function dbSetCaseDate(caseId, event, date) {
+  const r = _dbOk(await supabaseClient.rpc('set_case_date', { p_case_id: caseId, p_event: event, p_date: date, p_today: _todayIso() }));
+  return { case: caseItem(r.case), activity: activityItem(r.activity), log: r.log ? activityItem(r.log) : null };
 }
 
 async function dbDeleteActivity(id) {

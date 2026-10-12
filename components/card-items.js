@@ -359,6 +359,9 @@ const TIMELINE_KINDS = {
   wills_lead: { label: 'Wills lead', key: true },
   referral: { label: 'Referral', key: true },
   case: { label: 'Case', key: true },
+  // A date changed on the timeline, noted the day it was done — not an
+  // update (the Review, the collapsed row) and can't be changed itself.
+  date_change: { label: 'Date changed', key: false },
 };
 // The row's "+" menu (client-card.js): each item is an entry to add, or
 // a section with its own list (opening to the side). Everything in
@@ -458,7 +461,18 @@ function _findCase(data, caseId) {
 // call", or a case line (below).
 function timelineEntryText(data, entry) {
   if (entry.type === 'case') return _caseEntryText(_findCase(data, entry.caseId), entry.details);
+  if (entry.type === 'date_change') return _dateChangeText(entry.details);
   return entry.text;
+}
+
+// "Meeting: 2 Oct 2026 → 5 Oct 2026", "Risk submitted: … → …", and
+// "· by Ameeth Maharaj" when it wasn't the FA.
+function _dateChangeText(d) {
+  const what = d.entryType === 'case'
+    ? [d.caseType, (CASE_STAGE_LABELS[d.event] || d.event || '').toLowerCase()].filter(Boolean).join(' ')
+    : TIMELINE_KINDS[d.entryType]?.label || 'Entry';
+  const by = d.byManager && d.by ? ` · by ${d.by}` : '';
+  return `${what}: ${_formatStatusDate(d.from)} → ${_formatStatusDate(d.to)}${by}`;
 }
 
 // A case line: its type and stage, the amounts as they are now (opened
@@ -507,7 +521,7 @@ function _amendedText(c, { from = {}, to = {} }, withoutType = false) {
 
 // One line for the collapsed card row: the latest entry.
 function latestTimelineSummary(data) {
-  const e = (data.timeline || [])[0];
+  const e = (data.timeline || []).find(x => x.type !== 'date_change');
   if (!e) return '';
   const text = timelineEntryText(data, e);
   return e.type === 'contact' || e.type === 'note' || e.type === 'case' ? text
@@ -723,7 +737,7 @@ function _timeOf(iso) {
 // beside the date on hover).
 function _timelineLineHTML({ date, time, kind, key, text, del, editDate }) {
   const pencil = editDate
-    ? `<button type="button" class="tl-date-edit" data-action="edit-date" data-client="${editDate.client}" data-id="${editDate.id}" data-date="${editDate.date}" title="Change the date">✎</button>`
+    ? `<button type="button" class="tl-date-edit" data-action="edit-date" data-client="${editDate.client}" data-id="${editDate.id}" data-date="${editDate.date}"${editDate.isCase ? ' data-is-case="true"' : ''} title="Change the date">✎</button>`
     : '';
   return `
     <div class="tl-entry${key ? ' key' : ''}">
@@ -748,7 +762,8 @@ function _timelineHTML(data) {
     // Case lines are written by what happens to the case, so they're not
     // deleted here (a case goes with Delete case, on its card). Their
     // product is a chip to the case view.
-    const del = e.type !== 'case'
+    const fixed = e.type === 'date_change';
+    const del = e.type !== 'case' && !fixed
       ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
       : '';
     const c = e.type === 'case' ? _findCase(data, e.caseId) : null;
@@ -762,9 +777,10 @@ function _timelineHTML(data) {
       key: kind.key,
       text,
       del,
-      // Case lines' dates are the case's own (opened, submitted…), so
-      // they're not changed here.
-      editDate: e.type !== 'case' ? { client: data.id, id: e.id, date: e.date } : null,
+      // A case line's date moves the case's own with it (opened,
+      // submitted). Accepted is the manager's, so not from here.
+      editDate: fixed || (e.type === 'case' && e.details?.event === 'accepted') ? null
+        : { client: data.id, id: e.id, date: e.date, isCase: e.type === 'case' },
     });
   });
   if (createdDay) {
@@ -1144,7 +1160,10 @@ async function syncTabAfterCaseChange(clientId) {
 //
 // The ✎ beside a date turns it into a date picker (no later than today).
 // Picking a day saves it and moves the line to its place; Escape, or
-// leaving it unchanged, puts the date back.
+// leaving it unchanged, puts the date back. A case line also moves the
+// case's own date (dbSetCaseEventDate — the database keeps them in
+// order and says why if not). Every change is noted on the timeline,
+// dated today ('date_change').
 function _editEntryDate(btn) {
   const { client: clientId, id, date } = btn.dataset;
   const cell = btn.closest('.tl-date');
@@ -1165,11 +1184,10 @@ function _editEntryDate(btn) {
     done = true;
     input.disabled = true;
     try {
-      await dbSetActivityDate(id, next);
+      const r = btn.dataset.isCase ? await dbSetCaseEventDate(id, next) : await dbSetActivityDate(id, next);
       updateClient(clientId, d => {
-        const entry = d.timeline.find(e => e.id === id);
-        if (entry) entry.date = next;
-        d.timeline.sort(byTimelineOrder);
+        if (r.case) d.cases = (d.cases || []).map(c => (c.id === r.case.id ? r.case : c));
+        d.timeline = [...(r.log ? [r.log] : []), ...d.timeline.map(e => (e.id === id ? r.activity : e))].sort(byTimelineOrder);
       });
       await refreshDashboard();
     } catch (err) {

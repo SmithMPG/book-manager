@@ -229,7 +229,7 @@ create table activities (
   case_id     uuid references cases(id) on delete cascade,          -- set only on `case` entries
   type        text not null
                 check (type in ('contact', 'note', 'meeting', 'fna', 'quote', 'wills_lead', 'referral', 'case',
-                                'prospect_contact', 'checkout')),
+                                'date_change', 'prospect_contact', 'checkout')),
   date        date not null,
   details     jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
@@ -495,10 +495,11 @@ as $$
       -- Did they do anything on p_checkout_date (the last weekday — the
       -- ✓ / ✗ beside their name)? Anything logged for that day counts —
       -- a contact, note, meeting, case change, prospects contacted… —
-      -- except the Review itself (a 'checkout' row).
+      -- except the Review itself (a 'checkout' row) and a date changed
+      -- ('date_change').
       case when p_checkout_date is null then null
         else exists (select 1 from public.activities a
-          where a.fa_id = u.id and a.type <> 'checkout' and a.date = p_checkout_date)
+          where a.fa_id = u.id and a.type not in ('checkout', 'date_change') and a.date = p_checkout_date)
       end as "hadActivity"
     from public.users u
     where u.is_active and u.on_leaderboard
@@ -672,6 +673,156 @@ $$;
 
 revoke execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) from public, anon;
 grant execute on function public.amend_case(uuid, numeric, numeric, numeric, date, int) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Changing dates on the timeline. Every change is noted on the client's
+-- timeline as a 'date_change' entry, dated the day it was done (p_today,
+-- the changer's local today): what moved, from and to, and who did it
+-- (details: entryType, event and caseType for a case line, from, to,
+-- by, byManager). It's the FA's row (fa_id) whoever changed it, and it
+-- doesn't count as activity (the leaderboard's ✓ / ✗, the Review).
+-- ---------------------------------------------------------------------
+create or replace function public._log_date_change(
+  a public.activities, p_from date, p_to date, p_today date, p_case_type text)
+returns public.activities
+language plpgsql security definer set search_path = ''
+as $$
+declare v_log public.activities; v_by text;
+begin
+  select name || ' ' || surname into v_by from public.users where id = auth.uid();
+  insert into public.activities (fa_id, client_id, type, date, details)
+  values (a.fa_id, a.client_id, 'date_change', p_today, jsonb_build_object(
+    'entryType', a.type, 'event', a.details->>'event', 'caseType', p_case_type,
+    'from', p_from, 'to', p_to, 'by', v_by, 'byManager', auth.uid() <> a.fa_id))
+  returning * into v_log;
+  return v_log;
+end;
+$$;
+revoke execute on function public._log_date_change(public.activities, date, date, date, text) from public, anon, authenticated;
+
+-- p_today is the changer's local today: within a day of the server's.
+create or replace function public._check_new_date(p_date date, p_today date) returns void
+language plpgsql set search_path = ''
+as $$
+begin
+  if p_today is null or abs(p_today - current_date) > 1 then
+    raise exception 'Your device''s date looks wrong.';
+  end if;
+  if p_date is null or p_date > p_today then
+    raise exception 'Pick a day no later than today.';
+  end if;
+end;
+$$;
+
+-- A contact, note, meeting, FNA, quote, wills lead or referral: the FA's
+-- own. Returns {activity, log} (log null when nothing changed).
+create or replace function public.set_activity_date(p_activity_id uuid, p_date date, p_today date)
+returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare a public.activities; v_from date; v_log public.activities;
+begin
+  select * into a from public.activities where id = p_activity_id for update;
+  if not found or a.type in ('case', 'date_change', 'checkout', 'prospect_contact')
+     or not public.can_act_as(a.fa_id) then
+    raise exception 'Entry not found.';
+  end if;
+  perform public._check_new_date(p_date, p_today);
+  if p_date = a.date then
+    return jsonb_build_object('activity', to_jsonb(a), 'log', null);
+  end if;
+  v_from := a.date;
+  update public.activities set date = p_date where id = a.id returning * into a;
+  v_log := public._log_date_change(a, v_from, p_date, p_today, null);
+  return jsonb_build_object('activity', to_jsonb(a), 'log', to_jsonb(v_log));
+end;
+$$;
+
+revoke execute on function public.set_activity_date(uuid, date, date) from public, anon;
+grant execute on function public.set_activity_date(uuid, date, date) to authenticated;
+
+-- A case line, and the case's own date with it: an "opened" line moves
+-- opened_at, a "submitted" line submitted_at, an "accepted" line
+-- accepted_at (the amended / not-taken-up lines are only the line). The
+-- dates stay in order — opened, then submitted, then accepted, the
+-- other lines no earlier than opened. The FA (their own case) or their
+-- manager; an accepted line only the manager (as accepting is). Returns
+-- {case, activity, log}.
+drop function if exists public.set_case_event_date(uuid, date);
+create or replace function public.set_case_event_date(p_activity_id uuid, p_date date, p_today date)
+returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare a public.activities; c public.cases; v_event text; v_from date; v_log public.activities;
+begin
+  select * into a from public.activities where id = p_activity_id and type = 'case' for update;
+  if not found then
+    raise exception 'Entry not found.';
+  end if;
+  select * into c from public.cases where id = a.case_id for update;
+  v_event := a.details->>'event';
+  if v_event = 'accepted' then
+    if not public.manages(c.fa_id) then
+      raise exception 'Only the FA''s manager can change when a case was accepted.';
+    end if;
+  elsif not (public.can_act_as(c.fa_id) or public.manages(c.fa_id)) then
+    raise exception 'Entry not found.';
+  end if;
+  perform public._check_new_date(p_date, p_today);
+  if p_date = a.date then
+    return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a), 'log', null);
+  end if;
+  if v_event = 'opened' and (p_date > c.submitted_at or p_date > c.accepted_at) then
+    raise exception 'A case can''t be opened after it was submitted or accepted.';
+  elsif v_event = 'submitted' and (p_date < c.opened_at or p_date > c.accepted_at) then
+    raise exception 'A case is submitted after it''s opened and before it''s accepted.';
+  elsif v_event = 'accepted' and p_date < coalesce(c.submitted_at, c.opened_at) then
+    raise exception 'A case can''t be accepted before it was submitted.';
+  elsif v_event not in ('opened', 'submitted', 'accepted') and p_date < c.opened_at then
+    raise exception 'That''s before the case was opened.';
+  end if;
+
+  v_from := a.date;
+  update public.cases set
+    opened_at    = case when v_event = 'opened' then p_date else opened_at end,
+    submitted_at = case when v_event = 'submitted' then p_date else submitted_at end,
+    accepted_at  = case when v_event = 'accepted' then p_date else accepted_at end
+  where id = c.id
+  returning * into c;
+  update public.activities set date = p_date where id = a.id returning * into a;
+  v_log := public._log_date_change(a, v_from, p_date, p_today, c.case_type);
+  return jsonb_build_object('case', to_jsonb(c), 'activity', to_jsonb(a), 'log', to_jsonb(v_log));
+end;
+$$;
+
+revoke execute on function public.set_case_event_date(uuid, date, date) from public, anon;
+grant execute on function public.set_case_event_date(uuid, date, date) to authenticated;
+
+-- The same from the case's side (the admin's Cases tab): its "opened",
+-- "submitted" or "accepted" date (p_event) — the case's line for it moves
+-- too. Returns {case, activity, log}.
+drop function if exists public.set_case_date(uuid, text, date);
+create or replace function public.set_case_date(p_case_id uuid, p_event text, p_date date, p_today date)
+returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare v_id uuid;
+begin
+  if p_event not in ('opened', 'submitted', 'accepted') then
+    raise exception 'A case has no % date.', p_event;
+  end if;
+  select id into v_id from public.activities
+  where case_id = p_case_id and type = 'case' and details->>'event' = p_event
+  order by created_at desc limit 1;
+  if v_id is null then
+    raise exception 'This case hasn''t been % yet.', p_event;
+  end if;
+  return public.set_case_event_date(v_id, p_date, p_today);
+end;
+$$;
+
+revoke execute on function public.set_case_date(uuid, text, date, date) from public, anon;
+grant execute on function public.set_case_date(uuid, text, date, date) to authenticated;
 
 revoke execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) from public, anon;
 grant execute on function public.open_case(uuid, uuid, numeric, numeric, numeric, date, int) to authenticated;

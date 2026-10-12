@@ -500,6 +500,19 @@ async function acceptTeamCase(caseId, btn) {
   await refreshDashboard().catch(showSaveError);
 }
 
+// The Cases tab's ✎ on a case's date (pipeline.js): its opened date, or
+// submitted date once submitted. The FA's manager only.
+async function setTeamCaseDate(caseId, date) {
+  if (isLookOnly()) return;
+  const c = _teamCases.find(k => k.id === caseId);
+  const fa = c && _pipelineFas.find(f => f.id === c.faId);
+  if (!canAcceptFor(fa)) return;
+  const r = await dbSetCaseDate(c.id, c.stage === 'submitted' ? 'submitted' : 'opened', date);
+  _teamCases = _teamCases.map(k => (k.id === c.id ? { ...k, ...r.case } : k));
+  _renderTeam(); // the Cases tab redraws too ('team:changed')
+  await refreshDashboard().catch(showSaveError);
+}
+
 // ---------- edit / add ----------
 
 // A popup with a form (also the Products tab's, products.js). fields:

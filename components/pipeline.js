@@ -6,12 +6,16 @@
 // name · Open (its PCR) · Submitted (its PCR, gold
 // where the admin can accept them), under headings. The biggest
 // PCR first. Clicking a row opens their cases (one row open at a time),
-// submitted first: client · product · stage · checklist progress (4/7) ·
-// how long it's been waiting (since it was opened / submitted — past
-// _PIPELINE_SLOW_DAYS it's highlighted) · PCR — and on a submitted case,
+// submitted first: the date it's been waiting since (submitted, or
+// opened — as on the timeline: Today, Yesterday, 9 Oct 2026; red past
+// _PIPELINE_SLOW_DAYS, the days on hover) · client · product · stage ·
+// checklist progress (4/7) · PCR — and on a submitted case,
 // Accept: the only place a case is accepted (team.js acceptTeamCase).
 // Only the FA's manager can, so Accept shows on the cases of FAs on the
-// admin's own list; anyone else's say who accepts them.
+// admin's own list; anyone else's say who accepts them. The manager can
+// also change the date (a ✎ on hover — as on the timeline): the case's
+// opened date, or submitted date once submitted (team.js
+// setTeamCaseDate).
 //
 // Rows reuse the FA list's styles (team.js: .fa-wrapper, .fa-row, …).
 
@@ -54,8 +58,21 @@ function _injectPipelineCSS() {
     .pl-product { width: 150px; flex-shrink: 0; color: var(--ink-dim); }
     .pl-stage { width: 90px; flex-shrink: 0; color: var(--ink-dim); }
     .pl-where { flex: 1; min-width: 0; color: var(--ink-dim); }
-    .pl-days { width: 80px; flex-shrink: 0; text-align: right; color: var(--ink-dim); white-space: nowrap; }
-    .pl-days.slow { color: var(--red); font-weight: 600; }
+    .pl-date { width: 96px; flex-shrink: 0; color: var(--ink-dim); white-space: nowrap; }
+    .pl-date.slow { color: var(--red); font-weight: 600; }
+    .pl-date:has(.tl-date-input) { width: auto; }
+    .pl-date-edit {
+      visibility: hidden;
+      background: none;
+      border: none;
+      padding: 0 0 0 6px;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--ink-dim);
+      cursor: pointer;
+    }
+    .pl-date:hover .pl-date-edit { visibility: visible; }
+    .pl-date-edit:hover { color: #8a6d0a; }
     .pl-pcr { width: 130px; flex-shrink: 0; text-align: right; white-space: nowrap; }
     .pl-action { width: 80px; flex-shrink: 0; display: flex; justify-content: flex-end; }
     .pl-accept {
@@ -92,19 +109,22 @@ function _daysSince(iso) {
 
 function _pipelineCaseHTML(c, canAccept) {
   const submitted = c.stage === 'submitted';
-  const days = _daysSince(submitted ? c.submittedAt : c.openedAt);
+  const since = submitted ? c.submittedAt : c.openedAt;
+  const days = _daysSince(since);
   const slow = days > _PIPELINE_SLOW_DAYS[c.stage];
-  const since = submitted ? 'since submitted' : 'since opened';
+  const pencil = canAccept && since && !isLookOnly()
+    ? `<button type="button" class="pl-date-edit" data-case-date="${c.id}" data-date="${since}" title="Change the ${submitted ? 'submitted' : 'opened'} date">✎</button>`
+    : '';
   const accept = submitted && canAccept
     ? `<button type="button" class="pl-accept" data-accept="${c.id}"${isLookOnly() ? ' disabled title="Look only while viewing as another admin"' : ''}>Accept</button>`
     : '';
   return `
     <div class="pl-case">
+      <span class="pl-date${slow ? ' slow' : ''}" title="${submitted ? 'Submitted' : 'Opened'} ${days} day${days === 1 ? '' : 's'} ago">${since ? _dayLabel(since) : '–'}${pencil}</span>
       <span class="pl-client">${_escHtml(c.clientName)}</span>
       <span class="pl-product">${_escHtml(c.type)}</span>
       <span class="pl-stage">${CASE_STAGE_LABELS[c.stage]}</span>
       <span class="pl-where">Checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
-      <span class="pl-days${slow ? ' slow' : ''}" title="${days} day${days === 1 ? '' : 's'} ${since}">${days} day${days === 1 ? '' : 's'}</span>
       <span class="pl-pcr">PCR ${formatNumber(casePcr(c))}</span>
       <span class="pl-action">${accept}</span>
     </div>
@@ -166,8 +186,44 @@ function _renderPipeline() {
   }
 }
 
+// The ✎ on a case's date: a date picker in its place (no later than
+// today); picking a day saves it, Escape or no change puts it back.
+function _editPipelineDate(btn) {
+  const { caseDate: caseId, date } = btn.dataset;
+  const cell = btn.closest('.pl-date');
+  const before = cell.innerHTML;
+  cell.innerHTML = `<input type="date" class="tl-date-input" value="${date}" max="${_todayIso()}" aria-label="Date">`;
+  const input = cell.querySelector('input');
+  input.focus();
+  let done = false;
+  const restore = () => { if (!done) { done = true; cell.innerHTML = before; } };
+  input.addEventListener('click', e => e.stopPropagation());
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') restore();
+    if (e.key === 'Enter') input.blur();
+  });
+  input.addEventListener('blur', async () => {
+    const next = input.value;
+    if (done) return;
+    if (!next || next === date || next > _todayIso()) return restore();
+    done = true;
+    input.disabled = true;
+    try {
+      await setTeamCaseDate(caseId, next);
+    } catch (err) {
+      cell.innerHTML = before;
+      showSaveError(err);
+    }
+  });
+}
+
 function initPipeline(root) {
   root.addEventListener('click', e => {
+    const edit = e.target.closest('.pl-date-edit');
+    if (edit) {
+      _editPipelineDate(edit);
+      return;
+    }
     const btn = e.target.closest('.pl-accept');
     if (btn) {
       acceptTeamCase(btn.dataset.accept, btn).catch(showSaveError);
