@@ -81,9 +81,10 @@ Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator
 ### Dashboard (Home) — same layout for FA and Admin
 1. **Month progress bar** — line from month start to close-off date, tick marks per day, heavier ticks at weekends, "today" marker. Shows close-off + payout dates.
 2. **The hero** — pipeline, meter and funnel (below).
-3. **Leaderboard** — the team, in two views switched on its title line:
-   - **PCR** (default, ranked by Accepted PCR's): **Cases submitted** · **Open case PCR's** (cases opened but not yet submitted — right now, not tied to the month) · **Submitted PCR's** (submitted this month, whatever happened since) · **Accepted PCR's** (accepted this month, at the final PCR).
-   - **Activity** (ranked by Prospects): **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
+3. **Leaderboard** — the team, in three views switched on its title line, each one time frame so it's clear what's in the figures:
+   - **Pot PCR** — the pot **right now**, from any month (the title says "Pot, right now"; picked days don't change it): **Cases** (open and awaiting acceptance) · **Open PCR's** (opened, not yet submitted) · **Awaiting acceptance** (submitted, not yet accepted) · **Pot PCR's** (the two together; ranked by it).
+   - **Month PCR** (default, ranked by Accepted PCR's) — the month to date, or the picked days: **Cases submitted** · **Submitted PCR's** (submitted in it, whatever happened since) · **Accepted PCR's** (accepted in it, at the final PCR).
+   - **Month activity** (ranked by Prospects) — the same days: **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 
 **The hero**, the same for FAs and admins (an FA's figures are their own; an admin's the team's, or the FA picked on the leaderboard), in three columns:
@@ -285,7 +286,7 @@ The Review is the day's work, **client first** — the same way of working as th
 "Review — Friday 25 Sep", as three steps (Next / Back, or click a step's name; everything saves as you go, so they can be visited in any order):
 
 1. **Prospecting** — counts by channel (Phoned, Emailed, WhatsApp / SMS, LinkedIn, Other), with a total. Only people who **aren't** clients in the app; contact with a client is a Contact entry.
-2. **Open case updates** (required, so it comes first) — the **client cards** of everyone with an open case, in two groups: **No activity** and **Had activity**. A client in No activity needs something logged, using the card as usual — its **+** (a note — **Note ▸ Same as last** repeats the last update; a call; a meeting…) — and moves to Had activity as soon as it is. Anything logged on the review day **or since** counts (a client already worked today doesn't need another update). Cases move on through their case cards (checklist, Mark submitted, Not taken up). **Next is blocked** until every one has an update (it names who's missing).
+2. **Open case updates** (required, so it comes first) — the **client cards** of everyone with an open case, in three groups: **No activity**, **Had activity**, and **Awaiting acceptance** — clients whose every open case is already submitted, waiting on the manager: listed last, "no update needed", and never holding up Next. A client in No activity needs something logged, using the card as usual — its **+** (a note — **Note ▸ Same as last** repeats the last update; a call; a meeting…) — and moves to Had activity as soon as it is. Anything logged on the review day **or since** counts (a client already worked today doesn't need another update). Cases move on through their case cards (checklist, Mark submitted, Not taken up). **Next is blocked** until every one has an update (it names who's missing).
    - **Follow-up nudge:** above a card whose last 3 updates were the same: "Same update for 3 days — follow up?". A nudge, not a block.
 3. **Activities** — the **client cards** of everyone **else** worked with that day (no open case). **+ Another client** finds anyone else, or adds someone new (lands in Prospects), and adds their card. No client appears in both steps.
 

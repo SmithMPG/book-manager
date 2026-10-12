@@ -5,12 +5,14 @@
 //                     contacted, by channel
 //   2. Open case updates
 //                     the cards of every client with an open case — the
-//                     required part, so it comes first — in two groups:
+//                     required part, so it comes first — in three groups:
 //                     No activity (needs an update: anything from the
 //                     card's "+" — a note with "Same as last", a call, a
-//                     meeting…) and Had activity (anything logged on the
-//                     review day or since). Next waits until No activity
-//                     is empty. Cases move on through their case cards as
+//                     meeting…), Had activity (anything logged on the
+//                     review day or since), and Awaiting acceptance
+//                     (every open case already submitted — waiting on
+//                     the manager, so no update needed). Next waits until
+//                     No activity is empty. Cases move on through their case cards as
 //                     usual; a nudge shows after 3 identical updates.
 //   3. Activities     the cards of everyone else worked with that day,
 //                     plus "+ Another client" for anyone else, or someone
@@ -94,6 +96,7 @@ function _injectReviewCSS() {
        same light background they sit on in their tabs. */
     .rv-body { padding: 16px 24px; background: #e8e8e6; }
     .rv-subhead { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); padding: 4px 0 8px; }
+    .rv-subhead-note { font-weight: 500; text-transform: none; letter-spacing: 0; }
     .rv-cards + .rv-subhead { padding-top: 14px; }
     .rv-nudge { font-size: 12px; font-weight: 600; color: #8a6d0a; margin: 0 0 4px 4px; }
     .rv-empty { font-size: 13px; color: var(--ink-dim); padding: 6px 0; }
@@ -355,6 +358,13 @@ class Review {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // Every open case already submitted, waiting to be accepted: nothing
+  // for the FA to update.
+  _awaitingAcceptance(data) {
+    const open = (data.cases || []).filter(isOpenCase);
+    return open.length > 0 && open.every(c => c.stage === 'submitted');
+  }
+
   // Anything logged on the review day or since counts as an update — a
   // client already worked today doesn't need another for the review day.
   _hadActivity(data) {
@@ -362,7 +372,10 @@ class Review {
   }
 
   _needingUpdate() {
-    return this._openCaseClients().filter(r => !this._hadActivity(getClientData(r.id)));
+    return this._openCaseClients().filter(r => {
+      const d = getClientData(r.id);
+      return !this._awaitingAcceptance(d) && !this._hadActivity(d);
+    });
   }
 
   // Everyone else worked with that day (no open case), then anyone added
@@ -384,7 +397,8 @@ class Review {
     const key = REVIEW_STEPS[this.step]?.key;
     if (key === 'cases') {
       const needing = this._needingUpdate().map(r => r.id);
-      return `cases|${needing.join()}|${this._openCaseClients().map(r => r.id).join()}`;
+      const awaiting = this._openCaseClients().filter(r => this._awaitingAcceptance(getClientData(r.id))).map(r => r.id);
+      return `cases|${needing.join()}|${awaiting.join()}|${this._openCaseClients().map(r => r.id).join()}`;
     }
     if (key === 'activities') return `activities|${this._activityClients().map(r => r.id).join()}`;
     return 'prospecting';
@@ -451,15 +465,19 @@ class Review {
   _casesHTML() {
     const clients = this._openCaseClients();
     if (!clients.length) return '<div class="rv-empty">No open cases.</div>';
-    // Two groups: No activity (still needs an update — Next waits on it
-    // being empty) and Had activity.
+    // Three groups: No activity (still needs an update — Next waits on it
+    // being empty), Had activity, and Awaiting acceptance (no update
+    // needed).
     const needing = this._needingUpdate();
     const needingIds = new Set(needing.map(r => r.id));
-    const updated = clients.filter(r => !needingIds.has(r.id));
+    const awaiting = clients.filter(r => this._awaitingAcceptance(getClientData(r.id)));
+    const awaitingIds = new Set(awaiting.map(r => r.id));
+    const updated = clients.filter(r => !needingIds.has(r.id) && !awaitingIds.has(r.id));
     const nudge = data => (_needsNudge(data) ? '<div class="rv-nudge">Same update for 3 days — follow up?</div>' : '');
     return `
       ${needing.length ? `<div class="rv-subhead">No activity (${needing.length})</div>${this._cardsHTML(needing, nudge)}` : ''}
       ${updated.length ? `<div class="rv-subhead">Had activity (${updated.length})</div>${this._cardsHTML(updated)}` : ''}
+      ${awaiting.length ? `<div class="rv-subhead">Awaiting acceptance (${awaiting.length}) <span class="rv-subhead-note">— no update needed</span></div>${this._cardsHTML(awaiting)}` : ''}
     `;
   }
 

@@ -467,7 +467,8 @@ as $$
           'submittedLumpSum', x.submitted_lump_sum, 'submittedMonthly', x.submitted_monthly,
           'acceptedLumpSum', x.accepted_lump_sum, 'acceptedMonthly', x.accepted_monthly,
           'acceptedFinalPcr', x.accepted_final_pcr,
-          'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly)), '[]'::jsonb)
+          'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly, 'openCount', x.open_count,
+          'pendingLumpSum', x.pending_lump_sum, 'pendingMonthly', x.pending_monthly, 'pendingCount', x.pending_count)), '[]'::jsonb)
         from (
           -- Grouped by product type — and, for RA Builder, by the term its
           -- PCR goes by (capped at 15; none = 15), so each group's PCR is
@@ -488,7 +489,13 @@ as $$
             -- Open case PCR's: cases opened but not yet submitted, right
             -- now (not tied to the days asked for).
             coalesce(sum(c.lump_sum) filter (where c.stage = 'opened'), 0) as open_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.stage = 'opened'), 0) as open_monthly
+            coalesce(sum(c.monthly)  filter (where c.stage = 'opened'), 0) as open_monthly,
+            count(*) filter (where c.stage = 'opened') as open_count,
+            -- Awaiting acceptance: submitted, not yet accepted — right now,
+            -- from any month. With the open ones, the pot.
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'submitted'), 0) as pending_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'submitted'), 0) as pending_monthly,
+            count(*) filter (where c.stage = 'submitted') as pending_count
           from public.cases c where c.fa_id = u.id
           group by 1, 2
         ) x) as cases,

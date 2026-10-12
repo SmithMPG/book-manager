@@ -575,6 +575,8 @@ function _repFromLeaderboardRow(row) {
     + casePcr({ productType: c.productType, term: c.term, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
   const submittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
   const openPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openLumpSum, monthly: c.openMonthly });
+  const pendingPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.pendingLumpSum, monthly: c.pendingMonthly });
+  const potPcrOf = c => openPcrOf(c) + pendingPcrOf(c);
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;
@@ -594,6 +596,12 @@ function _repFromLeaderboardRow(row) {
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
     openPcr: Math.round(sum(() => true, openPcrOf)),
     openPcrBreakdown: { risk: Math.round(sum(isRisk, openPcrOf)), investments: Math.round(sum(notRisk, openPcrOf)) },
+    // The pot, right now: open and awaiting acceptance, from any month.
+    potCases: sum(() => true, c => (Number(c.openCount) || 0) + (Number(c.pendingCount) || 0)),
+    pendingPcr: Math.round(sum(() => true, pendingPcrOf)),
+    pendingPcrBreakdown: { risk: Math.round(sum(isRisk, pendingPcrOf)), investments: Math.round(sum(notRisk, pendingPcrOf)) },
+    potPcr: Math.round(sum(() => true, potPcrOf)),
+    potPcrBreakdown: { risk: Math.round(sum(isRisk, potPcrOf)), investments: Math.round(sum(notRisk, potPcrOf)) },
     submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
     submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),
