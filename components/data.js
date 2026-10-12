@@ -693,14 +693,20 @@ function _businessCasesHTML(rep) {
   if (!open.length) return '<div class="lb-detail-empty">No open cases.</div>';
   return `
     <div class="lb-detail-title">Open Cases tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
-    ${open.map(c => `
+    ${open.map(c => {
+      // The date it's been waiting since: submitted, or opened (as on
+      // the Cases tab).
+      const since = c.stage === 'submitted' ? c.submittedAt : c.openedAt;
+      return `
       <div class="lb-detail-row">
+        <span class="lb-detail-date" title="${c.stage === 'submitted' ? 'Submitted' : 'Opened'}">${since ? _dayLabel(since) : '–'}</span>
         <span class="lb-detail-client">${_escHtml(c.clientName)}</span>
         <span class="lb-detail-type">${_escHtml(c.type)}</span>
         <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
         <span class="lb-detail-pcr">PCR ${formatNumber(casePcr(c))}</span>
       </div>
-    `).join('')}
+    `;
+    }).join('')}
   `;
 }
 

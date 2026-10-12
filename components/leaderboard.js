@@ -83,6 +83,7 @@ function _injectLeaderboardCSS() {
       margin-bottom: 6px;
     }
     .lb-detail-row { display: flex; gap: 16px; padding: 5px 0; color: var(--ink); }
+    .lb-detail-date { width: 96px; flex-shrink: 0; color: var(--ink-dim); white-space: nowrap; }
     .lb-detail-client { width: 170px; flex-shrink: 0; font-weight: 600; }
     .lb-detail-type { width: 150px; flex-shrink: 0; color: var(--ink-dim); }
     .lb-detail-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
