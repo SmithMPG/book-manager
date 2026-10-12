@@ -519,7 +519,9 @@ grant execute on function public.leaderboard(date[], date) to authenticated;
 -- Stage changes allowed: opened → submitted | not-taken-up,
 -- submitted → accepted | not-taken-up.
 -- Accepting is the FA's manager's alone (manages(), from their FA list),
--- never the FA's own; every other change is the FA's (can_act_as).
+-- never the FA's own; submitting the FA's or their manager's (noted on
+-- the line: submittedBy, submittedByName); not taken up the FA's alone
+-- (can_act_as).
 -- set_case_stage runs as definer so a manager can do that for an FA whose
 -- rows RLS won't let them write — it checks who may do what itself.
 -- Accepting takes the final PCR (p_final_pcr — the app offers the PCR
@@ -573,6 +575,10 @@ begin
     if not public.manages(c.fa_id) then
       raise exception 'Only the FA''s manager can accept a case.';
     end if;
+  elsif p_stage = 'submitted' then
+    if not (public.can_act_as(c.fa_id) or public.manages(c.fa_id)) then
+      raise exception 'Case not found.';
+    end if;
   elsif not public.can_act_as(c.fa_id) then
     raise exception 'Case not found.';
   end if;
@@ -592,6 +598,10 @@ begin
   where id = p_case_id
   returning * into c;
   v_details := jsonb_build_object('event', p_stage);
+  if p_stage = 'submitted' and auth.uid() <> c.fa_id then
+    v_details := v_details || jsonb_build_object('submittedBy', auth.uid(),
+      'submittedByName', (select name || ' ' || surname from public.users where id = auth.uid()));
+  end if;
   if p_stage = 'accepted' then
     v_details := v_details || jsonb_build_object('acceptedBy', auth.uid(), 'finalPcr', p_final_pcr);
     if not exists (select 1 from public.cases

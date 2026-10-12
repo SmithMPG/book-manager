@@ -498,6 +498,8 @@ function _caseEntryText(c, details, { withoutType = false } = {}) {
     parts.push(`PCR ${formatNumber(casePcr(c))}`);
   }
   parts.push(`Commission ${formatRand(caseUpfrontCommission(c))}`);
+  // Marked submitted by the manager (the Cases tab), not the FA.
+  if (event === 'submitted' && details.submittedByName) parts.push(`by ${details.submittedByName}`);
   return parts.join(' · ');
 }
 

@@ -2,24 +2,34 @@
 // an admin picked on the leaderboard):
 //   Open cases       every case not yet submitted, from any month
 //   Submitted cases  every case waiting to be accepted, from any month
-// each its PCR, large, then cases and commission. (Admin: they open the
-// Cases tab.) On the page itself, no cards. The PCR meter in the middle
+// each its PCR, large, then cases and commission. Admin: then the PCR
+// split into brought forward (opened / submitted before the month on the
+// month bar began) and this month — and they open the Cases tab. On the page itself, no cards. The PCR meter in the middle
 // covers Accepted; wills leads and referrals are in the funnel.
 //
 // caseStats() works the figures out, over a list of cases.
 
 // cases: [{stage, tab, productType, lumpSum, monthly, adviceFeePercent,
 // term, finalPcr, openedAt, submittedAt, acceptedAt}]; days: Set of ISO
-// dates. Each group: {count, pcr, commission}.
-function caseStats(cases, days) {
-  const group = (list, pcrOf) => ({
-    count: list.length,
-    pcr: list.reduce((t, c) => t + pcrOf(c), 0),
-    commission: list.reduce((t, c) => t + caseUpfrontCommission(c), 0),
-  });
+// dates; monthStart: the month's first day (ISO). Each group: {count,
+// pcr, commission}; opened and submitted also broughtForward (the PCR of
+// those opened / submitted before monthStart) and thisMonth (the rest).
+function caseStats(cases, days, monthStart = '') {
+  const group = (list, pcrOf, dateOf) => {
+    const pcr = list.reduce((t, c) => t + pcrOf(c), 0);
+    const broughtForward = dateOf
+      ? list.filter(c => dateOf(c) && dateOf(c) < monthStart).reduce((t, c) => t + pcrOf(c), 0) : 0;
+    return {
+      count: list.length,
+      pcr,
+      commission: list.reduce((t, c) => t + caseUpfrontCommission(c), 0),
+      broughtForward,
+      thisMonth: pcr - broughtForward,
+    };
+  };
   return {
-    opened: group(cases.filter(c => c.stage === 'opened'), casePcr),
-    submitted: group(cases.filter(c => c.stage === 'submitted'), casePcr),
+    opened: group(cases.filter(c => c.stage === 'opened'), casePcr, c => c.openedAt),
+    submitted: group(cases.filter(c => c.stage === 'submitted'), casePcr, c => c.submittedAt),
     accepted: group(cases.filter(c => c.stage === 'accepted' && days.has(c.acceptedAt)), caseAcceptedPcr),
   };
 }
@@ -51,6 +61,8 @@ function _injectMonthlyStatsCSS() {
     .ms-pcr small { font-size: 14px; font-weight: 500; color: var(--ink-dim); margin-left: 6px; letter-spacing: 0; }
     .ms-sub { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
     .ms-sub b { color: var(--ink); }
+    .ms-split { font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    .ms-split b { color: var(--ink); font-weight: 600; }
   `;
   document.head.appendChild(s);
 }
@@ -86,6 +98,7 @@ class MonthlyStats {
           <span class="ms-name">${name}</span>
           <span class="ms-pcr">${formatNumber(x.pcr)}<small>PCR</small></span>
           <span class="ms-sub">${cases(x.count)} · <b>${formatRand(x.commission)}</b> commission</span>
+          ${c.admin ? `<span class="ms-split"><b>${formatNumber(x.broughtForward || 0)}</b> brought forward · <b>${formatNumber(x.thisMonth || 0)}</b> this month</span>` : ''}
         </${c.admin ? 'button' : 'div'}>
       `;
     };

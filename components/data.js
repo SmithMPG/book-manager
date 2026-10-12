@@ -753,7 +753,7 @@ function _renderDashboard() {
     _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
     _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
   }
-  const stats = caseStats(cases, d.days);
+  const stats = caseStats(cases, d.days, period?.start ? isoDate(period.start) : '');
   _widgets.monthlyStats?.update({
     opened: stats.opened,
     submitted: stats.submitted,

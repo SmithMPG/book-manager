@@ -500,6 +500,36 @@ async function acceptTeamCase(caseId, btn) {
   await refreshDashboard().catch(showSaveError);
 }
 
+// The Cases tab's Mark submitted on an open case: the FA's manager can
+// do it for them, dated today (the database notes who did it on the
+// line). Like the FA's own, it asks first — and says which checklist
+// items aren't ticked.
+async function submitTeamCase(caseId, btn) {
+  if (isLookOnly()) return;
+  const c = _teamCases.find(k => k.id === caseId);
+  const fa = c && _pipelineFas.find(f => f.id === c.faId);
+  if (!canAcceptFor(fa) || c.stage !== 'opened') return;
+  const missing = caseChecklistItems(c).filter(item => !c.checklist?.[item.key]).map(item => item.label);
+  const ok = await showChoiceDialog({
+    title: `Mark ${c.clientName}'s ${c.type} submitted?`,
+    message: `For ${_faName(fa)}, dated today.`
+      + (missing.length ? ` ${missing.length} checklist item${missing.length === 1 ? " isn't" : "s aren't"} ticked: ${missing.join(', ')}.` : '')
+      + " This can't be undone.",
+    choices: [{ label: 'Cancel', value: null }, { label: 'Mark submitted', value: true, primary: true }],
+  });
+  if (!ok) return;
+  btn.disabled = true;
+  try {
+    const r = await dbSetCaseStage(c.id, 'submitted', _todayIso());
+    _teamCases = _teamCases.map(k => (k.id === c.id ? { ...k, ...r.case } : k));
+    _renderTeam(); // the Cases tab redraws too ('team:changed')
+    await refreshDashboard().catch(showSaveError);
+  } catch (err) {
+    btn.disabled = false;
+    throw err;
+  }
+}
+
 // The Cases tab's ✎ on a case's date (pipeline.js): its opened date, or
 // submitted date once submitted. The FA's manager only.
 async function setTeamCaseDate(caseId, date) {

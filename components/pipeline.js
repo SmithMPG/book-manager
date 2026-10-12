@@ -12,7 +12,8 @@
 // checklist progress (4/7) · PCR — and on a submitted case,
 // Accept: the only place a case is accepted (team.js acceptTeamCase).
 // Only the FA's manager can, so Accept shows on the cases of FAs on the
-// admin's own list; anyone else's say who accepts them. The manager can
+// admin's own list; anyone else's say who accepts them. On an open case
+// the manager gets Mark submitted instead (team.js submitTeamCase). The manager can
 // also change the date (a ✎ on hover — as on the timeline): the case's
 // opened date, or submitted date once submitted (team.js
 // setTeamCaseDate).
@@ -74,7 +75,9 @@ function _injectPipelineCSS() {
     .pl-date:hover .pl-date-edit { visibility: visible; }
     .pl-date-edit:hover { color: #8a6d0a; }
     .pl-pcr { width: 130px; flex-shrink: 0; text-align: right; white-space: nowrap; }
-    .pl-action { width: 80px; flex-shrink: 0; display: flex; justify-content: flex-end; }
+    .pl-action { width: 130px; flex-shrink: 0; display: flex; justify-content: flex-end; }
+    .pl-submit { background: #ffffff; border-color: rgba(0, 0, 0, 0.15); color: var(--ink); white-space: nowrap; }
+    .pl-submit:hover { border-color: var(--gold); opacity: 1; }
     .pl-accept {
       background: var(--gold);
       border: 1px solid var(--gold);
@@ -115,9 +118,12 @@ function _pipelineCaseHTML(c, canAccept) {
   const pencil = canAccept && since && !isLookOnly()
     ? `<button type="button" class="pl-date-edit" data-case-date="${c.id}" data-date="${since}" title="Change the ${submitted ? 'submitted' : 'opened'} date">✎</button>`
     : '';
-  const accept = submitted && canAccept
-    ? `<button type="button" class="pl-accept" data-accept="${c.id}"${isLookOnly() ? ' disabled title="Look only while viewing as another admin"' : ''}>Accept</button>`
-    : '';
+  // The manager's next step: Mark submitted on an open case, Accept on a
+  // submitted one.
+  const lookOnly = isLookOnly() ? ' disabled title="Look only while viewing as another admin"' : '';
+  const accept = !canAccept ? ''
+    : submitted ? `<button type="button" class="pl-accept" data-accept="${c.id}"${lookOnly}>Accept</button>`
+    : `<button type="button" class="pl-accept pl-submit" data-submit="${c.id}"${lookOnly}>Mark submitted</button>`;
   return `
     <div class="pl-case">
       <span class="pl-date${slow ? ' slow' : ''}" title="${submitted ? 'Submitted' : 'Opened'} ${days} day${days === 1 ? '' : 's'} ago">${since ? _dayLabel(since) : '–'}${pencil}</span>
@@ -225,6 +231,10 @@ function initPipeline(root) {
       return;
     }
     const btn = e.target.closest('.pl-accept');
+    if (btn?.dataset.submit) {
+      submitTeamCase(btn.dataset.submit, btn).catch(showSaveError);
+      return;
+    }
     if (btn) {
       acceptTeamCase(btn.dataset.accept, btn).catch(showSaveError);
       return;
