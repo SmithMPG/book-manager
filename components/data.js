@@ -577,6 +577,8 @@ function _repFromLeaderboardRow(row) {
   const openPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openLumpSum, monthly: c.openMonthly });
   const pendingPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.pendingLumpSum, monthly: c.pendingMonthly });
   const openedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openedLumpSum, monthly: c.openedMonthly });
+  const stillSubmittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.stillSubmittedLumpSum, monthly: c.stillSubmittedMonthly });
+  const n = key => c => Number(c[key]) || 0;
   const ytdPcrOf = c => (Number(c.ytdFinalPcr) || 0)
     + casePcr({ productType: c.productType, term: c.term, lumpSum: c.ytdLumpSum, monthly: c.ytdMonthly });
   const isRisk = c => caseIsRisk(c.productType);
@@ -600,14 +602,19 @@ function _repFromLeaderboardRow(row) {
     openPcrBreakdown: { risk: Math.round(sum(isRisk, openPcrOf)), investments: Math.round(sum(notRisk, openPcrOf)) },
     // The pot, right now: open and awaiting acceptance (from any month),
     // and accepted this year.
-    potCases: sum(() => true, c => (Number(c.openCount) || 0) + (Number(c.pendingCount) || 0)),
+    potCases: sum(() => true, c => n('openCount')(c) + n('pendingCount')(c) + n('ytdCount')(c)),
     pendingPcr: Math.round(sum(() => true, pendingPcrOf)),
     pendingPcrBreakdown: { risk: Math.round(sum(isRisk, pendingPcrOf)), investments: Math.round(sum(notRisk, pendingPcrOf)) },
     ytdPcr: Math.round(sum(() => true, ytdPcrOf)),
     ytdPcrBreakdown: { risk: Math.round(sum(isRisk, ytdPcrOf)), investments: Math.round(sum(notRisk, ytdPcrOf)) },
-    // Opened on the days (the month), whatever's happened since.
+    // The month (the days), each case once, where it is now: opened in it
+    // and still open, submitted in it and still awaiting acceptance,
+    // accepted in it (pcr).
+    monthCases: sum(() => true, c => n('openedCount')(c) + n('stillSubmittedCount')(c) + n('acceptedCount')(c)),
     openedPcr: Math.round(sum(() => true, openedPcrOf)),
     openedPcrBreakdown: { risk: Math.round(sum(isRisk, openedPcrOf)), investments: Math.round(sum(notRisk, openedPcrOf)) },
+    stillSubmittedPcr: Math.round(sum(() => true, stillSubmittedPcrOf)),
+    stillSubmittedPcrBreakdown: { risk: Math.round(sum(isRisk, stillSubmittedPcrOf)), investments: Math.round(sum(notRisk, stillSubmittedPcrOf)) },
     submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
     submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),
@@ -702,22 +709,55 @@ function onDashboardPeriodChange() {
   refreshDashboard().catch(showSaveError);
 }
 
-function _businessCasesHTML(rep) {
-  const open = (_dash?.teamCases || []).filter(c => c.faId === rep.id && isOpenCase(c) && c.tab === 'business');
-  if (!open.length) return '<div class="lb-detail-empty">No open cases.</div>';
+// Under an FA's row on the leaderboard: their cases, for the view showing
+// (leaderboard.js passes it and its columns), each case's PCR under the
+// one column it counts in — where it is now — so the row's totals add up
+// from the list.
+//   Pot PCR      open (Open PCR's) and awaiting acceptance (Submitted
+//                PCR's), from any month, and accepted this year
+//   Month views  only what happened in the month (or the days picked):
+//                opened in it and still open, submitted in it and still
+//                awaiting acceptance, accepted in it
+// Each with the date it's at (accepted, submitted or opened), newest
+// first.
+function _businessCasesHTML(rep, view, columns = []) {
+  const d = _dash;
+  const pot = view === 'pot';
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const inDays = x => !!x && d.days.has(x);
+  const accepted = c => c.stage === 'accepted';
+  // {column key: PCR} for the columns this case counts in.
+  const cellsOf = c => (pot
+    ? {
+      openPcr: c.stage === 'opened' ? casePcr(c) : null,
+      pendingPcr: c.stage === 'submitted' ? casePcr(c) : null,
+      ytdPcr: accepted(c) && c.acceptedAt >= yearStart ? caseAcceptedPcr(c) : null,
+    }
+    : {
+      openedPcr: c.stage === 'opened' && inDays(c.openedAt) ? casePcr(c) : null,
+      stillSubmittedPcr: c.stage === 'submitted' && inDays(c.submittedAt) ? casePcr(c) : null,
+      pcr: accepted(c) && inDays(c.acceptedAt) ? caseAcceptedPcr(c) : null,
+    });
+  // The date of the stage it's at.
+  const dateOf = c => (accepted(c) ? c.acceptedAt : c.stage === 'submitted' ? c.submittedAt : c.openedAt);
+  const cases = (d?.teamCases || [])
+    .filter(c => c.faId === rep.id && Object.values(cellsOf(c)).some(v => v !== null))
+    .sort((a, b) => (dateOf(b) || '').localeCompare(dateOf(a) || ''));
+  const what = pot ? 'In the pot, and accepted this year' : _adminDays.size ? 'Selected days' : 'This month';
+  if (!cases.length) return `<div class="lb-detail-empty">${what}: no cases.</div>`;
   return `
-    <div class="lb-detail-title">Open Cases tab · ${open.length} open case${open.length === 1 ? '' : 's'}</div>
-    ${open.map(c => {
-      // The date it's been waiting since: submitted, or opened (as on
-      // the Cases tab).
-      const since = c.stage === 'submitted' ? c.submittedAt : c.openedAt;
+    <div class="lb-detail-title">${what} · ${cases.length} case${cases.length === 1 ? '' : 's'}</div>
+    ${cases.map(c => {
+      const since = dateOf(c);
+      const cells = cellsOf(c);
+      const checklist = isOpenCase(c) ? ` · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}` : '';
       return `
       <div class="lb-detail-row">
-        <span class="lb-detail-date" title="${c.stage === 'submitted' ? 'Submitted' : 'Opened'}">${since ? _dayLabel(since) : '–'}</span>
+        <span class="lb-detail-date">${since ? _dayLabel(since) : '–'}</span>
         <span class="lb-detail-client">${_escHtml(c.clientName)}</span>
         <span class="lb-detail-type">${_escHtml(c.type)}</span>
-        <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]} · checklist ${caseChecklistDone(c)}/${caseChecklistItems(c).length}</span>
-        <span class="lb-detail-pcr">PCR ${formatNumber(casePcr(c))}</span>
+        <span class="lb-detail-status">${CASE_STAGE_LABELS[c.stage]}${checklist}</span>
+        ${columns.map(col => `<span class="lb-value${col.wide ? ' wide' : ''}">${cells[col.key] != null ? formatNumber(Math.round(cells[col.key])) : ''}</span>`).join('')}
       </div>
     `;
     }).join('')}

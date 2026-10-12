@@ -469,8 +469,11 @@ as $$
           'acceptedFinalPcr', x.accepted_final_pcr,
           'openLumpSum', x.open_lump_sum, 'openMonthly', x.open_monthly, 'openCount', x.open_count,
           'pendingLumpSum', x.pending_lump_sum, 'pendingMonthly', x.pending_monthly, 'pendingCount', x.pending_count,
-          'openedLumpSum', x.opened_lump_sum, 'openedMonthly', x.opened_monthly,
-          'ytdFinalPcr', x.ytd_final_pcr, 'ytdLumpSum', x.ytd_lump_sum, 'ytdMonthly', x.ytd_monthly)), '[]'::jsonb)
+          'acceptedCount', x.accepted_count,
+          'openedLumpSum', x.opened_lump_sum, 'openedMonthly', x.opened_monthly, 'openedCount', x.opened_count,
+          'stillSubmittedLumpSum', x.still_submitted_lump_sum, 'stillSubmittedMonthly', x.still_submitted_monthly,
+          'stillSubmittedCount', x.still_submitted_count,
+          'ytdFinalPcr', x.ytd_final_pcr, 'ytdLumpSum', x.ytd_lump_sum, 'ytdMonthly', x.ytd_monthly, 'ytdCount', x.ytd_count)), '[]'::jsonb)
         from (
           -- Grouped by product type — and, for RA Builder, by the term its
           -- PCR goes by (capped at 15; none = 15), so each group's PCR is
@@ -498,14 +501,22 @@ as $$
             coalesce(sum(c.lump_sum) filter (where c.stage = 'submitted'), 0) as pending_lump_sum,
             coalesce(sum(c.monthly)  filter (where c.stage = 'submitted'), 0) as pending_monthly,
             count(*) filter (where c.stage = 'submitted') as pending_count,
-            -- Opened on these days, whatever has happened to it since.
-            coalesce(sum(c.lump_sum) filter (where c.opened_at = any(p_dates)), 0) as opened_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.opened_at = any(p_dates)), 0) as opened_monthly,
+            count(*) filter (where c.stage = 'accepted' and c.accepted_at = any(p_dates)) as accepted_count,
+            -- The leaderboard's month view counts each case once, where it
+            -- is now: opened on these days and still open; submitted on
+            -- these days and still awaiting acceptance (accepted: above).
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'opened' and c.opened_at = any(p_dates)), 0) as opened_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'opened' and c.opened_at = any(p_dates)), 0) as opened_monthly,
+            count(*) filter (where c.stage = 'opened' and c.opened_at = any(p_dates)) as opened_count,
+            coalesce(sum(c.lump_sum) filter (where c.stage = 'submitted' and c.submitted_at = any(p_dates)), 0) as still_submitted_lump_sum,
+            coalesce(sum(c.monthly)  filter (where c.stage = 'submitted' and c.submitted_at = any(p_dates)), 0) as still_submitted_monthly,
+            count(*) filter (where c.stage = 'submitted' and c.submitted_at = any(p_dates)) as still_submitted_count,
             -- Accepted this calendar year (from 1 January): as Accepted
             -- PCR above, for the Pot view.
             coalesce(sum(c.final_pcr) filter (where c.stage = 'accepted' and c.accepted_at >= date_trunc('year', current_date)::date), 0) as ytd_final_pcr,
             coalesce(sum(c.lump_sum) filter (where c.stage = 'accepted' and c.accepted_at >= date_trunc('year', current_date)::date and c.final_pcr is null), 0) as ytd_lump_sum,
-            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at >= date_trunc('year', current_date)::date and c.final_pcr is null), 0) as ytd_monthly
+            coalesce(sum(c.monthly)  filter (where c.stage = 'accepted' and c.accepted_at >= date_trunc('year', current_date)::date and c.final_pcr is null), 0) as ytd_monthly,
+            count(*) filter (where c.stage = 'accepted' and c.accepted_at >= date_trunc('year', current_date)::date) as ytd_count
           from public.cases c where c.fa_id = u.id
           group by 1, 2
         ) x) as cases,

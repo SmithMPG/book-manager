@@ -82,9 +82,9 @@ Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator
 1. **Month progress bar** — line from month start to close-off date, tick marks per day, heavier ticks at weekends, "today" marker. Shows close-off + payout dates.
 2. **The hero** — pipeline, meter and funnel (below).
 3. **Leaderboard** — titled just **Team Leaderboard**; the team, in three views switched beside the title, each one time frame so it's clear what's in the figures:
-   - **Pot PCR** and **Month PCR** have the same four columns — **Cases · Open PCR's · Submitted PCR's · Accepted PCR's** (ranked by Accepted) — over their own time frame (each heading says on hover):
-     - **Pot PCR** — **right now** (picked days don't change it): cases open or awaiting acceptance · still open · awaiting acceptance · accepted **this year** (from 1 January, at the final PCR).
-     - **Month PCR** (default) — the month to date, or the picked days: cases submitted in it · opened in it · submitted in it · accepted in it (each whatever has happened since).
+   - **Pot PCR** and **Month PCR** have the same four columns — **Cases · Open PCR's · Submitted PCR's · Accepted PCR's** (ranked by Accepted) — over their own time frame (each heading says on hover). **Each case counts once, in the column for where it is now**, and Cases is how many that is:
+     - **Pot PCR** — **right now** (picked days don't change it): still open · awaiting acceptance · accepted **this year** (from 1 January, at the final PCR).
+     - **Month PCR** (default) — the month to date, or the picked days: opened in it and still open · submitted in it and still awaiting acceptance · accepted in it.
    - **Month activity** (ranked by Prospects) — the same days: **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 
@@ -190,7 +190,7 @@ Figures typed on one tab carry to the others; everything resets when it's opened
 - Follows the month on the month bar (‹ › to look at past months). Picking days on the bar doesn't change it.
 - **Clicking a week's meter** picks that week's days (up to today) on the month bar, in place of any picked, so the leaderboard and the hero's figures show just that week; its label turns gold. Clicking it again, the **Home** tab, or **Month to date** under the month bar goes back to month to date. The meters still show the whole month.
 - No weekly target set for the month: each week's meter still shows the PCR submitted, with "No target set".
-- **Clicking an FA on the leaderboard** still shows that FA's own meter (Accepted PCR's against Validation). Under their row, their Open Cases tab's cases: **the date** each has been waiting since (submitted, or opened — as on the Cases tab) · client · product · stage and checklist · PCR. **The FA's own Home** is unchanged.
+- **Clicking an FA on the leaderboard** still shows that FA's own meter (Accepted PCR's against Validation). Under their row, their cases for the view showing, **each case's PCR under the one leaderboard column it counts in**, so the row's totals add up from the list — the same cases the row counts (see the views above). Each: **the date** it's at (accepted, submitted or opened) · client · product · stage (and checklist while open), newest first. **The FA's own Home** is unchanged.
 
 **Data:**
 - **months** — `month` (first day, e.g. 2026-10-01, standing for October 2026; unique), `close_off_date`, `weekly_target` (PCR). Start = the previous month's close-off + 1 day; the first row is only the starting boundary, as today. Everyone reads; admins write.

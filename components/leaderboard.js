@@ -1,13 +1,14 @@
 // Team leaderboard, in three views, switched on the title line — each one
 // time frame, so it's clear what's in the figures:
-//   Pot PCR         right now: Cases (open and awaiting acceptance) ·
+//   Pot PCR         right now: Cases (all three below) ·
 //                   Open PCR's (still open) · Submitted PCR's (awaiting
 //                   acceptance) · Accepted PCR's (this year, from 1
 //                   January) — sorted by Accepted. Days picked on the
 //                   month bar don't change it.
 //   Month PCR       (default) the month to date, or the days picked, the
-//                   same columns: Cases (submitted in it) · Open PCR's
-//                   (opened in it) · Submitted PCR's (submitted in it) ·
+//                   same columns, each case once, where it is now: Cases ·
+//                   Open PCR's (opened in it, still open) · Submitted
+//                   PCR's (submitted in it, still awaiting acceptance) ·
 //                   Accepted PCR's (accepted in it) — sorted by Accepted
 //   Month activity  the same days: Prospects · Referrals · Meetings ·
 //                   Wills Leads · FNAs · Quotes — sorted by Prospects
@@ -77,7 +78,7 @@ function _injectLeaderboardCSS() {
     .lb-checkout.no { color: var(--red); }
     .lb-checkout.none { color: var(--ink-dim); }
     .lb-detail {
-      padding: 10px 14px 14px 40px;
+      padding: 10px 0 14px 40px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
       background: rgba(212, 175, 55, 0.06);
       font-size: 13px;
@@ -90,12 +91,13 @@ function _injectLeaderboardCSS() {
       color: var(--ink-dim);
       margin-bottom: 6px;
     }
-    .lb-detail-row { display: flex; gap: 16px; padding: 5px 0; color: var(--ink); }
+    .lb-detail-row { display: flex; align-items: center; gap: 16px; padding: 5px 0; color: var(--ink); }
+    /* The case's PCR under each leaderboard column it counts in. */
+    .lb-detail-row .lb-value { font-weight: 500; color: var(--ink); }
     .lb-detail-date { width: 96px; flex-shrink: 0; color: var(--ink-dim); white-space: nowrap; }
     .lb-detail-client { width: 170px; flex-shrink: 0; font-weight: 600; }
     .lb-detail-type { width: 150px; flex-shrink: 0; color: var(--ink-dim); }
     .lb-detail-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lb-detail-pcr { flex-shrink: 0; color: var(--ink-dim); }
     .lb-detail-empty { color: var(--ink-dim); }
     .lb-value {
       width: 96px;
@@ -178,7 +180,7 @@ const LEADERBOARD_VIEWS = {
     pot: true,
     sortKey: "ytdPcr",
     columns: [
-      { key: "potCases", label: "Cases", wide: true, title: "Open and awaiting acceptance, right now" },
+      { key: "potCases", label: "Cases", wide: true, title: "Open and awaiting acceptance right now, and accepted this year" },
       { key: "openPcr", label: "Open PCR’s", wide: true, title: "Opened, not yet submitted — right now" },
       { key: "pendingPcr", label: "Submitted PCR’s", wide: true, title: "Submitted, awaiting acceptance — right now" },
       { key: "ytdPcr", label: "Accepted PCR’s", wide: true, title: "Accepted this year (from 1 January), at the final PCR" },
@@ -188,9 +190,9 @@ const LEADERBOARD_VIEWS = {
     label: "Month PCR",
     sortKey: "pcr",
     columns: [
-      { key: "cases", label: "Cases", wide: true, title: "Submitted in the month (or the days picked)" },
-      { key: "openedPcr", label: "Open PCR’s", wide: true, title: "Opened in the month, whatever's happened since" },
-      { key: "submittedPcr", label: "Submitted PCR’s", wide: true, title: "Submitted in the month, whatever's happened since" },
+      { key: "monthCases", label: "Cases", wide: true, title: "Opened, submitted or accepted in the month (or the days picked), each counted once" },
+      { key: "openedPcr", label: "Open PCR’s", wide: true, title: "Opened in the month and still open" },
+      { key: "stillSubmittedPcr", label: "Submitted PCR’s", wide: true, title: "Submitted in the month and still awaiting acceptance" },
       { key: "pcr", label: "Accepted PCR’s", wide: true, title: "Accepted in the month, at the final PCR" },
     ],
   },
@@ -211,7 +213,7 @@ const LEADERBOARD_VIEWS = {
 // PCR in full with thousand separators (money.js); PCR is a score, not
 // rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (["pcr", "submittedPcr", "openPcr", "pendingPcr", "openedPcr", "ytdPcr"].includes(key)) return formatNumber(value);
+  if (["pcr", "submittedPcr", "openPcr", "pendingPcr", "openedPcr", "stillSubmittedPcr", "ytdPcr"].includes(key)) return formatNumber(value);
   return value;
 }
 
@@ -236,6 +238,10 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "investments", label: "Investments" },
   ],
   openedPcr: [
+    { key: "risk", label: "Risk" },
+    { key: "investments", label: "Investments" },
+  ],
+  stillSubmittedPcr: [
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
   ],
@@ -289,7 +295,7 @@ class Leaderboard {
     });
   }
 
-  // options (admin view): {onSelect, selectedId, detailHTML(rep),
+  // options (admin view): {onSelect, selectedId, detailHTML(rep, view, columns),
   // activityDayLabel}. The FA view passes only activityDayLabel.
   setReps(reps, options = {}) {
     this.config.reps = reps;
@@ -347,7 +353,7 @@ class Leaderboard {
             <div class="lb-name">${checkout}<span class="lb-name-text">${_escHtml(rep.name)}</span></div>
             ${cells}
           </div>
-          ${selected && detailHTML ? `<div class="lb-detail">${detailHTML(rep)}</div>` : ""}
+          ${selected && detailHTML ? `<div class="lb-detail">${detailHTML(rep, this.view, columns)}</div>` : ""}
         `;
       })
       .join("");
