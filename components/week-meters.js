@@ -11,8 +11,11 @@
 //             middle of them
 //   6+        rows of three
 // Each meter fills green, gold once the target's met; a past week that
-// fell short is red. Under each: "Week 1 ·
-// 1–7 Oct", this week's darker.
+// fell short is red. Under each: "Week 1 · 1–7 Oct", this week's darker.
+// Clicking a meter picks that week's days on the month bar, so the
+// leaderboard and figures show just that week (its label turns gold);
+// clicking it again goes back to month to date. The meters themselves
+// always show the whole month.
 //
 // data.js works the weeks out and hands them over with update().
 
@@ -25,6 +28,10 @@ function _injectWeekMetersCSS() {
     .wm[hidden] { display: none; }
     .wm .pcr-meter-svg { width: 100%; max-width: none; }
     .wm-current .pcr-period { fill: var(--ink); }
+    .wm-week { cursor: pointer; border-radius: 12px; transition: background 0.15s ease; }
+    .wm-week:hover { background: rgba(0, 0, 0, 0.03); }
+    .wm-week:hover .pcr-period { text-decoration: underline; }
+    .wm-selected .pcr-period { fill: #8a6d0a; }
 
     .wm[data-n="1"] { grid-template-columns: 280px; }
     .wm[data-n="2"] { grid-template-columns: repeat(2, 260px); }
@@ -52,9 +59,9 @@ class WeekMeters {
     this.render();
   }
 
-  // weeks: [{week, pcr, state: 'met'|'current'|'missed'|'none', label}]
-  // — the weeks so far; target: the weekly target (PCR)
-  // or null.
+  // weeks: [{week, pcr, state: 'met'|'current'|'missed'|'none', label,
+  // days, selected}] — the weeks so far; target: the weekly target (PCR)
+  // or null; onSelect(days): a meter clicked.
   update(config) {
     Object.assign(this.config, config);
     this.render();
@@ -68,9 +75,13 @@ class WeekMeters {
     const { weeks, target } = this.config;
     this.container.dataset.n = Math.min(Math.max(weeks.length, 1), 6);
     this.container.innerHTML = weeks.map(w =>
-      `<div class="wm-week${w.state === 'current' ? ' wm-current' : ''}"></div>`).join('');
+      `<div class="wm-week${w.state === 'current' ? ' wm-current' : ''}${w.selected ? ' wm-selected' : ''}" role="button" tabindex="0"
+        title="${w.selected ? 'Back to month to date' : `Show ${w.label.split(' · ')[0]} on the leaderboard`}"></div>`).join('');
     this.container.querySelectorAll('.wm-week').forEach((el, i) => {
       const w = weeks[i];
+      const pick = () => this.config.onSelect?.(w.days);
+      el.addEventListener('click', pick);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
       new PcrMeter(el, {
         validationTarget: target,
         currentCount: w.pcr,

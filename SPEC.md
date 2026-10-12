@@ -76,16 +76,11 @@ No `meetings ↔ activities` foreign key. No `pledges` table (replaced by a live
 ## Screens
 
 ### Toolbar (all screens)
-Nav: Dashboard / Clients / Prospects / Not Moved Forward &middot; Commission Tracker button &middot; Checkout button (green tick if already checked out today) &middot; user chip &middot; sign out.
+Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator · search (clients; FAs in Admin mode) · **Review** · profile · sign out. Under it, the tab bar.
 
 ### Dashboard (Home) — same layout for FA and Admin
 1. **Month progress bar** — line from month start to close-off date, tick marks per day, heavier ticks at weekends, "today" marker. Shows close-off + payout dates.
-2. **Metrics bar** (4 cards, click to expand a detail panel underneath):
-   - PCR validations vs target
-   - Conversion rate (global %, expands to funnel breakdown: prospects → meetings → fact finders → sales)
-   - Live pipeline (count of clients mid-funnel, expands to stage breakdown — this is what replaced the monthly pledge)
-   - Cases submitted MTD vs minimum standard
-   - Only one detail panel open at a time.
+2. **The hero** — pipeline, meter and funnel (below).
 3. **Leaderboard** — the team, in two views switched on its title line:
    - **PCR** (default, ranked by Accepted PCR's): **Cases submitted** · **Open case PCR's** (cases opened but not yet submitted — right now, not tied to the month) · **Submitted PCR's** (submitted this month, whatever happened since) · **Accepted PCR's** (accepted this month, at the final PCR).
    - **Activity** (ranked by Prospects): **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
@@ -190,6 +185,7 @@ Figures typed on one tab carry to the others; everything resets when it's opened
   - **Past and missed** — red, as far as it got.
 - The side blocks stretch from the top of the highest meter's ring to the bottom of the lowest one's labels, whatever the layout.
 - Follows the month on the month bar (‹ › to look at past months). Picking days on the bar doesn't change it.
+- **Clicking a week's meter** picks that week's days (up to today) on the month bar, in place of any picked, so the leaderboard and the hero's figures show just that week; its label turns gold. Clicking it again, the **Home** tab, or **Month to date** under the month bar goes back to month to date. The meters still show the whole month.
 - No weekly target set for the month: each week's meter still shows the PCR submitted, with "No target set".
 - **Clicking an FA on the leaderboard** still shows that FA's own meter (Accepted PCR's against Validation). **The FA's own Home** is unchanged.
 
@@ -253,7 +249,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
   - **Open a case ▸** every case type → its amounts.
   Picking an option opens the card with that entry ready to fill in, the choice already made (beside the date: "Phone call", "Fact Finder", "RA Builder"), dated today. Older contacts logged as LinkedIn or In person keep their label.
 - **Case fields depend on the type:** Risk and Educator take the monthly premium; everything else takes lump sum, monthly premium and upfront advice fee.
-- **Timeline:** newest first, grouped by day, ending with "Client added". Entries can be deleted one at a time (×), except **case lines**: they're added automatically by whatever happens to the case — opened, amounts changed (before → after), submitted, accepted, not taken up — and each starts with the case's **product chip** (to the case view). A case goes, with its lines, by **Delete case** on its card.
+- **Timeline:** newest first, grouped by day, ending with "Client added". Hovering a date shows a **✎**: it opens a date picker (today at the latest), and the entry moves to its new day once picked (Escape cancels). Entries can be deleted one at a time (×). Neither applies to **case lines**: they're added automatically by whatever happens to the case — opened, amounts changed (before → after), submitted, accepted, not taken up — and each starts with the case's **product chip** (to the case view). A case goes, with its lines, by **Delete case** on its card.
 
 ### Cases
 - **Stages — the same for every case and product:** **Opened** → **Submitted** → **Accepted** or **Not taken up**.
@@ -329,5 +325,5 @@ There's no Test Book any more: it and its data were removed (`supabase/remove-te
 
 ---
 
-## MVP build scope
-Runs entirely in-browser for now (no backend wiring yet — this comes after the HTML/CSS/JS screens are built out in Claude Code). Once screens are validated, wire up Supabase (auth, tables above, RLS: FA sees own data, admin sees all).
+## Build
+Vanilla HTML/CSS/JS (no build step), on Supabase: auth, the tables above, RLS (an FA sees their own data, admins everyone's), RPC functions and the add-fa edge function. `supabase/schema.sql` is the whole database; changes go in a one-off SQL file to run in the SQL editor, folded into schema.sql, and deleted once run.

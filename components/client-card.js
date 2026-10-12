@@ -161,14 +161,6 @@ function _injectClientCardCSS() {
     .add-menu .am-section::after { content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: 8px; }
     .add-menu.flip .am-section::after { left: auto; right: 100%; }
 
-    /* The date on an add-entry form (card-items.js). */
-    .detail-date {
-      width: 96px;
-      flex-shrink: 0;
-      font-weight: 600;
-      color: var(--ink);
-    }
-
   `;
   document.head.appendChild(s);
 }

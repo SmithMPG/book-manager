@@ -105,18 +105,6 @@ function _injectAuthCSS() {
     .login-submit:hover { opacity: 0.9; }
     .login-submit:disabled { opacity: 0.6; cursor: default; }
 
-    .login-forgot {
-      display: inline-block;
-      margin-top: 14px;
-      font-size: 12px;
-      color: var(--text-dim);
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 0;
-      text-decoration: underline;
-    }
-    .login-forgot:hover { color: var(--text); }
     .login-hint { margin-top: 8px; font-size: 12px; color: var(--text-dim); }
   `;
   document.head.appendChild(s);

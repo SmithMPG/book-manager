@@ -366,6 +366,12 @@ async function dbAddActivity(clientId, type, date, details) {
     .select().single());
 }
 
+// A timeline entry's new day (the date it happened, not when it was
+// logged).
+async function dbSetActivityDate(id, date) {
+  _dbOk(await supabaseClient.from('activities').update({ date }).eq('id', id));
+}
+
 async function dbDeleteActivity(id) {
   _dbOk(await supabaseClient.from('activities').delete().eq('id', id));
 }
@@ -626,7 +632,23 @@ const _adminSelection = {
     setMonthBarSelection(_adminSelection);
     refreshDashboard().catch(showSaveError);
   },
+  // A week meter clicked: pick that whole week's days (up to today) in
+  // place of whatever was picked — or, if it's already exactly that
+  // week, back to month to date.
+  onWeek(days) {
+    const same = days.length === _adminDays.size && days.every(d => _adminDays.has(d));
+    _adminDays.clear();
+    if (!same) days.forEach(d => _adminDays.add(d));
+    setMonthBarSelection(_adminSelection);
+    refreshDashboard().catch(showSaveError);
+  },
 };
+
+// Clicking the Home tab in Admin mode goes back to month to date.
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tab-bar .tab[data-tab="dashboard"]')) return;
+  if (_isAdminView() && _adminDays.size) _adminSelection.onReset();
+});
 
 function _isAdminView() {
   return getAppMode() === 'admin';
@@ -702,7 +724,7 @@ function _renderDashboard() {
   if (_widgets.pcrMeter) _widgets.pcrMeter.container.hidden = teamView;
   _widgets.weekMeters?.show(teamView);
   if (teamView) {
-    _widgets.weekMeters?.update(_weekMetersFor(period, cases));
+    _widgets.weekMeters?.update({ ..._weekMetersFor(period, cases), onSelect: days => _adminSelection.onWeek(days) });
   } else {
     _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
     _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
@@ -752,7 +774,12 @@ function _weekMetersFor(period, cases) {
       : today <= w.end ? 'current' : 'missed';
     const dates = w.start.getMonth() === w.end.getMonth()
       ? `${w.start.getDate()}–${day(w.end)}` : `${day(w.start)} – ${day(w.end)}`;
-    return { week: w.week, pcr, state, label: `Week ${w.week} · ${dates}` };
+    // Its days so far, for picking the week (the leaderboard and figures
+    // narrow to them); selected when exactly they're picked.
+    const days = [];
+    for (const d = new Date(w.start); d <= w.end && d <= today; d.setDate(d.getDate() + 1)) days.push(isoDate(d));
+    const selected = days.length === _adminDays.size && days.every(x => _adminDays.has(x));
+    return { week: w.week, pcr, state, label: `Week ${w.week} · ${dates}`, days, selected };
   });
   return { weeks, target };
 }

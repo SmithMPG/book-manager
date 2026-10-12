@@ -151,7 +151,6 @@ function _injectCardItemsCSS() {
     .cb-link:hover { color: var(--ink); }
     .cb-link.danger { margin-left: auto; }
     .cb-link.danger:hover { color: var(--red); }
-    .cb-waiting { font-size: 12px; color: var(--ink-dim); font-style: italic; }
     /* The add form lines up with the timeline: date, kind, then fields. */
     .item-add-form .tl-kind { font-weight: 700; }
     .item-number {
@@ -185,11 +184,6 @@ function _injectCardItemsCSS() {
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     }
     .item-add-form.open { display: flex; }
-    .detail-empty + .item-add-form { border-top: none; margin-top: 0; }
-
-    /* The date the item will be saved under (today), in the same column
-       as the dates on the lines above. */
-    .item-add-form .detail-date { margin-right: 10px; }
 
     /* Every box in the row is the same height. Selects drop the browser's
        own styling (which ignores height/padding on macOS) for a drawn
@@ -283,27 +277,12 @@ function _injectCardItemsCSS() {
     .item-form-error { flex-basis: 100%; font-size: 12px; color: var(--red); min-height: 0; }
     .item-form-error:empty { display: none; }
 
-    .item-form-note { flex-basis: 100%; font-size: 12px; color: var(--ink-dim); }
-    .item-form-note:empty { display: none; }
-    .item-add-form input.item-text {
-      box-sizing: border-box;
-      height: 38px;
-      flex: 1;
-      min-width: 220px;
-      padding: 0 12px;
-      background: #ffffff;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
-      font-size: 13px;
-      font-family: inherit;
-      color: var(--ink);
-    }
-    .item-add-form input.item-text:focus { outline: none; border-color: var(--gold); }
 
     /* ---- timeline ---- */
     .tl-entry { display: flex; align-items: baseline; gap: 14px; padding: 7px 0; font-size: 13px; }
     .tl-entry + .tl-entry { border-top: 1px solid rgba(0, 0, 0, 0.05); }
-    .tl-date { flex-shrink: 0; width: 96px; color: var(--ink-dim); }
+    .tl-date { flex-shrink: 0; width: 96px; color: var(--ink-dim); white-space: nowrap; }
+    .tl-date:has(.tl-date-input) { width: auto; }
     /* The time, on hover — drawn here rather than a native title tooltip,
        which takes seconds to appear. */
     .tl-date[data-time] { position: relative; text-decoration: underline dotted rgba(0, 0, 0, 0.25); text-underline-offset: 3px; }
@@ -337,9 +316,31 @@ function _injectCardItemsCSS() {
       cursor: pointer;
     }
     .tl-entry:hover .tl-del { visibility: visible; }
+    .tl-date-edit {
+      visibility: hidden;
+      background: none;
+      border: none;
+      padding: 0 0 0 6px;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--ink-dim);
+      cursor: pointer;
+    }
+    .tl-date:hover .tl-date-edit { visibility: visible; }
+    .tl-date-edit:hover { color: #8a6d0a; }
+    .tl-date-input {
+      width: 130px;
+      box-sizing: border-box;
+      border: 1px solid var(--gold);
+      border-radius: 6px;
+      padding: 3px 6px;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--ink);
+      background: #ffffff;
+      outline: none;
+    }
     .tl-del:hover { color: var(--red); }
-    .tl-edit { font-size: 13px; }
-    .tl-edit:hover { color: #8a6d0a; }
   `;
   document.head.appendChild(s);
 }
@@ -718,10 +719,15 @@ function _timeOf(iso) {
 }
 
 // time: shown as the date's tooltip, only when given.
-function _timelineLineHTML({ date, time, kind, key, text, del }) {
+// editDate: {client, id, date} for a line whose day can be changed (a ✎
+// beside the date on hover).
+function _timelineLineHTML({ date, time, kind, key, text, del, editDate }) {
+  const pencil = editDate
+    ? `<button type="button" class="tl-date-edit" data-action="edit-date" data-client="${editDate.client}" data-id="${editDate.id}" data-date="${editDate.date}" title="Change the date">✎</button>`
+    : '';
   return `
     <div class="tl-entry${key ? ' key' : ''}">
-      <span class="tl-date"${time ? ` data-time="${time}"` : ''}>${date}</span>
+      <span class="tl-date"${time ? ` data-time="${time}"` : ''}>${date}${pencil}</span>
       <span class="tl-kind">${kind}</span>
       <span class="tl-text">${text}</span>
       ${del || ''}
@@ -756,6 +762,9 @@ function _timelineHTML(data) {
       key: kind.key,
       text,
       del,
+      // Case lines' dates are the case's own (opened, submitted…), so
+      // they're not changed here.
+      editDate: e.type !== 'case' ? { client: data.id, id: e.id, date: e.date } : null,
     });
   });
   if (createdDay) {
@@ -1131,6 +1140,45 @@ async function syncTabAfterCaseChange(clientId) {
   }
 }
 
+// ---------- changing a timeline entry's date ----------
+//
+// The ✎ beside a date turns it into a date picker (no later than today).
+// Picking a day saves it and moves the line to its place; Escape, or
+// leaving it unchanged, puts the date back.
+function _editEntryDate(btn) {
+  const { client: clientId, id, date } = btn.dataset;
+  const cell = btn.closest('.tl-date');
+  const before = cell.innerHTML;
+  cell.innerHTML = `<input type="date" class="tl-date-input" value="${date}" max="${_todayIso()}" aria-label="Date">`;
+  const input = cell.querySelector('input');
+  input.focus();
+  let done = false;
+  const restore = () => { if (!done) { done = true; cell.innerHTML = before; } };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') restore();
+    if (e.key === 'Enter') input.blur();
+  });
+  input.addEventListener('blur', async () => {
+    const next = input.value;
+    if (done) return;
+    if (!next || next === date || next > _todayIso()) return restore();
+    done = true;
+    input.disabled = true;
+    try {
+      await dbSetActivityDate(id, next);
+      updateClient(clientId, d => {
+        const entry = d.timeline.find(e => e.id === id);
+        if (entry) entry.date = next;
+        d.timeline.sort(byTimelineOrder);
+      });
+      await refreshDashboard();
+    } catch (err) {
+      cell.innerHTML = before;
+      showSaveError(err);
+    }
+  });
+}
+
 // ---------- deleting a timeline entry ----------
 
 async function _deleteEntry(btn) {
@@ -1176,6 +1224,8 @@ function initCardItems(root) {
       _editCaseAmounts(btn);
     } else if (action === 'delete-entry') {
       _deleteEntry(btn);
+    } else if (action === 'edit-date') {
+      _editEntryDate(btn);
     }
   });
 
