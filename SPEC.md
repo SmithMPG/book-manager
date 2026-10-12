@@ -81,9 +81,10 @@ Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator
 ### Dashboard (Home) — same layout for FA and Admin
 1. **Month progress bar** — line from month start to close-off date, tick marks per day, heavier ticks at weekends, "today" marker. Shows close-off + payout dates.
 2. **The hero** — pipeline, meter and funnel (below).
-3. **Leaderboard** — the team, in three views switched on its title line, each one time frame so it's clear what's in the figures:
-   - **Pot PCR** — the pot **right now**, from any month (the title says "Pot, right now"; picked days don't change it): **Cases** (open and awaiting acceptance) · **Open PCR's** (opened, not yet submitted) · **Awaiting acceptance** (submitted, not yet accepted) · **Pot PCR's** (the two together; ranked by it).
-   - **Month PCR** (default, ranked by Accepted PCR's) — the month to date, or the picked days: **Cases submitted** · **Submitted PCR's** (submitted in it, whatever happened since) · **Accepted PCR's** (accepted in it, at the final PCR).
+3. **Leaderboard** — titled just **Team Leaderboard**; the team, in three views switched beside the title, each one time frame so it's clear what's in the figures:
+   - **Pot PCR** and **Month PCR** have the same four columns — **Cases · Open PCR's · Submitted PCR's · Accepted PCR's** (ranked by Accepted) — over their own time frame (each heading says on hover):
+     - **Pot PCR** — **right now** (picked days don't change it): cases open or awaiting acceptance · still open · awaiting acceptance · accepted **this year** (from 1 January, at the final PCR).
+     - **Month PCR** (default) — the month to date, or the picked days: cases submitted in it · opened in it · submitted in it · accepted in it (each whatever has happened since).
    - **Month activity** (ranked by Prospects) — the same days: **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 

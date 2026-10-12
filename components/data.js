@@ -576,7 +576,9 @@ function _repFromLeaderboardRow(row) {
   const submittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
   const openPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openLumpSum, monthly: c.openMonthly });
   const pendingPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.pendingLumpSum, monthly: c.pendingMonthly });
-  const potPcrOf = c => openPcrOf(c) + pendingPcrOf(c);
+  const openedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openedLumpSum, monthly: c.openedMonthly });
+  const ytdPcrOf = c => (Number(c.ytdFinalPcr) || 0)
+    + casePcr({ productType: c.productType, term: c.term, lumpSum: c.ytdLumpSum, monthly: c.ytdMonthly });
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;
@@ -596,12 +598,16 @@ function _repFromLeaderboardRow(row) {
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
     openPcr: Math.round(sum(() => true, openPcrOf)),
     openPcrBreakdown: { risk: Math.round(sum(isRisk, openPcrOf)), investments: Math.round(sum(notRisk, openPcrOf)) },
-    // The pot, right now: open and awaiting acceptance, from any month.
+    // The pot, right now: open and awaiting acceptance (from any month),
+    // and accepted this year.
     potCases: sum(() => true, c => (Number(c.openCount) || 0) + (Number(c.pendingCount) || 0)),
     pendingPcr: Math.round(sum(() => true, pendingPcrOf)),
     pendingPcrBreakdown: { risk: Math.round(sum(isRisk, pendingPcrOf)), investments: Math.round(sum(notRisk, pendingPcrOf)) },
-    potPcr: Math.round(sum(() => true, potPcrOf)),
-    potPcrBreakdown: { risk: Math.round(sum(isRisk, potPcrOf)), investments: Math.round(sum(notRisk, potPcrOf)) },
+    ytdPcr: Math.round(sum(() => true, ytdPcrOf)),
+    ytdPcrBreakdown: { risk: Math.round(sum(isRisk, ytdPcrOf)), investments: Math.round(sum(notRisk, ytdPcrOf)) },
+    // Opened on the days (the month), whatever's happened since.
+    openedPcr: Math.round(sum(() => true, openedPcrOf)),
+    openedPcrBreakdown: { risk: Math.round(sum(isRisk, openedPcrOf)), investments: Math.round(sum(notRisk, openedPcrOf)) },
     submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
     submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),
@@ -770,9 +776,7 @@ function _renderDashboard() {
   });
 
   if (d.admin) {
-    const when = _adminDays.size ? formatDaySelection(_adminDays) : 'MTD';
     _widgets.leaderboard?.setReps(d.reps, {
-      title: `Team Leaderboard — ${when}`,
       selectedId: _adminFocusId,
       activityDayLabel: formatDaySelection([d.checkoutDay]),
       detailHTML: _businessCasesHTML,

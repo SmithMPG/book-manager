@@ -1,12 +1,14 @@
 // Team leaderboard, in three views, switched on the title line — each one
 // time frame, so it's clear what's in the figures:
-//   Pot PCR         the pot right now, from any month: Cases (open and
-//                   awaiting acceptance) · Open PCR's · Awaiting
-//                   acceptance · Pot PCR's — sorted by Pot PCR's. Days
-//                   picked on the month bar don't change it.
-//   Month PCR       (default) the month to date, or the days picked:
-//                   Cases submitted · Submitted PCR's · Accepted PCR's —
-//                   sorted by Accepted PCR's
+//   Pot PCR         right now: Cases (open and awaiting acceptance) ·
+//                   Open PCR's (still open) · Submitted PCR's (awaiting
+//                   acceptance) · Accepted PCR's (this year, from 1
+//                   January) — sorted by Accepted. Days picked on the
+//                   month bar don't change it.
+//   Month PCR       (default) the month to date, or the days picked, the
+//                   same columns: Cases (submitted in it) · Open PCR's
+//                   (opened in it) · Submitted PCR's (submitted in it) ·
+//                   Accepted PCR's (accepted in it) — sorted by Accepted
 //   Month activity  the same days: Prospects · Referrals · Meetings ·
 //                   Wills Leads · FNAs · Quotes — sorted by Prospects
 // Clicking a header sorts by that column (largest first); clicking the
@@ -167,27 +169,29 @@ function _injectLeaderboardCSS() {
 }
 _injectLeaderboardCSS();
 
-// The three views' columns. Wide columns fit their two-word headings.
-// pot: not tied to the month (the title says so).
+// The three views' columns. Wide columns fit their two-word headings;
+// title: on hover, what the column counts in this view. pot: not tied to
+// the month.
 const LEADERBOARD_VIEWS = {
   pot: {
     label: "Pot PCR",
     pot: true,
-    sortKey: "potPcr",
+    sortKey: "ytdPcr",
     columns: [
-      { key: "potCases", label: "Cases", wide: true },                  // open and awaiting acceptance, right now
-      { key: "openPcr", label: "Open PCR’s", wide: true },              // opened, not yet submitted
-      { key: "pendingPcr", label: "Awaiting acceptance", wide: true },  // submitted, not yet accepted
-      { key: "potPcr", label: "Pot PCR’s", wide: true },                // the two together
+      { key: "potCases", label: "Cases", wide: true, title: "Open and awaiting acceptance, right now" },
+      { key: "openPcr", label: "Open PCR’s", wide: true, title: "Opened, not yet submitted — right now" },
+      { key: "pendingPcr", label: "Submitted PCR’s", wide: true, title: "Submitted, awaiting acceptance — right now" },
+      { key: "ytdPcr", label: "Accepted PCR’s", wide: true, title: "Accepted this year (from 1 January), at the final PCR" },
     ],
   },
   pcr: {
     label: "Month PCR",
     sortKey: "pcr",
     columns: [
-      { key: "cases", label: "Cases submitted", wide: true },       // submitted in the period
-      { key: "submittedPcr", label: "Submitted PCR’s", wide: true }, // submitted in the period, whatever's happened since
-      { key: "pcr", label: "Accepted PCR’s", wide: true },          // accepted in the period, at the final PCR (Validation)
+      { key: "cases", label: "Cases", wide: true, title: "Submitted in the month (or the days picked)" },
+      { key: "openedPcr", label: "Open PCR’s", wide: true, title: "Opened in the month, whatever's happened since" },
+      { key: "submittedPcr", label: "Submitted PCR’s", wide: true, title: "Submitted in the month, whatever's happened since" },
+      { key: "pcr", label: "Accepted PCR’s", wide: true, title: "Accepted in the month, at the final PCR" },
     ],
   },
   activity: {
@@ -207,7 +211,7 @@ const LEADERBOARD_VIEWS = {
 // PCR in full with thousand separators (money.js); PCR is a score, not
 // rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (["pcr", "submittedPcr", "openPcr", "pendingPcr", "potPcr"].includes(key)) return formatNumber(value);
+  if (["pcr", "submittedPcr", "openPcr", "pendingPcr", "openedPcr", "ytdPcr"].includes(key)) return formatNumber(value);
   return value;
 }
 
@@ -231,7 +235,11 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
   ],
-  potPcr: [
+  openedPcr: [
+    { key: "risk", label: "Risk" },
+    { key: "investments", label: "Investments" },
+  ],
+  ytdPcr: [
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
   ],
@@ -248,7 +256,7 @@ const LEADERBOARD_BREAKDOWNS = {
 class Leaderboard {
   constructor(container, config) {
     this.container = container;
-    this.config = Object.assign({ title: "Team Leaderboard — MTD", reps: [] }, config);
+    this.config = Object.assign({ title: "Team Leaderboard", reps: [] }, config);
     this.options = {};
     this.sortKey = "pcr";
     this.sortDir = "desc";
@@ -282,7 +290,7 @@ class Leaderboard {
   }
 
   // options (admin view): {onSelect, selectedId, detailHTML(rep),
-  // activityDayLabel, title}. The FA view passes only activityDayLabel.
+  // activityDayLabel}. The FA view passes only activityDayLabel.
   setReps(reps, options = {}) {
     this.config.reps = reps;
     this.options = options;
@@ -291,10 +299,8 @@ class Leaderboard {
 
   render() {
     const { reps } = this.config;
-    // The Pot isn't the month's: its title says "Pot — right now".
-    const title = LEADERBOARD_VIEWS[this.view].pot
-      ? "Team Leaderboard — Pot, right now"
-      : this.options.title || this.config.title;
+    // Just the name — the view toggle says the rest.
+    const title = this.config.title;
     const { onSelect, selectedId, detailHTML, activityDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
@@ -303,7 +309,7 @@ class Leaderboard {
     const headCells = columns.map((col) => {
       const active = col.key === this.sortKey;
       const arrow = this.sortDir === "desc" ? "▼" : "▲";
-      return `<div class="lb-value${col.wide ? " wide" : ""}${active ? " active" : ""}" data-sort-key="${col.key}">${col.label}<span class="lb-sort-arrow">${arrow}</span></div>`;
+      return `<div class="lb-value${col.wide ? " wide" : ""}${active ? " active" : ""}" data-sort-key="${col.key}"${col.title ? ` title="${col.title}"` : ""}>${col.label}<span class="lb-sort-arrow">${arrow}</span></div>`;
     }).join("");
 
     const rows = sorted
