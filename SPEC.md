@@ -326,4 +326,4 @@ There's no Test Book any more: it and its data were removed (`supabase/remove-te
 ---
 
 ## Build
-Vanilla HTML/CSS/JS (no build step), on Supabase: auth, the tables above, RLS (an FA sees their own data, admins everyone's), RPC functions and the add-fa edge function. `supabase/schema.sql` is the whole database; changes go in a one-off SQL file to run in the SQL editor, folded into schema.sql, and deleted once run.
+Vanilla HTML/CSS/JS (no build step), on Supabase: auth, the tables above, RLS (an FA sees their own data, admins everyone's), RPC functions and the add-fa edge function. `supabase/schema.sql` is the whole database; changes go in a one-off SQL file to run in the SQL editor, folded into schema.sql, and deleted once run. index.html loads every script and stylesheet with a `?v=` stamp so browsers pick up new code; a local git pre-commit hook (`.git/hooks/pre-commit`, not in the repo) re-stamps it whenever app files are committed.
