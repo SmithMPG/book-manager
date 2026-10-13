@@ -1,6 +1,7 @@
-/* Home's hero: the pipeline (monthly-stats.js), the PCR meter dead
-   centre, the funnel (client-funnel.js) — as wide as the leaderboard
-   below (.page), the pipeline on its left edge, the funnel on its right. */
+/* Home's hero, as wide as the leaderboard below: on the left, Open ·
+   Submitted · Accepted as a small table (hero-table.js); on the right,
+   the meter(s) — an FA's Accepted meter (pcr-meter.js), the admin team's
+   week meters (week-meters.js). data.js fills both. */
 .home-hero-wrapper {
   padding: 20px 0 0;
 }
@@ -8,54 +9,21 @@
 .home-hero {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px 28px 40px;
+  padding: 32px 28px 48px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* The table and the meter(s), each as wide as it needs, with the space
+     shared around them: the same either side of each. */
+  grid-template-columns: auto auto;
+  justify-content: space-around;
   align-items: center;
-  column-gap: 72px;
+  column-gap: 64px;
 }
-
-.hero-col {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  min-width: 0;
-}
-.hero-col-monthly { justify-self: start; }
-.hero-col-funnel { justify-self: end; }
-
-/* Both side blocks span exactly the meters' ring band: from the top of
-   the highest ring to just under the lowest one's 0 / target labels (not
-   the period under it) — measured by home-hero.js, which sets the two
-   variables (the defaults: the FA's one meter at 280px). Open cases sits
-   at its top, Submitted cases at its bottom, the divider halfway; the
-   funnel's rows share it evenly. */
-.home-hero { align-items: start; }
+.hero-table { min-width: 420px; }
+.hero-meters { display: flex; justify-content: center; }
+.home-hero [hidden] { display: none; }
 #pcr-meter-container .pcr-meter-svg { width: 280px; }
-.hero-col-monthly,
-.hero-col-funnel { margin-top: var(--hero-band-top, 38px); height: var(--hero-band-height, 228px); }
-.hero-col > div { flex: 1; display: flex; flex-direction: column; }
-.home-hero .ms { flex: 1; gap: 0; }
-.home-hero .ms-card { flex: 1; justify-content: flex-start; }
-.home-hero .ms-card + .ms-card { justify-content: flex-end; padding-top: 0; }
-.home-hero .ms-card:first-child { padding-bottom: 18px; }
-.home-hero .client-funnel { flex: 1; display: flex; flex-direction: column; }
-.home-hero .funnel-rows { flex: 1; }
-.home-hero .funnel-row { flex: 1; align-items: center; padding: 0; }
-
-.hero-center {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
 
 @media (max-width: 900px) {
-  .home-hero {
-    grid-template-columns: 1fr;
-    row-gap: 28px;
-    padding: 24px 20px;
-  }
-  .hero-col-monthly,
-  .hero-col-funnel { justify-self: center; margin-top: 0; height: auto; }
+  .home-hero { grid-template-columns: 1fr; justify-content: stretch; row-gap: 28px; padding: 24px 20px; }
+  .hero-table { min-width: 0; }
 }

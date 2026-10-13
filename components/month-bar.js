@@ -12,8 +12,8 @@
 // selected / deselected (setMonthBarSelection), to narrow the dashboard
 // to just those days; "Month to date" clears the selection. (Past days
 // can't be reviewed later, so there's nothing to open otherwise.)
-// onNavigate fires on every render (it keeps the PCR meter's label in
-// step); onPeriodChange only when the ‹ › buttons change the month.
+// onNavigate (optional) fires on every render; onPeriodChange only when
+// the ‹ › buttons change the month.
 
 function _injectMonthBarCSS() {
   if (document.getElementById('month-bar-styles')) return;

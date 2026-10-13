@@ -573,14 +573,9 @@ function _repFromLeaderboardRow(row) {
   // from the premiums of cases accepted before there was one.
   const pcrOf = c => (Number(c.acceptedFinalPcr) || 0)
     + casePcr({ productType: c.productType, term: c.term, lumpSum: c.acceptedLumpSum, monthly: c.acceptedMonthly });
-  const submittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.submittedLumpSum, monthly: c.submittedMonthly });
-  const openPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openLumpSum, monthly: c.openMonthly });
-  const pendingPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.pendingLumpSum, monthly: c.pendingMonthly });
   const openedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.openedLumpSum, monthly: c.openedMonthly });
   const stillSubmittedPcrOf = c => casePcr({ productType: c.productType, term: c.term, lumpSum: c.stillSubmittedLumpSum, monthly: c.stillSubmittedMonthly });
   const n = key => c => Number(c[key]) || 0;
-  const ytdPcrOf = c => (Number(c.ytdFinalPcr) || 0)
-    + casePcr({ productType: c.productType, term: c.term, lumpSum: c.ytdLumpSum, monthly: c.ytdMonthly });
   const isRisk = c => caseIsRisk(c.productType);
   const notRisk = c => !caseIsRisk(c.productType);
   const isYou = currentUser && row.id === currentUser.id;
@@ -588,6 +583,7 @@ function _repFromLeaderboardRow(row) {
     id: row.id,
     name: isYou ? `${row.name} (you)` : row.name,
     plainName: row.name,
+    isYou: !!isYou, // highlighted on the leaderboard
     hadActivity: row.hadActivity, // null when not asked
     prospects: row.prospects || 0,
     referrals: row.referrals || 0,
@@ -598,15 +594,6 @@ function _repFromLeaderboardRow(row) {
     quotes: row.quotes || 0,
     cases: sum(() => true, c => c.submitted),
     casesBreakdown: { risk: sum(isRisk, c => c.submitted), investments: sum(notRisk, c => c.submitted) },
-    openPcr: Math.round(sum(() => true, openPcrOf)),
-    openPcrBreakdown: { risk: Math.round(sum(isRisk, openPcrOf)), investments: Math.round(sum(notRisk, openPcrOf)) },
-    // The pot, right now: open and awaiting acceptance (from any month),
-    // and accepted this year.
-    potCases: sum(() => true, c => n('openCount')(c) + n('pendingCount')(c) + n('ytdCount')(c)),
-    pendingPcr: Math.round(sum(() => true, pendingPcrOf)),
-    pendingPcrBreakdown: { risk: Math.round(sum(isRisk, pendingPcrOf)), investments: Math.round(sum(notRisk, pendingPcrOf)) },
-    ytdPcr: Math.round(sum(() => true, ytdPcrOf)),
-    ytdPcrBreakdown: { risk: Math.round(sum(isRisk, ytdPcrOf)), investments: Math.round(sum(notRisk, ytdPcrOf)) },
     // The month (the days), each case once, where it is now: opened in it
     // and still open, submitted in it and still awaiting acceptance,
     // accepted in it (pcr).
@@ -615,8 +602,6 @@ function _repFromLeaderboardRow(row) {
     openedPcrBreakdown: { risk: Math.round(sum(isRisk, openedPcrOf)), investments: Math.round(sum(notRisk, openedPcrOf)) },
     stillSubmittedPcr: Math.round(sum(() => true, stillSubmittedPcrOf)),
     stillSubmittedPcrBreakdown: { risk: Math.round(sum(isRisk, stillSubmittedPcrOf)), investments: Math.round(sum(notRisk, stillSubmittedPcrOf)) },
-    submittedPcr: Math.round(sum(() => true, submittedPcrOf)),
-    submittedPcrBreakdown: { risk: Math.round(sum(isRisk, submittedPcrOf)), investments: Math.round(sum(notRisk, submittedPcrOf)) },
     pcr: Math.round(sum(() => true, pcrOf)),
     pcrBreakdown: { risk: Math.round(sum(isRisk, pcrOf)), investments: Math.round(sum(notRisk, pcrOf)) },
   };
@@ -630,7 +615,7 @@ function _teamRep(reps) {
     prospects: add('prospects'), referrals: add('referrals'), willsLeads: add('willsLeads'),
     meetings: add('meetings'),
     meetingsBreakdown: { factFinder: addIn('meetingsBreakdown', 'factFinder'), closing: addIn('meetingsBreakdown', 'closing'), relational: addIn('meetingsBreakdown', 'relational') },
-    fnas: add('fnas'), quotes: add('quotes'), cases: add('cases'), submittedPcr: add('submittedPcr'), pcr: add('pcr'),
+    fnas: add('fnas'), quotes: add('quotes'), cases: add('cases'), pcr: add('pcr'),
   };
 }
 
@@ -644,8 +629,8 @@ function _myCases() {
 
 // ---------- admin view ----------
 //
-// Home, with the whole team's figures: the funnel and monthly stats add
-// up every FA's, and in place of the PCR meter, the week meters
+// Home, with the whole team's figures: in place of the PCR meter, the week
+// meters
 // (week-meters.js) — the PCR submitted each week of the month on the
 // month bar against its weekly submission target (the Calendar). Month
 // to date by default; days picked on the month bar narrow the dated
@@ -693,14 +678,6 @@ function _isAdminView() {
   return getAppMode() === 'admin';
 }
 
-// The PCR meter's label: whose figures (admin, one FA) and which days.
-function dashboardLabel(period) {
-  if (!_isAdminView()) return period?.label || '';
-  const days = _adminDays.size ? formatDaySelection(_adminDays) : period?.label || '';
-  const focus = _adminFocusId && _dash?.reps.find(r => r.id === _adminFocusId);
-  return focus ? `${focus.plainName} · ${days}` : days;
-}
-
 // Called by the month bar's ‹ › buttons: a new month starts unpicked.
 function onDashboardPeriodChange() {
   if (!_isAdminView()) return;
@@ -709,41 +686,27 @@ function onDashboardPeriodChange() {
   refreshDashboard().catch(showSaveError);
 }
 
-// Under an FA's row on the leaderboard: their cases, for the view showing
-// (leaderboard.js passes it and its columns), each case's PCR under the
-// one column it counts in — where it is now — so the row's totals add up
-// from the list.
-//   Pot PCR      open (Open PCR's) and awaiting acceptance (Submitted
-//                PCR's), from any month, and accepted this year
-//   Month views  only what happened in the month (or the days picked):
-//                opened in it and still open, submitted in it and still
-//                awaiting acceptance, accepted in it
-// Each with the date it's at (accepted, submitted or opened), newest
-// first.
-function _businessCasesHTML(rep, view, columns = []) {
+// Under an FA's row on the leaderboard: the cases its figures count — what
+// happened in the month (or the days picked), each case once, where it is
+// now: opened in it and still open, submitted in it and still awaiting
+// acceptance, accepted in it — its PCR under that column (leaderboard.js
+// passes the columns), so the row's totals add up from the list. Each with
+// the date of the stage it's at, newest first.
+function _businessCasesHTML(rep, columns = []) {
   const d = _dash;
-  const pot = view === 'pot';
-  const yearStart = `${new Date().getFullYear()}-01-01`;
   const inDays = x => !!x && d.days.has(x);
   const accepted = c => c.stage === 'accepted';
-  // {column key: PCR} for the columns this case counts in.
-  const cellsOf = c => (pot
-    ? {
-      openPcr: c.stage === 'opened' ? casePcr(c) : null,
-      pendingPcr: c.stage === 'submitted' ? casePcr(c) : null,
-      ytdPcr: accepted(c) && c.acceptedAt >= yearStart ? caseAcceptedPcr(c) : null,
-    }
-    : {
-      openedPcr: c.stage === 'opened' && inDays(c.openedAt) ? casePcr(c) : null,
-      stillSubmittedPcr: c.stage === 'submitted' && inDays(c.submittedAt) ? casePcr(c) : null,
-      pcr: accepted(c) && inDays(c.acceptedAt) ? caseAcceptedPcr(c) : null,
-    });
-  // The date of the stage it's at.
+  // {column key: PCR} for the column this case counts in.
+  const cellsOf = c => ({
+    openedPcr: c.stage === 'opened' && inDays(c.openedAt) ? casePcr(c) : null,
+    stillSubmittedPcr: c.stage === 'submitted' && inDays(c.submittedAt) ? casePcr(c) : null,
+    pcr: accepted(c) && inDays(c.acceptedAt) ? caseAcceptedPcr(c) : null,
+  });
   const dateOf = c => (accepted(c) ? c.acceptedAt : c.stage === 'submitted' ? c.submittedAt : c.openedAt);
   const cases = (d?.teamCases || [])
     .filter(c => c.faId === rep.id && Object.values(cellsOf(c)).some(v => v !== null))
     .sort((a, b) => (dateOf(b) || '').localeCompare(dateOf(a) || ''));
-  const what = pot ? 'In the pot, and accepted this year' : _adminDays.size ? 'Selected days' : 'This month';
+  const what = _adminDays.size ? 'Selected days' : 'This month';
   if (!cases.length) return `<div class="lb-detail-empty">${what}: no cases.</div>`;
   return `
     <div class="lb-detail-title">${what} · ${cases.length} case${cases.length === 1 ? '' : 's'}</div>
@@ -785,35 +748,35 @@ function _renderDashboard() {
     target = null; // the team's is the week rings
   }
 
-  _widgets.funnel?.update({
-    prospectsContacted: rep.prospects,
-    meetings: rep.meetingsBreakdown,
-    fnas: rep.fnas,
-    quotes: rep.quotes,
-    casesSubmitted: rep.cases,
-    willsLeads: rep.willsLeads,
-    referrals: rep.referrals,
-  });
-  // An FA's meter (their own, or one picked on the leaderboard): accepted
-  // PCR against Validation and High Flyer (3x). The team: a meter per
-  // week instead.
   const teamView = d.admin && !_adminFocusId;
   const period = getMonthBarPeriod() || _currentPeriod();
+  // The table, left: an FA's own Home — each row's PCR and commission;
+  // an admin's (the team, or the FA picked) — each row brought forward,
+  // this month and total, no commission.
+  if (d.admin) {
+    _widgets.heroTable?.update({ mode: 'admin', ...caseSplit(cases, period) });
+  } else {
+    const stats = caseStats(cases, d.days);
+    _widgets.heroTable?.update({
+      mode: 'fa',
+      opened: stats.opened,
+      submitted: stats.submitted,
+      // The leaderboard's Accepted PCR (final PCRs), and the commission
+      // expected from those cases.
+      accepted: { ...stats.accepted, pcr: rep.pcr },
+    });
+  }
+  // The meter, right: an FA's (their own, or the one picked) Accepted PCR
+  // against Validation and High Flyer (3x); the team, a meter per week.
   if (_widgets.pcrMeter) _widgets.pcrMeter.container.hidden = teamView;
   _widgets.weekMeters?.show(teamView);
   if (teamView) {
     _widgets.weekMeters?.update({ ..._weekMetersFor(period, cases), onSelect: days => _adminSelection.onWeek(days) });
   } else {
     _widgets.pcrMeter?.update({ currentCount: rep.pcr, validationTarget: target, highFlyerTarget: target ? target * 3 : null, stageNote: null, showValue: false });
-    _widgets.pcrMeter?.setPeriodLabel(dashboardLabel(period));
+    const focus = _adminFocusId && d.reps.find(r => r.id === _adminFocusId);
+    _widgets.pcrMeter?.setPeriodLabel(focus ? `${focus.plainName} · ${period?.label || ''}` : period?.label || '');
   }
-  const stats = caseStats(cases, d.days, period?.start ? isoDate(period.start) : '');
-  _widgets.monthlyStats?.update({
-    opened: stats.opened,
-    submitted: stats.submitted,
-    admin: d.admin,
-    periodWord: d.admin && _adminDays.size ? 'Selected days' : 'This month',
-  });
 
   if (d.admin) {
     _widgets.leaderboard?.setReps(d.reps, {

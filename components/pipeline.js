@@ -1,5 +1,11 @@
-// Pipeline: Admin mode's Cases tab — what's coming in, and from whom, at
-// a glance. The whole team (team.js getTeamFas), like Home's figures, and
+// Pipeline: Admin mode's Cases tab — everything in the pot right now,
+// whatever the month (Home is the month only): what's coming in, and
+// from whom, at a glance. At the top, a shaded Team total row — Open and
+// Submitted for the whole team. Clicking either total opens its split in a
+// popup — brought forward (opened / submitted before this business month
+// began) and this month — for the team and every FA with any.
+// (Each FA's figure also shows its own split on hover.)
+// No commission on this tab. The whole team (team.js getTeamFas), like Home's figures, and
 // their open and submitted cases — all of them, not tied to a month.
 //
 // One row per FA with any, like a collapsed client card, in columns:
@@ -34,6 +40,39 @@ function _injectPipelineCSS() {
     .fa-row.active .pl-col { color: var(--text); }
     .fa-row.active .pl-col.none { color: var(--text-dim); }
     .fa-row.active .pl-col.can-accept b { color: var(--gold-soft); }
+    /* The Team total: a shaded band, no border, its figures in the
+       columns (the brought forward / this month split on hover). */
+    .pl-total {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 12px 21px;
+      margin-bottom: 14px;
+      background: rgba(0, 0, 0, 0.045);
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .pl-total .name { flex: 1; }
+    .pl-total .pl-col { cursor: pointer; }
+    .pl-total .pl-col:hover { text-decoration: underline; text-underline-offset: 4px; }
+    /* The split popup's table. */
+    .pl-split-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ink); }
+    .pl-split-table th {
+      text-align: right;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+      padding: 0 0 8px 12px;
+    }
+    .pl-split-table th:first-child, .pl-split-table td:first-child { text-align: left; padding-left: 0; }
+    .pl-split-table td { text-align: right; padding: 7px 0 7px 12px; border-top: 1px solid rgba(0, 0, 0, 0.05); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pl-split-table tr.team td { font-weight: 700; border-top: none; background: rgba(0, 0, 0, 0.04); }
+    .pl-split-table tr.team td:first-child { padding-left: 8px; border-radius: 6px 0 0 6px; }
+    .pl-split-table tr.team td:last-child { padding-right: 8px; border-radius: 0 6px 6px 0; }
     .pl-head {
       display: flex;
       gap: 24px;
@@ -140,10 +179,14 @@ function _pipelineCaseHTML(c, canAccept) {
 function _pipelineFaHTML({ fa, cases, pcr }) {
   const open = fa.id === _pipelineOpenFa;
   const at = stage => cases.filter(c => c.stage === stage);
-  // The PCR ("1 240 000"; the case count on hover), or "–".
-  const col = (list, cls = '') => (list.length
-    ? `<span class="pl-col ${cls}" title="${list.length} case${list.length === 1 ? '' : 's'}"><b>${formatNumber(list.reduce((t, c) => t + casePcr(c), 0))}</b></span>`
-    : '<span class="pl-col none">–</span>');
+  // The PCR ("1 240 000"; on hover the case count and the brought
+  // forward / this month split), or "–".
+  const col = (list, cls, dateOf) => {
+    if (!list.length) return '<span class="pl-col none">–</span>';
+    const s = _potSplit(list, dateOf);
+    const tip = `${list.length} case${list.length === 1 ? '' : 's'} · ${formatNumber(s.broughtForward)} brought forward · ${formatNumber(s.thisMonth)} this month`;
+    return `<span class="pl-col ${cls}" title="${tip}"><b>${formatNumber(s.total)}</b></span>`;
+  };
   const opened = at('opened');
   const submitted = at('submitted');
   const canAccept = canAcceptFor(fa);
@@ -156,12 +199,72 @@ function _pipelineFaHTML({ fa, cases, pcr }) {
         <div class="name"><b>${_escHtml(fa.name)}</b><span>${_escHtml(fa.surname)}</span></div>
         ${fa.is_active ? '' : '<span class="fa-meta">Left</span>'}
         <span class="spacer"></span>
-        ${col(opened)}
-        ${col(submitted, canAccept ? 'can-accept' : '')}
+        ${col(opened, '', c => c.openedAt)}
+        ${col(submitted, canAccept ? 'can-accept' : '', c => c.submittedAt)}
       </div>
       <div class="fa-detail${open ? ' open' : ''}">${note}${cases.map(c => _pipelineCaseHTML(c, canAccept)).join('')}</div>
     </div>
   `;
+}
+
+// cases' PCR: total, and brought forward (dateOf before this business
+// month began) vs this month.
+function _potSplit(cases, dateOf) {
+  const start = _currentPeriod()?.start;
+  const from = start ? isoDate(start) : '';
+  const total = cases.reduce((t, c) => t + casePcr(c), 0);
+  const broughtForward = cases.filter(c => dateOf(c) && dateOf(c) < from).reduce((t, c) => t + casePcr(c), 0);
+  return { total, broughtForward, thisMonth: total - broughtForward };
+}
+
+// The two columns: which cases, and the date that says brought forward
+// or this month.
+const _POT_COLUMNS = {
+  opened: { title: 'Open cases', dateOf: c => c.openedAt },
+  submitted: { title: 'Submitted cases', dateOf: c => c.submittedAt },
+};
+
+// The Team total row: Open and Submitted for everyone; each opens its
+// split (_showPotSplit).
+function _pipelineTotalHTML(all) {
+  const cell = stage => {
+    const s = _potSplit(all.filter(c => c.stage === stage), _POT_COLUMNS[stage].dateOf);
+    return `<span class="pl-col" data-pot-split="${stage}" role="button" tabindex="0" title="See brought forward and this month">${formatNumber(s.total)}</span>`;
+  };
+  return `
+    <div class="pl-total">
+      <span class="name">Team total</span>
+      ${cell('opened')}
+      ${cell('submitted')}
+    </div>
+  `;
+}
+
+// A popup: one column's split — brought forward · this month · total — for
+// the team, then every FA with any, biggest first.
+function _showPotSplit(stage) {
+  const { title, dateOf } = _POT_COLUMNS[stage];
+  const cases = getTeamCases().filter(c => c.stage === stage);
+  const row = (name, list, cls = '') => {
+    const s = _potSplit(list, dateOf);
+    return `<tr class="${cls}"><td>${name}</td><td>${formatNumber(s.broughtForward)}</td><td>${formatNumber(s.thisMonth)}</td><td>${formatNumber(s.total)}</td></tr>`;
+  };
+  const fas = getTeamFas()
+    .map(fa => ({ fa, list: cases.filter(c => c.faId === fa.id) }))
+    .filter(x => x.list.length)
+    .sort((a, b) => _potSplit(b.list, dateOf).total - _potSplit(a.list, dateOf).total);
+  showChoiceDialog({
+    title: `${title} — brought forward and this month`,
+    wide: true,
+    html: `
+      <table class="pl-split-table">
+        <tr><th></th><th>Brought forward</th><th>This month</th><th>Total</th></tr>
+        ${row('Team total', cases, 'team')}
+        ${fas.map(x => row(_escHtml(_faName(x.fa)), x.list)).join('')}
+      </table>
+    `,
+    choices: [{ label: 'Close', value: null, primary: true }],
+  });
 }
 
 function _renderPipeline() {
@@ -182,6 +285,7 @@ function _renderPipeline() {
 
   container.innerHTML = groups.length
     ? '<div class="pl-head"><span>Financial adviser</span><span class="pl-col">Open</span><span class="pl-col">Submitted</span></div>'
+      + _pipelineTotalHTML(all)
       + groups.map(_pipelineFaHTML).join('')
     : '<div class="fa-list-empty">No open or submitted cases.</div>';
   // The tab's count is the cases (index.html updateTabCount reads it).
@@ -224,7 +328,16 @@ function _editPipelineDate(btn) {
 }
 
 function initPipeline(root) {
+  root.addEventListener('keydown', e => {
+    const split = (e.key === 'Enter' || e.key === ' ') && e.target.closest?.('[data-pot-split]');
+    if (split) { e.preventDefault(); _showPotSplit(split.dataset.potSplit); }
+  });
   root.addEventListener('click', e => {
+    const split = e.target.closest('[data-pot-split]');
+    if (split) {
+      _showPotSplit(split.dataset.potSplit);
+      return;
+    }
     const edit = e.target.closest('.pl-date-edit');
     if (edit) {
       _editPipelineDate(edit);

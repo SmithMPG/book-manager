@@ -80,19 +80,20 @@ Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator
 
 ### Dashboard (Home) — same layout for FA and Admin
 1. **Month progress bar** — line from month start to close-off date, tick marks per day, heavier ticks at weekends, "today" marker. Shows close-off + payout dates.
-2. **The hero** — pipeline, meter and funnel (below).
-3. **Leaderboard** — titled just **Team Leaderboard**; the team, in three views switched beside the title, each one time frame so it's clear what's in the figures:
-   - **Pot PCR** and **Month PCR** have the same four columns — **Cases · Open PCR's · Submitted PCR's · Accepted PCR's** (ranked by Accepted) — over their own time frame (each heading says on hover). **Each case counts once, in the column for where it is now**, and Cases is how many that is:
-     - **Pot PCR** — **right now** (picked days don't change it): still open · awaiting acceptance · accepted **this year** (from 1 January, at the final PCR).
-     - **Month PCR** (default) — the month to date, or the picked days: opened in it and still open · submitted in it and still awaiting acceptance · accepted in it.
-   - **Month activity** (ranked by Prospects) — the same days: **Prospects · Referrals · Meetings · Wills Leads · FNAs · Quotes**.
+2. **The hero** — a table of Open · Submitted · Accepted on the left, the meter(s) on the right (below).
+3. **Leaderboard** — no title: a switch, **Production Leaderboard · Activity Leaderboard**, at the start of the total row (below the column headings), the team's totals beside it. Both cover the same days — the month to date, or the picked days — so the switch only changes what's measured. It always opens on Production; every column sorts.
+   - **Production** (ranked by Accepted PCR's): **Cases** · **Open PCR's** (opened in it and still open) · **Submitted PCR's** (submitted in it and still awaiting acceptance) · **Accepted PCR's** (accepted in it, at the final PCR). **Each case counts once, where it is now**; Cases is how many that is.
+   - Clicking an FA (admin) opens their month's cases under the row in **Production** only; in **Activity** the row doesn't open — it just picks them for the hero's meter.
+   - **Activity** (ranked by Meetings): **Prospects · Referrals · Meetings** (its three types on hover) **· Wills leads · FNAs · Quotes**.
+   - The signed-in person's own row is highlighted (gold tint, bold name).
+   - Under the headings, a shaded, bold row: the switch, then every column added up — the team's total (the hover breakdowns too). Few lines: no rule above, faint hairlines between FAs, a tint on hover.
+   - What's in the pot whatever the month is the admin's **Cases** tab.
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 
-**The hero**, the same for FAs and admins (an FA's figures are their own; an admin's the team's, or the FA picked on the leaderboard), in three columns:
-- **Left — the pipeline, stacked, on the page itself (no cards):** **Open cases** (not yet submitted) and **Submitted cases** (waiting to be accepted), both **from any month**: the PCR large, then cases and commission. (Admin: then the PCR split — "2 000 000 brought forward · 2 465 809 this month": opened / submitted before the month on the month bar began, and since — and they open the Cases tab.)
-- **Centre — the meter:** an FA's (or the picked FA's) Accepted PCR against Validation and High Flyer; the admin's team, a meter per week ([Calendar](#admin-only-calendar)).
-- **Right — the funnel:** this month's prospects, meetings, FNAs, quotes and cases submitted as a list of labels and numbers (no bars, no conversion rate; hovering Meetings shows its three types), then a last row in the same type: "Wills 2 · Referrals 3".
-- The hero is as wide as the leaderboard: the pipeline on its left edge, the funnel on its right, the meter dead centre. Both side blocks are as tall as the meter: Open cases level with its top, Submitted cases with its bottom, and the funnel's rows spread evenly between.
+**The hero.** The same shape for everyone: **a small table on the left, the meter(s) on the right.** The table's rows are **Open · Submitted · Accepted**:
+- **An FA's Home** — columns **PCR** and **Commission**. Open: every case not yet submitted, any month. Submitted: every case waiting to be accepted, any month. Accepted: accepted this month (the month on the month bar), at the final PCR — and the commission expected. On the right, their **Accepted meter** against Validation and High Flyer.
+- **The admin's Home** (the team, or the FA picked on the leaderboard) — columns **Brought forward** (from before this month) · **This month** · **Total**, no commission. Open: opened before / in the month. Submitted: submitted before / in it. Accepted: accepted in the month, brought forward if it was submitted before it. On the right, the team's **week meters** — or the picked FA's Accepted meter.
+- No funnel: an FA's month — activity and production — is **their own row on the leaderboard, highlighted** (gold tint, bold name); activity is the leaderboard's Activity tab.
 
 **FA view** = personal numbers. **Admin view** = team averages, plus an FA list (add/view individual FAs, each reusing the same dashboard component scoped to them).
 
@@ -111,11 +112,12 @@ Clients/prospects with no activity in X days — visibility only for now (auto-d
 
 ### Admin-only: Cases
 One tab after Home, for what's coming in and from whom: **the whole team**, like Home's figures, and all their **open and submitted** cases — not tied to a month.
+- **At the top, a shaded Team total row** — Open and Submitted for the whole team. **Clicking either total** opens a popup with that column's split — **brought forward** (opened / submitted before this business month began) · **this month** · total — for the team, then every FA with any, biggest first. (Each FA's figure also shows its own split on hover.) **No commission** on this tab.
 - **One row per FA** with any, like a collapsed client card, in columns under headings: **name** · **Open** (its PCR, right-aligned; the case count on hover) · **Submitted** at the far right (the same; gold where the admin can accept them; "–" when none). Biggest total PCR first; FAs with none are left out.
 - **Clicking a row** opens their cases (one row open at a time), submitted first: **the date** it's been waiting since (submitted, or opened — as on the timeline: Today, Yesterday, 9 Oct 2026; red past 30 days open or 14 days submitted, the days on hover; for the FA's **manager**, a **✎** on hover changes it — the opened date, or submitted once submitted — moving the case's timeline line with it, kept in order as on the timeline — except that moving a submitted date before the opened date moves the opened date back with it, both noted) · client · product · stage · checklist progress (e.g. 4/7) · PCR.
 - **Mark submitted** is on each open case of an FA on the admin's own list: the manager can submit it for them, dated today, after a confirmation that lists any unticked checklist items. The case's Submitted line on the FA's timeline ends "by Ameeth Maharaj".
 - **Accept** is on each submitted case of an FA on the admin's own list — **the only place a case is accepted.** It asks for the **final PCR**: pre-filled with the PCR worked out from the premiums, changed if the case was accepted at a different value. That's saved on the case and is what Accepted PCR counts. Other FAs' rows say who accepts them ("Only Ameeth Maharaj can accept these"). Accepting the client's last open case moves them to the FA's Clients tab (the confirmation says so).
-- Home's **Open cases** and **Submitted cases** rows open this tab. The tab's count is the cases.
+- The tab's count is the cases.
 - Refreshed whenever the admin comes back to the app.
 
 ### Admin-only: FA list

@@ -8,6 +8,9 @@
 //     choices: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'move', primary: true }],
 //     dismissable: true,   // Esc / clicking outside resolves null; default true
 //   });
+//
+// html: markup in place of message (the caller escapes what's in it);
+// wide: a wider popup, for a table.
 
 function _injectChoiceDialogCSS() {
   if (document.getElementById('choice-dialog-styles')) return;
@@ -34,6 +37,8 @@ function _injectChoiceDialogCSS() {
     }
     .cd-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
     .cd-message { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: var(--ink-dim); }
+    .cd-modal.wide { width: 620px; }
+    .cd-body { margin: 0 0 22px; max-height: 60vh; overflow-y: auto; }
     .cd-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
     .cd-btn {
       background: #f2f2f0;
@@ -56,14 +61,14 @@ function _injectChoiceDialogCSS() {
 }
 _injectChoiceDialogCSS();
 
-function showChoiceDialog({ title, message, choices, dismissable = true }) {
+function showChoiceDialog({ title, message, html, wide = false, choices, dismissable = true }) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'cd-overlay';
     overlay.innerHTML = `
-      <div class="cd-modal" role="dialog" aria-modal="true">
+      <div class="cd-modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">
         ${title ? `<h3 class="cd-title">${_escHtml(title)}</h3>` : ''}
-        <p class="cd-message">${_escHtml(message)}</p>
+        ${html ? `<div class="cd-body">${html}</div>` : `<p class="cd-message">${_escHtml(message)}</p>`}
         <div class="cd-actions">
           ${choices.map((c, i) => {
             const cls = c.primary ? ' primary' : c.value === null ? ' plain' : '';

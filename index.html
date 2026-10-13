@@ -7,9 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="components/theme.css?v=202610121245" />
-    <link rel="stylesheet" href="components/toolbar.css?v=202610121245" />
-    <link rel="stylesheet" href="components/home-hero.css?v=202610121245" />
+    <link rel="stylesheet" href="components/theme.css?v=202610132108" />
+    <link rel="stylesheet" href="components/toolbar.css?v=202610132108" />
+    <link rel="stylesheet" href="components/home-hero.css?v=202610132108" />
     <style>
       :root {
         --navy: #0f1729;
@@ -85,31 +85,29 @@
   </head>
   <body>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="components/supabase-client.js?v=202610121245"></script>
-    <script src="components/money.js?v=202610121245"></script>
-    <script src="components/app-mode.js?v=202610121245"></script>
-    <script src="components/auth.js?v=202610121245"></script>
-    <script src="constants.js?v=202610121245"></script>
-    <script src="components/month-bar.js?v=202610121245"></script>
-    <script src="components/pcr-meter.js?v=202610121245"></script>
-    <script src="components/week-meters.js?v=202610121245"></script>
-    <script src="components/home-hero.js?v=202610121245"></script>
-    <script src="components/client-funnel.js?v=202610121245"></script>
-    <script src="components/monthly-stats.js?v=202610121245"></script>
-    <script src="components/client-card.js?v=202610121245"></script>
-    <script src="components/status-input.js?v=202610121245"></script>
-    <script src="components/card-items.js?v=202610121245"></script>
-    <script src="components/choice-dialog.js?v=202610121245"></script>
-    <script src="components/commission-calculator.js?v=202610121245"></script>
-    <script src="components/review.js?v=202610121245"></script>
-    <script src="components/leaderboard.js?v=202610121245"></script>
-    <script src="components/data.js?v=202610121245"></script>
-    <script src="components/team.js?v=202610121245"></script>
-    <script src="components/products.js?v=202610121245"></script>
-    <script src="components/pipeline.js?v=202610121245"></script>
-    <script src="components/calendar.js?v=202610121245"></script>
-    <script src="components/new-client.js?v=202610121245"></script>
-    <script src="components/client-search.js?v=202610121245"></script>
+    <script src="components/supabase-client.js?v=202610132108"></script>
+    <script src="components/money.js?v=202610132108"></script>
+    <script src="components/app-mode.js?v=202610132108"></script>
+    <script src="components/auth.js?v=202610132108"></script>
+    <script src="constants.js?v=202610132108"></script>
+    <script src="components/month-bar.js?v=202610132108"></script>
+    <script src="components/pcr-meter.js?v=202610132108"></script>
+    <script src="components/week-meters.js?v=202610132108"></script>
+    <script src="components/hero-table.js?v=202610132108"></script>
+    <script src="components/client-card.js?v=202610132108"></script>
+    <script src="components/status-input.js?v=202610132108"></script>
+    <script src="components/card-items.js?v=202610132108"></script>
+    <script src="components/choice-dialog.js?v=202610132108"></script>
+    <script src="components/commission-calculator.js?v=202610132108"></script>
+    <script src="components/review.js?v=202610132108"></script>
+    <script src="components/leaderboard.js?v=202610132108"></script>
+    <script src="components/data.js?v=202610132108"></script>
+    <script src="components/team.js?v=202610132108"></script>
+    <script src="components/products.js?v=202610132108"></script>
+    <script src="components/pipeline.js?v=202610132108"></script>
+    <script src="components/calendar.js?v=202610132108"></script>
+    <script src="components/new-client.js?v=202610132108"></script>
+    <script src="components/client-search.js?v=202610132108"></script>
 
     <!-- ===== Top bar ===== -->
     <div class="topbar">
@@ -194,19 +192,15 @@
       <div id="month-bar-container"></div>
     </div>
 
-    <!-- Home hero: the pipeline cards (monthly-stats.js), PCR meter (this cycle's hero, dead center), the funnel.
-       Full width like the month bar, only shown on the Home tab. -->
+    <!-- Home hero: on the left, Open · Submitted · Accepted as a small table
+       (hero-table.js); on the right, the meter(s) — an FA's Accepted meter
+       (pcr-meter.js), the admin team's week meters. Only on the Home tab. -->
     <div class="home-hero-wrapper tab-content active" id="home-hero-wrapper">
       <div class="home-hero">
-        <div class="hero-col hero-col-monthly">
-          <div id="monthly-stats-container"></div>
-        </div>
-        <div class="hero-center">
+        <div id="hero-table" class="hero-table"></div>
+        <div class="hero-meters">
           <div id="pcr-meter-container"></div>
           <div id="week-meters-container" hidden></div>
-        </div>
-        <div class="hero-col hero-col-funnel">
-          <div id="client-funnel-container"></div>
         </div>
       </div>
     </div>
@@ -270,15 +264,12 @@
 
     <script>
       initAuth();
-      const pcrMeter = initPcrMeter("pcr-meter-container", { periodLabel: getCurrentPeriodLabel() });
+      const pcrMeter = initPcrMeter("pcr-meter-container");
       initMonthBar("month-bar-container", {
-        onNavigate: (period) => pcrMeter.setPeriodLabel(dashboardLabel(period)),
         onPeriodChange: onDashboardPeriodChange,
       });
-      const funnel = initClientFunnel("client-funnel-container");
-      const monthlyStats = initMonthlyStats("monthly-stats-container");
+      const heroTable = initHeroTable("hero-table");
       const weekMeters = initWeekMeters("week-meters-container");
-      initHomeHero();
       initClientCards(document);
       initCardItems(document);
       initCommissionCalculator("commission-calc-trigger");
@@ -293,7 +284,7 @@
 
       // Cards and dashboard numbers load from Supabase once someone's
       // signed in (data.js, on 'currentuser:changed').
-      registerDashboardWidgets({ pcrMeter, funnel, monthlyStats, leaderboard, weekMeters });
+      registerDashboardWidgets({ heroTable, pcrMeter, leaderboard, weekMeters });
 
       // Tab switching. tab: a tab element, or a page's name ('dashboard',
       // 'products', …). A page reached from the admin's menu (data-menu)

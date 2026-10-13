@@ -1,19 +1,24 @@
-// Team leaderboard, in three views, switched on the title line — each one
-// time frame, so it's clear what's in the figures:
-//   Pot PCR         right now: Cases (all three below) ·
-//                   Open PCR's (still open) · Submitted PCR's (awaiting
-//                   acceptance) · Accepted PCR's (this year, from 1
-//                   January) — sorted by Accepted. Days picked on the
-//                   month bar don't change it.
-//   Month PCR       (default) the month to date, or the days picked, the
-//                   same columns, each case once, where it is now: Cases ·
-//                   Open PCR's (opened in it, still open) · Submitted
-//                   PCR's (submitted in it, still awaiting acceptance) ·
-//                   Accepted PCR's (accepted in it) — sorted by Accepted
-//   Month activity  the same days: Prospects · Referrals · Meetings ·
-//                   Wills Leads · FNAs · Quotes — sorted by Prospects
+// Team leaderboard, in two views — Production Leaderboard and Activity
+// Leaderboard, switched at the start of the total row — both over the
+// same days (the month to date, or the days picked on the month bar), so
+// the toggle only changes what's measured:
+//   Production  (always opens on this) Cases (each counted once, where it
+//               is now) · Open PCR's (opened in it, still open) ·
+//               Submitted PCR's (submitted in it, still awaiting
+//               acceptance) · Accepted PCR's (accepted in it, at the final
+//               PCR) — sorted by Accepted
+//   Activity    Prospects · Referrals · Meetings (its three types on
+//               hover) · Wills leads · FNAs · Quotes — sorted by Meetings
+// Picking an FA (admin) opens their month's cases under the row in
+// Production only; in Activity it just picks them for the hero's meter.
+// What's in the pot whatever the month is the admin's Cases tab. Under the
+// headings, a shaded row — the switch, then every column added up (the
+// team's total, hover breakdowns too).
 // Clicking a header sorts by that column (largest first); clicking the
 // active header again flips to smallest first.
+//
+// The signed-in person's own row (rep.isYou) is highlighted, so an FA
+// finds their month straight away.
 //
 // Beside each name (FAs' and admins' view alike), whether they had any
 // activity on options.activityDayLabel (the last weekday): ✓ something
@@ -29,40 +34,36 @@ function _injectLeaderboardCSS() {
   const s = document.createElement("style");
   s.id = "leaderboard-styles";
   s.textContent = `
-    .leaderboard {
-      padding: 20px 0 0;
-      border-top: 1px solid rgba(0, 0, 0, 0.1);
-    }
-    .lb-title { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-    .lb-views { display: inline-flex; background: #d4d6d8; border-radius: 8px; padding: 3px; gap: 2px; }
-    .lb-view {
+    /* Few lines: the tabs start it, the Team row is a shaded band, and
+       the FA rows have only a faint hairline (a tint on hover). */
+    .leaderboard { padding: 20px 0 0; }
+    /* The two views: a switch at the start of the total row, its figures
+       beside it — the active one a white card, as Home / Cases. */
+    .lb-tabs { display: inline-flex; gap: 2px; background: rgba(0, 0, 0, 0.06); border-radius: 8px; padding: 3px; }
+    .lb-tab {
       background: none;
       border: none;
       border-radius: 6px;
       padding: 5px 14px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       font-family: inherit;
-      color: #4b5563;
+      color: #555c6a;
       cursor: pointer;
     }
-    .lb-view.active { background: #ffffff; color: var(--navy); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
-    .leaderboard h4 {
-      margin: 0;
-      font-size: 14px;
-      color: var(--ink-dim);
-      font-weight: 500;
-    }
+    .lb-tab:hover:not(.active) { color: #2a3040; }
+    .lb-tab.active { background: #ffffff; color: var(--navy); font-weight: 600; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
     .lb-row {
       display: flex;
       align-items: center;
       gap: 16px;
       padding: 10px 0;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.04);
       font-size: 14px;
       color: var(--ink);
     }
     .lb-row:last-child { border-bottom: none; }
+    .lb-row.clickable:hover:not(.selected) { background: rgba(0, 0, 0, 0.025); }
     .lb-rank {
       width: 24px;
       color: var(--ink);
@@ -72,6 +73,9 @@ function _injectLeaderboardCSS() {
     .lb-row.clickable { cursor: pointer; }
     .lb-row.clickable:hover .lb-name-text { text-decoration: underline; }
     .lb-row.selected { background: rgba(212, 175, 55, 0.12); }
+    /* The signed-in person's own row: their month at a glance. */
+    .lb-row.you { background: rgba(212, 175, 55, 0.14); border-radius: 8px; border-bottom-color: transparent; margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
+    .lb-row.you .lb-name-text { font-weight: 700; }
     .lb-row.selected .lb-name-text { font-weight: 700; }
     .lb-checkout { font-size: 13px; font-weight: 700; width: 14px; text-align: center; }
     .lb-checkout.yes { color: var(--green); }
@@ -79,7 +83,7 @@ function _injectLeaderboardCSS() {
     .lb-checkout.none { color: var(--ink-dim); }
     .lb-detail {
       padding: 10px 0 14px 40px;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.04);
       background: rgba(212, 175, 55, 0.06);
       font-size: 13px;
     }
@@ -109,6 +113,17 @@ function _injectLeaderboardCSS() {
     .lb-value.active { color: var(--gold); }
     .lb-value.wide { width: 140px; }
     .lb-value, .lb-head .lb-value { white-space: nowrap; } /* headings on one line */
+    /* Wider than the rows by its padding (negative margins), so its
+       figures stay in the columns. */
+    .lb-total {
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.045);
+      border-bottom: none;
+      border-radius: 8px;
+      margin: 2px -12px 6px;
+      padding: 8px 12px;
+    }
+    .lb-total .lb-value { font-weight: 700; }
     .lb-head {
       border-bottom: none;
       padding: 0 0 6px;
@@ -171,24 +186,13 @@ function _injectLeaderboardCSS() {
 }
 _injectLeaderboardCSS();
 
-// The three views' columns. Wide columns fit their two-word headings;
-// title: on hover, what the column counts in this view. pot: not tied to
-// the month.
+// The two views' columns. Wide columns fit their two-word headings;
+// title: on hover, what the column counts.
 const LEADERBOARD_VIEWS = {
-  pot: {
-    label: "Pot PCR",
-    pot: true,
-    sortKey: "ytdPcr",
-    columns: [
-      { key: "potCases", label: "Cases", wide: true, title: "Open and awaiting acceptance right now, and accepted this year" },
-      { key: "openPcr", label: "Open PCR’s", wide: true, title: "Opened, not yet submitted — right now" },
-      { key: "pendingPcr", label: "Submitted PCR’s", wide: true, title: "Submitted, awaiting acceptance — right now" },
-      { key: "ytdPcr", label: "Accepted PCR’s", wide: true, title: "Accepted this year (from 1 January), at the final PCR" },
-    ],
-  },
-  pcr: {
-    label: "Month PCR",
+  production: {
+    label: "Production Leaderboard",
     sortKey: "pcr",
+    detail: true, // a picked FA's row opens their cases (Activity: no list)
     columns: [
       { key: "monthCases", label: "Cases", wide: true, title: "Opened, submitted or accepted in the month (or the days picked), each counted once" },
       { key: "openedPcr", label: "Open PCR’s", wide: true, title: "Opened in the month and still open" },
@@ -197,13 +201,13 @@ const LEADERBOARD_VIEWS = {
     ],
   },
   activity: {
-    label: "Month activity",
-    sortKey: "prospects",
+    label: "Activity Leaderboard",
+    sortKey: "meetings",
     columns: [
-      { key: "prospects", label: "Prospects" },
+      { key: "prospects", label: "Prospects", title: "Prospects contacted" },
       { key: "referrals", label: "Referrals" },
       { key: "meetings", label: "Meetings" },
-      { key: "willsLeads", label: "Wills Leads" },
+      { key: "willsLeads", label: "Wills leads" },
       { key: "fnas", label: "FNAs" },
       { key: "quotes", label: "Quotes" },
     ],
@@ -213,7 +217,7 @@ const LEADERBOARD_VIEWS = {
 // PCR in full with thousand separators (money.js); PCR is a score, not
 // rand, so no currency prefix. Counts are small and shown as they are.
 function _lbFormatValue(key, value) {
-  if (["pcr", "submittedPcr", "openPcr", "pendingPcr", "openedPcr", "stillSubmittedPcr", "ytdPcr"].includes(key)) return formatNumber(value);
+  if (["pcr", "openedPcr", "stillSubmittedPcr"].includes(key)) return formatNumber(value);
   return value;
 }
 
@@ -225,18 +229,6 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "closing", label: "Closing" },
     { key: "relational", label: "Relational" },
   ],
-  openPcr: [
-    { key: "risk", label: "Risk" },
-    { key: "investments", label: "Investments" },
-  ],
-  submittedPcr: [
-    { key: "risk", label: "Risk" },
-    { key: "investments", label: "Investments" },
-  ],
-  pendingPcr: [
-    { key: "risk", label: "Risk" },
-    { key: "investments", label: "Investments" },
-  ],
   openedPcr: [
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
@@ -245,15 +237,7 @@ const LEADERBOARD_BREAKDOWNS = {
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
   ],
-  ytdPcr: [
-    { key: "risk", label: "Risk" },
-    { key: "investments", label: "Investments" },
-  ],
   pcr: [
-    { key: "risk", label: "Risk" },
-    { key: "investments", label: "Investments" },
-  ],
-  cases: [
     { key: "risk", label: "Risk" },
     { key: "investments", label: "Investments" },
   ],
@@ -262,11 +246,11 @@ const LEADERBOARD_BREAKDOWNS = {
 class Leaderboard {
   constructor(container, config) {
     this.container = container;
-    this.config = Object.assign({ title: "Team Leaderboard", reps: [] }, config);
+    this.config = Object.assign({ reps: [] }, config);
     this.options = {};
-    this.sortKey = "pcr";
+    this.view = "production"; // LEADERBOARD_VIEWS; always opens on Production
+    this.sortKey = LEADERBOARD_VIEWS.production.sortKey;
     this.sortDir = "desc";
-    this.view = "pcr"; // LEADERBOARD_VIEWS
     this.render();
     this.container.addEventListener("click", (e) => {
       const viewBtn = e.target.closest("[data-lb-view]");
@@ -295,7 +279,7 @@ class Leaderboard {
     });
   }
 
-  // options (admin view): {onSelect, selectedId, detailHTML(rep, view, columns),
+  // options (admin view): {onSelect, selectedId, detailHTML(rep, columns),
   // activityDayLabel}. The FA view passes only activityDayLabel.
   setReps(reps, options = {}) {
     this.config.reps = reps;
@@ -305,8 +289,6 @@ class Leaderboard {
 
   render() {
     const { reps } = this.config;
-    // Just the name — the view toggle says the rest.
-    const title = this.config.title;
     const { onSelect, selectedId, detailHTML, activityDayLabel } = this.options;
     const dir = this.sortDir === "desc" ? -1 : 1;
     const sorted = [...reps].sort((a, b) => (a[this.sortKey] - b[this.sortKey]) * dir);
@@ -318,28 +300,52 @@ class Leaderboard {
       return `<div class="lb-value${col.wide ? " wide" : ""}${active ? " active" : ""}" data-sort-key="${col.key}"${col.title ? ` title="${col.title}"` : ""}>${col.label}<span class="lb-sort-arrow">${arrow}</span></div>`;
     }).join("");
 
+    // One row's figures, each column with its hover breakdown.
+    const cellsOf = (rep) => columns.map((col, colIndex) => {
+      const activeClass = col.key === this.sortKey ? " active" : "";
+      const value = _lbFormatValue(col.key, rep[col.key]);
+      const breakdownConfig = LEADERBOARD_BREAKDOWNS[col.key];
+      const breakdownData = rep[`${col.key}Breakdown`];
+      if (breakdownConfig && breakdownData) {
+        const parts = breakdownConfig
+          .map((b) => `${b.label} <b>${_lbFormatValue(col.key, breakdownData[b.key])}</b>`)
+          .join(" &middot; ");
+        const isEnd = colIndex === columns.length - 1;
+        return `
+          <div class="lb-value lb-breakdown-cell${col.wide ? " wide" : ""}${isEnd ? " lb-breakdown-cell-end" : ""}${activeClass}">
+            ${value}
+            <div class="lb-breakdown-tooltip">${parts}</div>
+          </div>
+        `;
+      }
+      return `<div class="lb-value${col.wide ? " wide" : ""}${activeClass}">${value}</div>`;
+    }).join("");
+
+    // The team: every column added up, breakdowns too — at the top, under
+    // the headings.
+    const total = {};
+    columns.forEach((col) => {
+      total[col.key] = reps.reduce((t, r) => t + (Number(r[col.key]) || 0), 0);
+      const parts = LEADERBOARD_BREAKDOWNS[col.key];
+      if (parts) {
+        total[`${col.key}Breakdown`] = Object.fromEntries(parts.map((b) =>
+          [b.key, reps.reduce((t, r) => t + (Number(r[`${col.key}Breakdown`]?.[b.key]) || 0), 0)]));
+      }
+    });
+    // The two views' switch, at the start of the total row.
+    const tabs = `<div class="lb-tabs" role="tablist">${Object.entries(LEADERBOARD_VIEWS).map(([key, v]) =>
+      `<button type="button" role="tab" aria-selected="${key === this.view}" class="lb-tab${key === this.view ? " active" : ""}" data-lb-view="${key}">${v.label}</button>`).join("")}</div>`;
+    const totalRow = `
+      <div class="lb-row lb-total">
+        <div class="lb-name">${tabs}</div>
+        ${cellsOf(total)}
+      </div>
+    `;
+
     const rows = sorted
       .map((rep, i) => {
         const rank = i + 1;
-        const cells = columns.map((col, colIndex) => {
-          const activeClass = col.key === this.sortKey ? " active" : "";
-          const value = _lbFormatValue(col.key, rep[col.key]);
-          const breakdownConfig = LEADERBOARD_BREAKDOWNS[col.key];
-          const breakdownData = rep[`${col.key}Breakdown`];
-          if (breakdownConfig && breakdownData) {
-            const parts = breakdownConfig
-              .map((b) => `${b.label} <b>${_lbFormatValue(col.key, breakdownData[b.key])}</b>`)
-              .join(" &middot; ");
-            const isEnd = colIndex === columns.length - 1;
-            return `
-              <div class="lb-value lb-breakdown-cell${col.wide ? " wide" : ""}${isEnd ? " lb-breakdown-cell-end" : ""}${activeClass}">
-                ${value}
-                <div class="lb-breakdown-tooltip">${parts}</div>
-              </div>
-            `;
-          }
-          return `<div class="lb-value${col.wide ? " wide" : ""}${activeClass}">${value}</div>`;
-        }).join("");
+        const cells = cellsOf(rep);
         const selected = selectedId === rep.id;
         const day = _escHtml(activityDayLabel || "");
         const checkout = rep.hadActivity === true
@@ -348,28 +354,24 @@ class Leaderboard {
             ? `<span class="lb-checkout no" title="Nothing logged on ${day}">✗</span>`
             : "";
         return `
-          <div class="lb-row${onSelect ? " clickable" : ""}${selected ? " selected" : ""}" data-rep-id="${rep.id}">
+          <div class="lb-row${onSelect ? " clickable" : ""}${selected ? " selected" : ""}${rep.isYou ? " you" : ""}" data-rep-id="${rep.id}">
             <div class="lb-rank">${rank}</div>
             <div class="lb-name">${checkout}<span class="lb-name-text">${_escHtml(rep.name)}</span></div>
             ${cells}
           </div>
-          ${selected && detailHTML ? `<div class="lb-detail">${detailHTML(rep, this.view, columns)}</div>` : ""}
+          ${selected && detailHTML && LEADERBOARD_VIEWS[this.view].detail ? `<div class="lb-detail">${detailHTML(rep, columns)}</div>` : ""}
         `;
       })
       .join("");
 
     this.container.innerHTML = `
       <div class="leaderboard">
-        <div class="lb-title">
-          <h4>${title}</h4>
-          <div class="lb-views">${Object.entries(LEADERBOARD_VIEWS).map(([key, v]) =>
-            `<button type="button" class="lb-view${key === this.view ? " active" : ""}" data-lb-view="${key}">${v.label}</button>`).join("")}</div>
-        </div>
         <div class="lb-row lb-head">
           <div class="lb-rank"></div>
           <div class="lb-name"></div>
           ${headCells}
         </div>
+        ${totalRow}
         ${rows}
       </div>
     `;
