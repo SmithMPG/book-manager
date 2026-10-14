@@ -91,7 +91,7 @@ Brand · **My book · Admin ▾** toggle (admins) · **$** Commission Calculator
    Managers who don't sell (`users.on_leaderboard = false` — Ameeth) are left off it, and so off the team figures.
 
 **The hero.** The same shape for everyone: **a small table on the left, the meter(s) on the right.** The table's rows are **Open · Submitted · Accepted**:
-- **An FA's Home** — columns **PCR** and **Commission**. Open: every case not yet submitted, any month. Submitted: every case waiting to be accepted, any month. Accepted: accepted this month (the month on the month bar), at the final PCR — and the commission expected. On the right, their **Accepted meter** against Validation and High Flyer.
+- **An FA's Home** — columns **PCR** and **Commission**. Open: every case not yet submitted, any month. Submitted: every case waiting to be accepted, any month. **Accepted this month** (so labelled): accepted in the month on the month bar, at the final PCR — and the commission expected. On the right, their **Accepted meter** against Validation and High Flyer.
 - **The admin's Home** (the team, or the FA picked on the leaderboard) — columns **Brought forward** (from before this month) · **This month** · **Total**, no commission. Open: opened before / in the month. Submitted: submitted before / in it. Accepted: accepted in the month, brought forward if it was submitted before it. On the right, the team's **week meters** — or the picked FA's Accepted meter.
 - No funnel: an FA's month — activity and production — is **their own row on the leaderboard, highlighted** (gold tint, bold name); activity is the leaderboard's Activity tab.
 

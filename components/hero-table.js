@@ -101,7 +101,8 @@ class HeroTable {
     const c = this.config;
     if (!c.opened) { this.container.innerHTML = ''; return; }
     const n = x => formatNumber(Math.round(x || 0));
-    const rows = [['Open', c.opened], ['Submitted', c.submitted], ['Accepted', c.accepted]];
+    // An FA's Accepted is this month's (Open and Submitted are any month's).
+    const rows = [['Open', c.opened], ['Submitted', c.submitted], [c.mode === 'admin' ? 'Accepted' : 'Accepted this month', c.accepted]];
     const [head, cells] = c.mode === 'admin'
       ? [['Brought forward', 'This month', 'Total'], x => [n(x.broughtForward), n(x.thisMonth), n(x.total)]]
       : [['PCR', 'Commission'], x => [n(x.pcr), formatRand(x.commission || 0)]];
