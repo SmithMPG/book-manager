@@ -139,6 +139,7 @@ const CASE_STAGE_LABELS = {
   submitted: 'Submitted',
   accepted: 'Accepted',
   'not-taken-up': 'Not taken up',
+  unsubmitted: 'Unsubmitted', // a timeline line's event: back to open
 };
 
 function isOpenCase(c) {

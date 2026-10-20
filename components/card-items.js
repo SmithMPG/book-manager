@@ -485,6 +485,7 @@ function _dateChangeText(d) {
 function _caseEntryText(c, details, { withoutType = false } = {}) {
   const event = details.event;
   if (event === 'amended') return _amendedText(c, details, withoutType);
+  if (event === 'unsubmitted') return [withoutType ? '' : c?.type, 'Unsubmitted — back to open'].filter(Boolean).join(' · ');
   if (!c) return `Case · ${CASE_STAGE_LABELS[event] || ''}`;
   const parts = [withoutType ? '' : c.type, CASE_STAGE_LABELS[event] || ''].filter(Boolean);
   if (event === 'opened') {
@@ -626,14 +627,14 @@ function _caseBodyHTML(data, c) {
 
 // The right end of the collapsed card: what can happen next.
 //   Opened     Mark submitted · Not taken up
-//   Submitted  Awaiting acceptance · Not taken up
+//   Submitted  Awaiting acceptance · Unsubmit (back to open) · Not taken up
 //   closed     its badge: Accepted / Not taken up
 function _caseNextHTML(data, c) {
   const stageBtn = (stage, label, primary) =>
     `<button type="button" class="cb-btn${primary ? ' primary' : ''}" data-action="stage" data-client="${data.id}" data-case="${c.id}" data-stage="${stage}">${label}</button>`;
   if (c.stage === 'opened') return stageBtn('submitted', 'Mark submitted', true) + stageBtn('not-taken-up', 'Not taken up');
   if (c.stage === 'submitted') {
-    return `<span class="cc-badge submitted" title="Waiting for your manager to accept">Awaiting acceptance</span>${stageBtn('not-taken-up', 'Not taken up')}`;
+    return `<span class="cc-badge submitted" title="Waiting for your manager to accept">Awaiting acceptance</span>${stageBtn('opened', 'Unsubmit')}${stageBtn('not-taken-up', 'Not taken up')}`;
   }
   return `<span class="cc-badge ${c.stage}">${CASE_STAGE_LABELS[c.stage]}</span>`;
 }
@@ -1045,12 +1046,35 @@ async function changeCaseStage(clientId, caseId, stage, date) {
   const d = getClientData(clientId) || {};
   const c = _findCase(d, caseId);
   if (!c) return false;
+  if (stage === 'opened') return _unsubmitCase(clientId, c, date);
   if (!await _confirmStage(c, stage)) return false;
   const r = await dbSetCaseStage(caseId, stage, date);
   _addToCard(clientId, { activity: r.activity, caseItem: r.case });
   await syncTabAfterCaseChange(clientId).catch(showSaveError);
   await refreshDashboard();
   return true;
+}
+
+// Unsubmitting: back to open, its submitted date cleared — and a note on
+// the client's timeline saying so, with why (optional): "Case
+// unsubmitted (RA Builder): waiting on a new quote".
+async function _unsubmitCase(clientId, c, date) {
+  return _faFormDialog({
+    title: 'Unsubmit this case?',
+    message: `This ${c.type} case goes back to open: its submitted date is cleared and it comes off Submitted PCR's. Mark it submitted again when it's ready. A note goes on the timeline.`,
+    fields: [{ key: 'reason', label: 'Why? (optional — goes in the note)', placeholder: 'e.g. waiting on a new quote' }],
+    submitLabel: 'Unsubmit',
+    onSubmit: async v => {
+      const r = await dbSetCaseStage(c.id, 'opened', date);
+      const reason = (v.reason || '').trim();
+      const note = await dbAddActivity(clientId, 'note', date, {
+        text: `Case unsubmitted (${c.type})${reason ? `: ${reason}` : ''}`,
+      });
+      _addToCard(clientId, { activity: r.activity, caseItem: r.case });
+      _addToCard(clientId, { activity: activityItem(note) });
+      await refreshDashboard();
+    },
+  });
 }
 
 async function _setStage(btn) {

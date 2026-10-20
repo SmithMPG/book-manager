@@ -258,6 +258,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 
 ### Cases
 - **Stages — the same for every case and product:** **Opened** → **Submitted** → **Accepted** or **Not taken up**.
+  A submitted case can be **unsubmitted** (**Unsubmit**, beside Awaiting acceptance — the FA, or their manager): it goes back to open, its submitted date cleared (off Submitted PCR's), with an **Unsubmitted** case line on the timeline and a **note** saying so — "Case unsubmitted (RA Builder): waiting on a new quote" — the reason asked for (optional) when unsubmitting. Mark submitted again when it's ready.
   A case is **open** until Accepted or Not taken up. (Reopening is left out for now.) FAs keep a case up to date with notes and contacts on the client's timeline.
 - **Checklist:** the product's, visible from the moment the case is opened. Every product starts with the standard 7:
   ID · Proof of residence · Proof of bank account · Signed FAIS intro letter · Signed application form · Signed quote · Signed risk profile analyser.

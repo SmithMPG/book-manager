@@ -522,7 +522,8 @@ grant execute on function public.leaderboard(date[], date) to authenticated;
 -- p_date is the FA's local
 -- today (or the day being reviewed). Both return {case, activity}.
 -- Stage changes allowed: opened → submitted | not-taken-up,
--- submitted → accepted | not-taken-up.
+-- submitted → accepted | not-taken-up | opened (unsubmitting: back to
+-- open, its submitted date cleared; the line's event is 'unsubmitted').
 -- Accepting is the FA's manager's alone (manages(), from their FA list),
 -- never the FA's own; submitting the FA's or their manager's (noted on
 -- the line: submittedBy, submittedByName); not taken up the FA's alone
@@ -580,7 +581,7 @@ begin
     if not public.manages(c.fa_id) then
       raise exception 'Only the FA''s manager can accept a case.';
     end if;
-  elsif p_stage = 'submitted' then
+  elsif p_stage in ('submitted', 'opened') then
     if not (public.can_act_as(c.fa_id) or public.manages(c.fa_id)) then
       raise exception 'Case not found.';
     end if;
@@ -588,7 +589,7 @@ begin
     raise exception 'Case not found.';
   end if;
   if not ((c.stage = 'opened' and p_stage in ('submitted', 'not-taken-up'))
-       or (c.stage = 'submitted' and p_stage in ('accepted', 'not-taken-up'))) then
+       or (c.stage = 'submitted' and p_stage in ('accepted', 'not-taken-up', 'opened'))) then
     raise exception 'A case that is % can''t be marked %.', c.stage, p_stage;
   end if;
   if p_stage = 'accepted' and (p_final_pcr is null or p_final_pcr < 0) then
@@ -597,12 +598,12 @@ begin
 
   update public.cases set
     stage        = p_stage,
-    submitted_at = case when p_stage = 'submitted' then p_date else submitted_at end,
+    submitted_at = case when p_stage = 'submitted' then p_date when p_stage = 'opened' then null else submitted_at end,
     accepted_at  = case when p_stage = 'accepted' then p_date else accepted_at end,
     final_pcr    = case when p_stage = 'accepted' then p_final_pcr else final_pcr end
   where id = p_case_id
   returning * into c;
-  v_details := jsonb_build_object('event', p_stage);
+  v_details := jsonb_build_object('event', case when p_stage = 'opened' then 'unsubmitted' else p_stage end);
   if p_stage = 'submitted' and auth.uid() <> c.fa_id then
     v_details := v_details || jsonb_build_object('submittedBy', auth.uid(),
       'submittedByName', (select name || ' ' || surname from public.users where id = auth.uid()));
@@ -817,7 +818,9 @@ begin
   v_from := a.date;
   update public.cases set
     opened_at    = case when v_event = 'opened' then p_date else opened_at end,
-    submitted_at = case when v_event = 'submitted' then p_date else submitted_at end,
+    -- An unsubmitted case (back to open) keeps no submitted date: its
+    -- old Submitted line moves on its own.
+    submitted_at = case when v_event = 'submitted' and c.stage <> 'opened' then p_date else submitted_at end,
     accepted_at  = case when v_event = 'accepted' then p_date else accepted_at end
   where id = c.id
   returning * into c;
