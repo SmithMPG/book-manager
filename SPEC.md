@@ -240,6 +240,7 @@ Every entry belongs to a **client**, has a **date** (the day it happened) and a 
 
 ### The client row and open card
 - **Adding someone:** a floating **+** in the bottom-right corner of the **Prospects** and **Clients** tabs (no button in the top bar). First name and surname; they're added to the tab whose + was pressed.
+- **Editing a name:** a **✎** beside the name on the row opens first name and surname. The change goes on the timeline as a **Name changed** line, dated the day it was done: "Andre Visagie → André Visagie". Like a Date changed line, it can't be changed or deleted, and isn't an update — it doesn't count for the Review, the leaderboard's ✓ / ✗, or the collapsed row's latest entry. Saving without changing anything adds nothing.
 - **Collapsed row:** name · latest timeline entry · **a chip per group of cases** the client has — **"2 open"** (not yet submitted), **"1 submitted"** (waiting to be accepted), **"3 closed"** (accepted or not taken up); only the groups they have · **+** at the end.
 - **Clicking the row** opens the **client view**; **clicking a chip** opens the **case view** on those cases.
 - **Client view**, top to bottom:

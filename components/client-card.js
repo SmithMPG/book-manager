@@ -34,6 +34,11 @@ function _injectClientCardCSS() {
     .list-row .name b { color: var(--ink); }
     .list-row .name span { color: var(--ink-dim); margin-left: 4px; }
     .list-row .spacer { flex: 1; }
+    .row-rename { background: none; border: none; padding: 0 0 0 8px; font-size: 13px; line-height: 1; color: var(--ink-dim); opacity: 0.45; cursor: pointer; }
+    .list-row:hover .row-rename { opacity: 1; }
+    .row-rename:hover { color: #8a6d0a; }
+    .list-row.active .row-rename { color: var(--text-dim); }
+    .list-row.active .row-rename:hover { color: var(--gold-soft); }
 
     /* The row currently expanded — highlighted navy, matching the app's
        dark accent, while every other (collapsed) row stays plain/off-white. */
@@ -212,7 +217,7 @@ function clientCardHTML(data) {
   return `
     <div class="card-wrapper">
       <div class="list-row" data-card-id="${data.id}" draggable="true">
-        <div class="name"><b>${_escHtml(data.firstName)}</b><span>${_escHtml(data.lastName)}</span></div>
+        <div class="name"><b>${_escHtml(data.firstName)}</b><span>${_escHtml(data.lastName)}</span><button type="button" class="row-rename" data-row-rename title="Edit ${_escHtml(data.firstName)}'s name">✎</button></div>
         ${_cardLastStatusHTML(data)}
         ${_caseChipsHTML(data)}
         <button type="button" class="row-add" data-row-add title="Add to ${_escHtml(data.firstName)}'s timeline">+</button>
@@ -418,11 +423,17 @@ function _openAddMenu(anchor, row) {
 }
 
 // Row: open / close the client. Case chip: open the client showing that
-// case's checklist (again to hide it). "+": the add menu.
+// case's checklist (again to hide it). "+": the add menu. ✎: edit the
+// name (card-items.js).
 function initClientCards(root) {
   root.addEventListener('click', e => {
     const row = e.target.closest('.list-row');
     if (!row) return;
+    if (e.target.closest('[data-row-rename]')) {
+      e.stopPropagation();
+      editClientName(row.dataset.cardId);
+      return;
+    }
     const addBtn = e.target.closest('[data-row-add]');
     if (addBtn) {
       e.stopPropagation();

@@ -221,6 +221,8 @@ create index cases_stage_idx on cases(stage);
 --                    has been reviewed (the Review) by this FA — noActivity
 --                    when nothing at all was logged. At most one per
 --                    (fa_id, date) — see the unique index below.
+--   name_change      {from, to} — the client's full name, before and
+--                    after; written by rename_client
 -- ---------------------------------------------------------------------
 create table activities (
   id          uuid primary key default gen_random_uuid(),
@@ -229,7 +231,7 @@ create table activities (
   case_id     uuid references cases(id) on delete cascade,          -- set only on `case` entries
   type        text not null
                 check (type in ('contact', 'note', 'meeting', 'fna', 'quote', 'wills_lead', 'referral', 'case',
-                                'date_change', 'prospect_contact', 'checkout')),
+                                'date_change', 'name_change', 'prospect_contact', 'checkout')),
   date        date not null,
   details     jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
@@ -500,11 +502,11 @@ as $$
       -- Did they do anything on p_checkout_date (the last weekday — the
       -- ✓ / ✗ beside their name)? Anything logged for that day counts —
       -- a contact, note, meeting, case change, prospects contacted… —
-      -- except the Review itself (a 'checkout' row) and a date changed
-      -- ('date_change').
+      -- except the Review itself (a 'checkout' row) and a date or name
+      -- changed ('date_change', 'name_change').
       case when p_checkout_date is null then null
         else exists (select 1 from public.activities a
-          where a.fa_id = u.id and a.type not in ('checkout', 'date_change') and a.date = p_checkout_date)
+          where a.fa_id = u.id and a.type not in ('checkout', 'date_change', 'name_change') and a.date = p_checkout_date)
       end as "hadActivity"
     from public.users u
     where u.is_active and u.on_leaderboard
@@ -739,7 +741,7 @@ as $$
 declare a public.activities; v_from date; v_log public.activities;
 begin
   select * into a from public.activities where id = p_activity_id for update;
-  if not found or a.type in ('case', 'date_change', 'checkout', 'prospect_contact')
+  if not found or a.type in ('case', 'date_change', 'name_change', 'checkout', 'prospect_contact')
      or not public.can_act_as(a.fa_id) then
     raise exception 'Entry not found.';
   end if;
@@ -756,6 +758,43 @@ $$;
 
 revoke execute on function public.set_activity_date(uuid, date, date) from public, anon;
 grant execute on function public.set_activity_date(uuid, date, date) to authenticated;
+
+-- Editing a client's name: the FA's own. The change is noted on the
+-- timeline as a 'name_change' entry, dated the day it was done (p_today),
+-- which doesn't count as activity, like a 'date_change'. Returns
+-- {client, log} (log null when nothing changed).
+create or replace function public.rename_client(
+  p_client_id uuid, p_first_name text, p_last_name text, p_today date)
+returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare c public.clients; v_from text; v_log public.activities;
+begin
+  select * into c from public.clients where id = p_client_id for update;
+  if not found or not public.can_act_as(c.fa_id) then
+    raise exception 'Client not found.';
+  end if;
+  if coalesce(trim(p_first_name), '') = '' or coalesce(trim(p_last_name), '') = '' then
+    raise exception 'Name and surname are required.';
+  end if;
+  perform public._check_new_date(p_today, p_today);
+  if trim(p_first_name) = c.first_name and trim(p_last_name) = c.last_name then
+    return jsonb_build_object('client', to_jsonb(c), 'log', null);
+  end if;
+  v_from := trim(c.first_name || ' ' || c.last_name);
+  update public.clients set first_name = trim(p_first_name), last_name = trim(p_last_name)
+  where id = c.id
+  returning * into c;
+  insert into public.activities (fa_id, client_id, type, date, details)
+  values (c.fa_id, c.id, 'name_change', p_today, jsonb_build_object(
+    'from', v_from, 'to', c.first_name || ' ' || c.last_name))
+  returning * into v_log;
+  return jsonb_build_object('client', to_jsonb(c), 'log', to_jsonb(v_log));
+end;
+$$;
+
+revoke execute on function public.rename_client(uuid, text, text, date) from public, anon;
+grant execute on function public.rename_client(uuid, text, text, date) to authenticated;
 
 -- A case line, and the case's own date with it: an "opened" line moves
 -- opened_at, a "submitted" line submitted_at, an "accepted" line

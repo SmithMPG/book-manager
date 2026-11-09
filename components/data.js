@@ -352,6 +352,16 @@ async function dbSetClientTab(clientId, tab) {
   _dbOk(await supabaseClient.from('clients').update({ tab }).eq('id', clientId));
 }
 
+// Changes a client's name and adds the "Name changed" timeline entry,
+// together. Returns {firstName, lastName, log} (log null if nothing
+// changed).
+async function dbRenameClient(clientId, firstName, lastName) {
+  const r = _dbOk(await supabaseClient.rpc('rename_client', {
+    p_client_id: clientId, p_first_name: firstName, p_last_name: lastName, p_today: _todayIso(),
+  }));
+  return { firstName: r.client.first_name, lastName: r.client.last_name, log: r.log ? activityItem(r.log) : null };
+}
+
 // Saves the move and moves the card on screen.
 async function moveClientToTab(clientId, tab) {
   await dbSetClientTab(clientId, tab);

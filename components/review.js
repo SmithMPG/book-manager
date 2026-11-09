@@ -347,9 +347,9 @@ class Review {
 
   // ---------- who's listed ----------
 
-  // A date changed ('date_change') isn't an update.
+  // A date or name changed (isCorrectionLine) isn't an update.
   _hasEntryOnDay(data) {
-    return (data.timeline || []).some(e => e.type !== 'date_change' && e.date === this.day);
+    return (data.timeline || []).some(e => !isCorrectionLine(e) && e.date === this.day);
   }
 
   _openCaseClients() {
@@ -368,7 +368,7 @@ class Review {
   // Anything logged on the review day or since counts as an update — a
   // client already worked today doesn't need another for the review day.
   _hadActivity(data) {
-    return (data.timeline || []).some(e => e.type !== 'date_change' && e.date >= this.day);
+    return (data.timeline || []).some(e => !isCorrectionLine(e) && e.date >= this.day);
   }
 
   _needingUpdate() {

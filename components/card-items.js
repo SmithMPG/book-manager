@@ -362,7 +362,16 @@ const TIMELINE_KINDS = {
   // A date changed on the timeline, noted the day it was done — not an
   // update (the Review, the collapsed row) and can't be changed itself.
   date_change: { label: 'Date changed', key: false },
+  // The client's name edited — the same kind of line.
+  name_change: { label: 'Name changed', key: false },
 };
+
+// A line that notes a correction, rather than something done with the
+// client: not an update, and fixed once written.
+function isCorrectionLine(entry) {
+  return entry.type === 'date_change' || entry.type === 'name_change';
+}
+
 // The row's "+" menu (client-card.js): each item is an entry to add, or
 // a section with its own list (opening to the side). Everything in
 // alphabetical order. Picking an option opens the add form
@@ -462,6 +471,7 @@ function _findCase(data, caseId) {
 function timelineEntryText(data, entry) {
   if (entry.type === 'case') return _caseEntryText(_findCase(data, entry.caseId), entry.details);
   if (entry.type === 'date_change') return _dateChangeText(entry.details);
+  if (entry.type === 'name_change') return `${entry.details.from} → ${entry.details.to}`;
   return entry.text;
 }
 
@@ -524,7 +534,7 @@ function _amendedText(c, { from = {}, to = {} }, withoutType = false) {
 
 // One line for the collapsed card row: the latest entry.
 function latestTimelineSummary(data) {
-  const e = (data.timeline || []).find(x => x.type !== 'date_change');
+  const e = (data.timeline || []).find(x => !isCorrectionLine(x));
   if (!e) return '';
   const text = timelineEntryText(data, e);
   return e.type === 'contact' || e.type === 'note' || e.type === 'case' ? text
@@ -765,7 +775,7 @@ function _timelineHTML(data) {
     // Case lines are written by what happens to the case, so they're not
     // deleted here (a case goes with Delete case, on its card). Their
     // product is a chip to the case view.
-    const fixed = e.type === 'date_change';
+    const fixed = isCorrectionLine(e);
     const del = e.type !== 'case' && !fixed
       ? `<button type="button" class="tl-del" data-action="delete-entry" data-client="${data.id}" data-id="${e.id}" title="Delete">&times;</button>`
       : '';
@@ -1180,6 +1190,36 @@ async function syncTabAfterCaseChange(clientId) {
     });
     await moveClientToTab(clientId, next);
   }
+}
+
+// ---------- editing a client's name ----------
+//
+// The ✎ beside the name on the row. A change is noted on the timeline,
+// dated today ('name_change'), and the card moves to its new alphabetical
+// place. Saving without changing anything adds nothing.
+function editClientName(clientId) {
+  const d = getClientData(clientId);
+  if (!d) return;
+  return _faFormDialog({
+    title: 'Edit name',
+    fields: [
+      { key: 'firstName', label: 'First name', value: d.firstName },
+      { key: 'lastName', label: 'Surname', value: d.lastName },
+    ],
+    submitLabel: 'Save',
+    onSubmit: async v => {
+      if (!v.firstName || !v.lastName) throw new Error('Enter a first name and a surname.');
+      const r = await dbRenameClient(clientId, v.firstName, v.lastName);
+      if (!r.log) return;
+      updateClient(clientId, c => {
+        c.firstName = r.firstName;
+        c.lastName = r.lastName;
+        c.timeline = [r.log, ...(c.timeline || [])].sort(byTimelineOrder);
+      });
+      moveClientCard(clientId, clientTab(clientId));
+      await refreshDashboard();
+    },
+  });
 }
 
 // ---------- changing a timeline entry's date ----------
