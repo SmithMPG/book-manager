@@ -34,8 +34,8 @@ function _injectClientCardCSS() {
     .list-row .name b { color: var(--ink); }
     .list-row .name span { color: var(--ink-dim); margin-left: 4px; }
     .list-row .spacer { flex: 1; }
-    .row-rename { background: none; border: none; padding: 0 0 0 8px; font-size: 13px; line-height: 1; color: var(--ink-dim); opacity: 0.45; cursor: pointer; }
-    .list-row:hover .row-rename { opacity: 1; }
+    .row-rename { visibility: hidden; background: none; border: none; padding: 0 0 0 8px; font-size: 13px; line-height: 1; color: var(--ink-dim); cursor: pointer; }
+    .list-row .name:hover .row-rename { visibility: visible; }
     .row-rename:hover { color: #8a6d0a; }
     .list-row.active .row-rename { color: var(--text-dim); }
     .list-row.active .row-rename:hover { color: var(--gold-soft); }
