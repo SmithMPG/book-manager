@@ -477,18 +477,27 @@ async function acceptTeamCase(caseId, btn) {
   if (!canAcceptFor(fa)) return;
   const lastOpen = !_teamCases.some(k => k.id !== c.id && k.clientId === c.clientId);
   // The final PCR: what it was accepted at — the PCR worked out from its
-  // premiums unless the manager changes it.
+  // premiums unless the manager changes it. The date: today unless it was
+  // really accepted earlier (no earlier than it was submitted).
+  const today = _todayIso();
+  const earliest = c.submittedAt || c.openedAt;
   btn.disabled = true;
   const accepted = await _faFormDialog({
     title: `Accept ${c.clientName}'s ${c.type}`,
-    message: `For ${_faName(fa)}. The final PCR starts as the one worked out from the premiums; change it if the case was accepted at a different value.`
+    message: `For ${_faName(fa)}. The final PCR starts as the one worked out from the premiums; change it if the case was accepted at a different value. The date starts as today; change it if the case was accepted earlier.`
       + (lastOpen ? ` It's ${c.clientName}'s last open case, so they'll move to ${fa.name}'s Clients tab.` : '')
       + " This can't be undone.",
-    fields: [{ key: 'finalPcr', label: 'Final PCR', money: true, value: Math.round(casePcr(c)) }],
+    fields: [
+      { key: 'finalPcr', label: 'Final PCR', money: true, value: Math.round(casePcr(c)) },
+      { key: 'acceptedAt', label: 'Date accepted', type: 'date', value: today, min: earliest, max: today },
+    ],
     submitLabel: 'Accept',
     onSubmit: async v => {
       if (v.finalPcr === null) throw new Error('Enter the final PCR (0 if there is none).');
-      await dbSetCaseStage(c.id, 'accepted', _todayIso(), v.finalPcr);
+      if (!v.acceptedAt) throw new Error('Enter the date it was accepted.');
+      if (v.acceptedAt > today) throw new Error("The date accepted can't be later than today.");
+      if (v.acceptedAt < earliest) throw new Error(`The date accepted can't be before it was submitted (${_formatStatusDate(earliest)}).`);
+      await dbSetCaseStage(c.id, 'accepted', v.acceptedAt, v.finalPcr);
     },
   });
   if (!accepted) {
@@ -547,7 +556,8 @@ async function setTeamCaseDate(caseId, date) {
 
 // A popup with a form (also the Products tab's, products.js). fields:
 // [{key, label, type?, money?, options?: [{value, label}], value?,
-// placeholder?}] — options makes it a dropdown. message: optional text
+// placeholder?, min?, max?}] — options makes it a dropdown; min, max limit
+// a date's picker (onSubmit still checks typed ones). message: optional text
 // above the fields. onSubmit(values) saves and returns nothing, or throws
 // to show its message and stay open. extra: an optional link at the
 // bottom left, {label, className, onClick(values, close)}. Resolves true
@@ -570,7 +580,7 @@ function _faFormDialog({ title, message, fields, submitLabel, onSubmit, extra })
               ` : `
                 <input name="${f.key}" ${f.money ? MONEY_INPUT_ATTRS : `type="${f.type || 'text'}"`}
                   value="${_escHtml(f.money ? moneyInputValue(f.value) : f.value ?? '')}"
-                  placeholder="${_escHtml(f.placeholder || '')}">
+                  placeholder="${_escHtml(f.placeholder || '')}"${f.min ? ` min="${_escHtml(f.min)}"` : ''}${f.max ? ` max="${_escHtml(f.max)}"` : ''}>
               `}
             </label>
           `).join('')}
